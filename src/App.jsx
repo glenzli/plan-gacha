@@ -2,6 +2,12 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 
 const APP_SCHEMA_VERSION = '11';
 const DEFAULT_TRIP_DAYS = 5;
+const WEATHER_FETCH_TIMEOUT_MS = 20000;
+const WEATHER_BATCH_TIMEOUT_MS = 60000;
+const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
+const WEATHER_FETCH_CONCURRENCY = 4;
+const WEATHER_ERRORS_KEY = Symbol('weatherErrors');
+const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
 
 const STORAGE_KEYS = {
   schemaVersion: 'pg_schemaVersion',
@@ -190,6 +196,8 @@ function createInitialPlans(startDate) {
         blocked: ['rain', 'heavy_rain', 'storm', 'fog', 'windy'],
       },
       conflicts: ['lazy-beach'],
+      reminders: [{ time: '前一晚', text: '确认日出时间、潮汐和云量，太晚睡就不要硬上' }],
+      tips: ['早市现金和纸巾提前备好'],
       tags: ['户外', '清晨'],
     },
     {
@@ -216,6 +224,11 @@ function createInitialPlans(startDate) {
         blocked: ['drizzle', 'rain', 'heavy_rain', 'storm', 'windy', 'fog'],
       },
       conflicts: ['night-market', 'old-town-walk'],
+      reminders: [
+        { time: '前一晚', text: '确认高铁票和返程班次，必要时先买返程票' },
+        { time: '18:00', text: '开始往威海站收束，避免错过返程' },
+      ],
+      tips: ['跨城当天不要再叠加夜市或高体力计划'],
       tags: ['跨城', '高铁', '户外多点'],
     },
     {
@@ -240,6 +253,7 @@ function createInitialPlans(startDate) {
         blocked: [],
       },
       conflicts: [],
+      reminders: [{ time: '出发前', text: '确认预约、开放时间和临时展闭展信息' }],
       tags: ['室内', museumClosed.length ? '周一闭馆' : '闭馆日留意'],
     },
     {
@@ -250,7 +264,7 @@ function createInitialPlans(startDate) {
       location: { ...QINGDAO_LOCATION, label: '青岛老城' },
       stops: [
         { time: '15:00', title: '大学路和鱼山路', location: place(QINGDAO_LOCATION, '大学路'), note: '拍照和小店，太阳太强会比较累' },
-        { time: '16:40', title: '信号山看城市线', location: place(QINGDAO_LOCATION, '信号山公园'), note: '有爬坡，雨天或高温不推荐' },
+        { time: '16:40', title: '信号山看城市线', location: place(QINGDAO_LOCATION, '信号山公园'), note: '有爬坡，雨天或高温体验会明显下降' },
         { time: '18:30', title: '黄县路晚餐', location: place(QINGDAO_LOCATION, '黄县路'), note: '晚饭后可以顺路散步回酒店' },
       ],
       available_dates: dates.slice(2, 5),
@@ -263,6 +277,7 @@ function createInitialPlans(startDate) {
         blocked: ['rain', 'heavy_rain', 'hot', 'storm'],
       },
       conflicts: [],
+      tips: ['信号山有坡，鞋子不舒服时直接跳过'],
       tags: ['步行', '街区'],
     },
     {
@@ -285,6 +300,7 @@ function createInitialPlans(startDate) {
         blocked: ['heavy_rain', 'storm'],
       },
       conflicts: [],
+      reminders: [{ time: '21:00', text: '控制收尾时间，第二天有早起计划就别拖太晚' }],
       tags: ['美食', '夜间'],
     },
     {
@@ -417,6 +433,7 @@ function createHangzhouPlans(startDate) {
         blocked: ['rain', 'heavy_rain', 'storm', 'hot', 'windy'],
       },
       conflicts: ['canal-night'],
+      reminders: [{ time: '17:30', text: '如果云层太厚，提前切换晚餐，不等日落' }],
       tags: ['户外', '日落'],
     },
     {
@@ -440,6 +457,8 @@ function createHangzhouPlans(startDate) {
         blocked: ['rain', 'heavy_rain', 'storm', 'hot'],
       },
       conflicts: [],
+      reminders: [{ time: '07:30', text: '确认门票和打车排队情况，晚到体验会明显下降' }],
+      tips: ['雨后石阶滑，鞋底不合适就换室内计划'],
       tags: ['户外', '早出发'],
     },
     {
@@ -464,6 +483,7 @@ function createHangzhouPlans(startDate) {
         blocked: [],
       },
       conflicts: [],
+      reminders: [{ time: '出发前', text: '确认博物馆预约和闭馆日' }],
       tags: ['室内', museumClosed.length ? '周一闭馆' : '闭馆日留意'],
     },
     {
@@ -487,6 +507,7 @@ function createHangzhouPlans(startDate) {
         blocked: ['rain', 'heavy_rain', 'storm'],
       },
       conflicts: ['west-lake-walk'],
+      reminders: [{ time: '17:00', text: '查看当晚船班和停航公告' }],
       tags: ['夜间', '美食'],
     },
     {
@@ -534,7 +555,6 @@ function createTripSnapshot(name = '青岛 5 日', startDate = getTodayId(), id 
     tripDays: DEFAULT_TRIP_DAYS,
     plans: createInitialPlans(startDate),
     schedule: createInitialSchedule(startDate),
-    dayWeather: {},
     weatherData: {},
   };
 }
@@ -551,7 +571,6 @@ function createDebugTrips(baseDate = getTodayId()) {
       tripDays: 3,
       plans: createHangzhouPlans(hangzhouStartDate),
       schedule: createHangzhouSchedule(hangzhouStartDate),
-      dayWeather: {},
       weatherData: {},
     },
   ];
@@ -568,14 +587,21 @@ function normalizeTripSnapshot(trip, index = 0) {
     tripDays,
     plans: Array.isArray(trip.plans) ? trip.plans : createInitialPlans(startDate),
     schedule: normalizeSchedule(trip.schedule || createInitialSchedule(startDate)),
-    dayWeather: trip.dayWeather || {},
     weatherData: trip.weatherData || {},
   };
 }
 
 function inferWeatherLabel(location) {
-  if (location.weatherLabel || location.weather_label || location.city) {
-    return location.weatherLabel || location.weather_label || location.city;
+  if (!location || typeof location !== 'object') return undefined;
+
+  const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
+  if (typeof weatherLocation === 'string') return weatherLocation;
+  if (weatherLocation && typeof weatherLocation === 'object') {
+    return inferWeatherLabel(weatherLocation) || weatherLocation.label || weatherLocation.name || weatherLocation.query;
+  }
+
+  if (location.weatherLabel || location.weather_label || location.city || location.district || location.area) {
+    return location.weatherLabel || location.weather_label || location.city || location.district || location.area;
   }
 
   const latitude = Number(location.latitude);
@@ -589,16 +615,38 @@ function inferWeatherLabel(location) {
 
 function normalizeLocation(location, area) {
   if (typeof location === 'string') {
-    return { label: location, query: location };
+    return {
+      label: location,
+      query: area || location,
+      weatherLabel: area || location,
+    };
   }
 
   if (location && typeof location === 'object') {
+    const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
+    const weatherLocationObject = weatherLocation && typeof weatherLocation === 'object' ? weatherLocation : null;
+    const weatherLocationText = typeof weatherLocation === 'string' ? weatherLocation : '';
+    const weatherLabel = inferWeatherLabel(location);
+    const query =
+      location.weatherQuery ||
+      location.weather_query ||
+      weatherLocationText ||
+      weatherLocationObject?.query ||
+      weatherLocationObject?.label ||
+      weatherLocationObject?.name ||
+      location.query ||
+      weatherLabel ||
+      area ||
+      location.label ||
+      location.name ||
+      '';
+
     return {
       label: location.label || location.name || location.query || area || '待定地点',
-      query: location.query || location.label || location.name || area || '',
-      weatherLabel: inferWeatherLabel(location),
-      latitude: location.latitude,
-      longitude: location.longitude,
+      query,
+      weatherLabel,
+      latitude: weatherLocationObject?.latitude ?? location.latitude,
+      longitude: weatherLocationObject?.longitude ?? location.longitude,
     };
   }
 
@@ -616,7 +664,49 @@ function getWeatherLocationKey(location) {
 }
 
 function getWeatherLocationLabel(location) {
-  return location.weatherLabel || location.query || location.label;
+  return location.weatherLabel || location.weather_label || location.city || location.district || location.area || location.query || location.label;
+}
+
+function hasOwnWeatherSource(location) {
+  if (!location || typeof location !== 'object') return false;
+
+  return Boolean(
+    location.query ||
+      hasCoordinates(location) ||
+      location.weatherLocation ||
+      location.weather_location ||
+      location.weather ||
+      location.weatherQuery ||
+      location.weather_query ||
+      location.weatherLabel ||
+      location.weather_label ||
+      location.city ||
+      location.district ||
+      location.area,
+  );
+}
+
+function normalizeStopLocation(rawLocation, fallbackLocation) {
+  if (!rawLocation) return fallbackLocation;
+
+  if (typeof rawLocation === 'string') {
+    return {
+      ...fallbackLocation,
+      label: rawLocation,
+      weatherLabel: getWeatherLocationLabel(fallbackLocation),
+    };
+  }
+
+  if (hasOwnWeatherSource(rawLocation)) {
+    return normalizeLocation(rawLocation, getWeatherLocationLabel(fallbackLocation));
+  }
+
+  const displayLocation = normalizeLocation(rawLocation, fallbackLocation.label);
+  return {
+    ...fallbackLocation,
+    label: displayLocation.label,
+    weatherLabel: getWeatherLocationLabel(fallbackLocation),
+  };
 }
 
 function normalizePlanStops(stops, fallbackLocation) {
@@ -630,13 +720,13 @@ function normalizePlanStops(stops, fallbackLocation) {
           id: `stop-${index + 1}`,
           time: '',
           title: stop,
-          location: fallbackLocation,
+          location: normalizeStopLocation(stop, fallbackLocation),
           note: '',
           weatherRelevant: true,
         };
       }
 
-      const location = normalizeLocation(stop.location || stop.place || fallbackLocation, fallbackLocation.label);
+      const location = normalizeStopLocation(stop.location || stop.place || fallbackLocation, fallbackLocation);
       const time = stop.time || stop.time_window || stop.window || (stop.start && stop.end ? `${stop.start}-${stop.end}` : stop.start || '');
 
       return {
@@ -648,6 +738,28 @@ function normalizePlanStops(stops, fallbackLocation) {
         weatherRelevant: stop.weather_relevant !== false && stop.weatherRelevant !== false,
       };
     });
+}
+
+function normalizePlanReminders(value) {
+  return toArray(value)
+    .map((item, index) => {
+      if (typeof item === 'string') {
+        return { id: `reminder-${index + 1}`, time: '', text: item };
+      }
+
+      return {
+        id: item.id || `reminder-${index + 1}`,
+        time: item.time || item.at || '',
+        text: item.text || item.title || item.note || item.description || '',
+      };
+    })
+    .filter((item) => item.text);
+}
+
+function normalizePlanTips(value) {
+  return toArray(value)
+    .map((item) => (typeof item === 'string' ? item : item.text || item.title || item.note || item.description || ''))
+    .filter(Boolean);
 }
 
 function uniqueLocations(locations) {
@@ -674,16 +786,6 @@ function getPlanWeatherLocations(plan) {
     .map((stop) => stop.location);
 
   return uniqueLocations([...stopLocations, plan.location]);
-}
-
-function getPlanLocationSummary(plan) {
-  const stopLocations = toArray(plan.stops).map((stop) => stop.location).filter(Boolean);
-  const cityLabels = uniq(stopLocations.map(getWeatherLocationLabel));
-  const labels = uniq(stopLocations.map((location) => location.label));
-
-  if (cityLabels.length > 1) return `${cityLabels.join(' / ')} · ${labels.length} 处`;
-  if (labels.length > 1) return `${labels[0]}等 ${labels.length} 处`;
-  return labels[0] || plan.location.label;
 }
 
 function normalizeWeatherRules(plan) {
@@ -733,6 +835,8 @@ function normalizePlan(plan, index = 0, tripDates = []) {
     intensity,
     weather_rules: normalizeWeatherRules(plan),
     conflicts: toArray(plan.conflicts || plan.mutually_exclusive_with),
+    reminders: normalizePlanReminders(plan.reminders || plan.special_reminders || plan.alerts),
+    tips: normalizePlanTips(plan.tips || plan.hints),
     tags: toArray(plan.tags),
   };
 }
@@ -783,7 +887,6 @@ function loadInitialState() {
     plans: activeTrip.plans,
     schedule: activeTrip.schedule,
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
-    dayWeather: activeTrip.dayWeather,
     weatherData: activeTrip.weatherData,
   };
 }
@@ -868,7 +971,7 @@ function buildAggregatedWeatherSnapshot(entries) {
 
   const categories = uniq(entries.flatMap((entry) => entry.snapshot.categories));
   const summary = entries
-    .map(({ location, snapshot }) => `${location.label} ${snapshot.summary}`)
+    .map(({ location, snapshot }) => `${getWeatherLocationLabel(location)} ${snapshot.summary}`)
     .join('；');
 
   return {
@@ -879,20 +982,7 @@ function buildAggregatedWeatherSnapshot(entries) {
   };
 }
 
-function manualWeatherSnapshot(condition) {
-  if (!condition || condition === 'unknown') return null;
-  return {
-    primary: condition,
-    categories: [condition],
-    summary: `手动：${weatherLabel(condition)}`,
-    source: 'manual',
-  };
-}
-
-function getPlanWeatherSnapshot(plan, dateId, weatherData, dayWeather) {
-  const manual = manualWeatherSnapshot(dayWeather[dateId]);
-  if (manual) return manual;
-
+function getPlanWeatherSnapshot(plan, dateId, weatherData) {
   const snapshots = getPlanWeatherLocations(plan)
     .map((location) => {
       const key = getWeatherLocationKey(location);
@@ -906,8 +996,8 @@ function getPlanWeatherSnapshot(plan, dateId, weatherData, dayWeather) {
   return buildAggregatedWeatherSnapshot(snapshots);
 }
 
-function evaluateWeather(plan, dateId, weatherData, dayWeather) {
-  const snapshot = getPlanWeatherSnapshot(plan, dateId, weatherData, dayWeather);
+function evaluateWeather(plan, dateId, weatherData) {
+  const snapshot = getPlanWeatherSnapshot(plan, dateId, weatherData);
   if (!snapshot) return { level: 'unknown', label: '天气待确认', snapshot: null };
 
   const categories = snapshot.categories;
@@ -928,7 +1018,7 @@ function evaluateWeather(plan, dateId, weatherData, dayWeather) {
   return { level: 'mismatch', label: '天气一般', snapshot };
 }
 
-function getDayInsight(plan, dateId, schedule, plansById, weatherData, dayWeather) {
+function getDayInsight(plan, dateId, schedule, plansById, weatherData) {
   if (!plan) {
     return {
       level: 'empty',
@@ -939,8 +1029,8 @@ function getDayInsight(plan, dateId, schedule, plansById, weatherData, dayWeathe
     };
   }
 
-  const weather = evaluateWeather(plan, dateId, weatherData, dayWeather);
-  const issues = getDateHardIssues(plan, dateId, schedule, plansById, weatherData, dayWeather, {
+  const weather = evaluateWeather(plan, dateId, weatherData);
+  const issues = getDateHardIssues(plan, dateId, schedule, plansById, weatherData, {
     ignoreOccupancy: true,
   });
   const hasHardIssue = issues.length > 0;
@@ -971,7 +1061,7 @@ function getCalendarDayState(plan, insight) {
   return { key: 'planned', label: '', ariaLabel: '已安排' };
 }
 
-function getDateHardIssues(plan, dateId, schedule, plansById, weatherData, dayWeather, options = {}) {
+function getDateHardIssues(plan, dateId, schedule, plansById, weatherData, options = {}) {
   const issues = [];
   const entry = schedule[dateId];
   const currentPlanId = entry?.planId;
@@ -991,15 +1081,15 @@ function getDateHardIssues(plan, dateId, schedule, plansById, weatherData, dayWe
     if (planConflicts(plan, otherPlan)) issues.push(`与 ${otherPlan.name} 互斥`);
   });
 
-  const weather = evaluateWeather(plan, dateId, weatherData, dayWeather);
+  const weather = evaluateWeather(plan, dateId, weatherData);
   if (weather.level === 'blocked') issues.push(weather.label);
 
   return uniq(issues);
 }
 
-function getFeasibleDates(plan, tripDates, schedule, plansById, weatherData, dayWeather) {
+function getFeasibleDates(plan, tripDates, schedule, plansById, weatherData) {
   return tripDates
-    .filter((date) => getDateHardIssues(plan, date.id, schedule, plansById, weatherData, dayWeather).length === 0)
+    .filter((date) => getDateHardIssues(plan, date.id, schedule, plansById, weatherData).length === 0)
     .map((date) => date.id);
 }
 
@@ -1012,7 +1102,7 @@ function getScheduledRiskTitle(issues) {
   return '需要调整';
 }
 
-function buildRiskItems(plans, tripDates, schedule, plansById, weatherData, dayWeather) {
+function buildRiskItems(plans, tripDates, schedule, plansById, weatherData) {
   const scheduledPlanIds = new Set(Object.values(schedule).map((entry) => entry.planId));
 
   const scheduledRisks = Object.entries(schedule)
@@ -1020,7 +1110,7 @@ function buildRiskItems(plans, tripDates, schedule, plansById, weatherData, dayW
       const plan = plansById.get(entry.planId);
       if (!plan) return null;
 
-      const issues = getDateHardIssues(plan, dateId, schedule, plansById, weatherData, dayWeather, {
+      const issues = getDateHardIssues(plan, dateId, schedule, plansById, weatherData, {
         ignoreOccupancy: true,
       });
 
@@ -1039,12 +1129,12 @@ function buildRiskItems(plans, tripDates, schedule, plansById, weatherData, dayW
   const unscheduledRisks = plans
     .filter((plan) => plan.priority === 'must' && !scheduledPlanIds.has(plan.id))
     .map((plan) => {
-      const feasibleDates = getFeasibleDates(plan, tripDates, schedule, plansById, weatherData, dayWeather);
+      const feasibleDates = getFeasibleDates(plan, tripDates, schedule, plansById, weatherData);
       if (feasibleDates.length > 0) return null;
 
       const reasons = uniq(
         tripDates.flatMap((date) =>
-          getDateHardIssues(plan, date.id, schedule, plansById, weatherData, dayWeather).slice(0, 2),
+          getDateHardIssues(plan, date.id, schedule, plansById, weatherData).slice(0, 2),
         ),
       ).slice(0, 4);
 
@@ -1185,17 +1275,32 @@ function parseForecastDaily(data) {
   );
 }
 
+function isWeatherCacheFresh(entry, tripDates) {
+  if (!entry?.dailyByDate || !entry.fetchedAt) return false;
+
+  const fetchedAt = new Date(entry.fetchedAt).getTime();
+  if (!Number.isFinite(fetchedAt)) return false;
+  if (Date.now() - fetchedAt > WEATHER_CACHE_TTL_MS) return false;
+
+  return tripDates.every((date) => Boolean(entry.dailyByDate[date.id]));
+}
+
 async function fetchJson(url, errorPrefix) {
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), 10000);
+  const requestUrl = url.toString();
+  const timeoutId = window.setTimeout(() => controller.abort(), WEATHER_FETCH_TIMEOUT_MS);
 
   try {
-    const response = await fetch(url, { signal: controller.signal });
+    const response = await fetch(requestUrl, { signal: controller.signal });
     if (!response.ok) throw new Error(`${errorPrefix}失败`);
     return await response.json();
   } catch (error) {
     if (error.name === 'AbortError') {
       throw new Error(`${errorPrefix}超时`, { cause: error });
+    }
+    if (error instanceof TypeError) {
+      const host = new URL(requestUrl).host;
+      throw new Error(`${errorPrefix}失败：无法连接 ${host}，可能是当前网络、DNS 或浏览器拦截导致。`, { cause: error });
     }
     throw error;
   } finally {
@@ -1203,7 +1308,93 @@ async function fetchJson(url, errorPrefix) {
   }
 }
 
-async function fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr) {
+async function fetchWeatherForLocation(location, startDateStr, endDate) {
+  let resolved = location;
+  if (!hasCoordinates(resolved)) {
+    const resolvedLabel = getWeatherLocationLabel(resolved);
+    const searchTerms = uniq([resolved.query, resolvedLabel, resolved.query?.split(',')[0]]).filter(Boolean);
+    let first = null;
+
+    for (const term of searchTerms) {
+      const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
+      geoUrl.searchParams.set('name', term);
+      geoUrl.searchParams.set('count', '1');
+      geoUrl.searchParams.set('language', 'zh');
+      geoUrl.searchParams.set('format', 'json');
+      const geoData = await fetchJson(geoUrl, `地点查询：${resolvedLabel}`);
+      first = geoData.results?.[0] || null;
+      if (first) break;
+    }
+
+    if (!first) throw new Error(`找不到地点：${resolvedLabel}`);
+    resolved = {
+      ...resolved,
+      weatherLabel: resolved.weatherLabel || `${first.name}${first.admin1 ? `, ${first.admin1}` : ''}`,
+      latitude: first.latitude,
+      longitude: first.longitude,
+      timezone: first.timezone,
+    };
+  }
+
+  const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
+  forecastUrl.searchParams.set('latitude', String(resolved.latitude));
+  forecastUrl.searchParams.set('longitude', String(resolved.longitude));
+  forecastUrl.searchParams.set(
+    'daily',
+    [
+      'weather_code',
+      'temperature_2m_max',
+      'temperature_2m_min',
+      'apparent_temperature_max',
+      'apparent_temperature_min',
+      'precipitation_sum',
+      'precipitation_probability_max',
+      'wind_speed_10m_max',
+      'cloud_cover_mean',
+    ].join(','),
+  );
+  forecastUrl.searchParams.set('timezone', 'auto');
+  forecastUrl.searchParams.set('start_date', startDateStr);
+  forecastUrl.searchParams.set('end_date', endDate);
+
+  const forecastData = await fetchJson(forecastUrl, `天气查询：${getWeatherLocationLabel(resolved)}`);
+
+  return {
+    ...resolved,
+    label: getWeatherLocationLabel(resolved),
+    dailyByDate: parseForecastDaily(forecastData),
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+async function mapSettledWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex;
+      nextIndex += 1;
+
+      try {
+        results[currentIndex] = {
+          status: 'fulfilled',
+          value: await mapper(items[currentIndex], currentIndex),
+        };
+      } catch (error) {
+        results[currentIndex] = {
+          status: 'rejected',
+          reason: error,
+        };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, runWorker));
+  return results;
+}
+
+async function fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, cachedWeatherData = {}) {
   if (!tripDates.length) return {};
 
   const endDate = tripDates[tripDates.length - 1].id;
@@ -1224,68 +1415,60 @@ async function fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr) {
   });
 
   const uniqueLocations = Array.from(locationsByKey.values());
-
   const nextWeatherData = {};
+  const locationsToFetch = [];
 
-  for (const location of uniqueLocations) {
-    let resolved = location;
-    if (!hasCoordinates(resolved)) {
-      const searchTerms = uniq([resolved.query, resolved.label, resolved.query?.split(',')[0]]);
-      let first = null;
+  uniqueLocations.forEach((location) => {
+    const key = getWeatherLocationKey(location);
+    const cachedEntry = cachedWeatherData[key];
 
-      for (const term of searchTerms) {
-        const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
-        geoUrl.searchParams.set('name', term);
-        geoUrl.searchParams.set('count', '1');
-        geoUrl.searchParams.set('language', 'zh');
-        geoUrl.searchParams.set('format', 'json');
-        const geoData = await fetchJson(geoUrl, `地点查询：${resolved.label}`);
-        first = geoData.results?.[0] || null;
-        if (first) break;
-      }
-
-      if (!first) throw new Error(`找不到地点：${resolved.label}`);
-      resolved = {
-        ...resolved,
-        weatherLabel: resolved.weatherLabel || `${first.name}${first.admin1 ? `, ${first.admin1}` : ''}`,
-        latitude: first.latitude,
-        longitude: first.longitude,
-        timezone: first.timezone,
-      };
+    if (isWeatherCacheFresh(cachedEntry, tripDates)) {
+      nextWeatherData[key] = cachedEntry;
+      return;
     }
 
-    const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
-    forecastUrl.searchParams.set('latitude', String(resolved.latitude));
-    forecastUrl.searchParams.set('longitude', String(resolved.longitude));
-    forecastUrl.searchParams.set(
-      'daily',
-      [
-        'weather_code',
-        'temperature_2m_max',
-        'temperature_2m_min',
-        'apparent_temperature_max',
-        'apparent_temperature_min',
-        'precipitation_sum',
-        'precipitation_probability_max',
-        'wind_speed_10m_max',
-        'cloud_cover_mean',
-      ].join(','),
-    );
-    forecastUrl.searchParams.set('timezone', 'auto');
-    forecastUrl.searchParams.set('start_date', startDateStr);
-    forecastUrl.searchParams.set('end_date', endDate);
+    locationsToFetch.push(location);
+  });
 
-    const forecastData = await fetchJson(forecastUrl, `天气查询：${resolved.label}`);
+  const results = await mapSettledWithConcurrency(
+    locationsToFetch,
+    WEATHER_FETCH_CONCURRENCY,
+    async (location) => ({
+      key: getWeatherLocationKey(location),
+      label: getWeatherLocationLabel(location),
+      data: await fetchWeatherForLocation(location, startDateStr, endDate),
+    }),
+  );
 
-    nextWeatherData[getWeatherLocationKey(location)] = {
-      ...resolved,
-      label: getWeatherLocationLabel(resolved),
-      dailyByDate: parseForecastDaily(forecastData),
-      fetchedAt: new Date().toISOString(),
-    };
+  const errors = [];
+
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      nextWeatherData[result.value.key] = result.value.data;
+      return;
+    }
+
+    errors.push(`${getWeatherLocationLabel(locationsToFetch[index])}：${result.reason.message}`);
+  });
+
+  if (!Object.keys(nextWeatherData).length && errors.length) {
+    throw new Error(errors.join('；'));
   }
 
+  Object.defineProperty(nextWeatherData, WEATHER_ERRORS_KEY, {
+    value: errors,
+    enumerable: false,
+  });
+  Object.defineProperty(nextWeatherData, WEATHER_CACHE_HIT_KEY, {
+    value: locationsToFetch.length === 0 && uniqueLocations.length > 0,
+    enumerable: false,
+  });
+
   return nextWeatherData;
+}
+
+function formatWeatherUpdateWarning(errors) {
+  return errors.length ? `部分天气未更新：${errors.join('；')}` : '';
 }
 
 function App() {
@@ -1298,7 +1481,6 @@ function App() {
   const [plans, setPlans] = useState(initial.plans);
   const [schedule, setSchedule] = useState(initial.schedule);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
-  const [dayWeather, setDayWeather] = useState(initial.dayWeather);
   const [weatherData, setWeatherData] = useState(initial.weatherData);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState('');
@@ -1307,7 +1489,6 @@ function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
-  const [openWeatherEditorDateId, setOpenWeatherEditorDateId] = useState('');
   const [pendingAssignment, setPendingAssignment] = useState(null);
   const [toast, setToast] = useState('');
 
@@ -1342,24 +1523,13 @@ function App() {
 
   const selectedDateEntry = selectedDate ? schedule[selectedDate.id] : null;
   const selectedPlan = selectedDateEntry ? plansById.get(selectedDateEntry.planId) : null;
-  const selectedManualWeather = selectedDate ? dayWeather[selectedDate.id] || 'unknown' : 'unknown';
-  const selectedWeatherSnapshot = selectedDate && selectedPlan
-    ? getPlanWeatherSnapshot(selectedPlan, selectedDate.id, weatherData, dayWeather)
-    : null;
-  const weatherEditorOpen = Boolean(selectedDate && openWeatherEditorDateId === selectedDate.id);
-  const selectedWeatherSummary = selectedWeatherSnapshot?.summary || (weatherLoading ? '正在更新天气' : '尚未获取天气');
-  const selectedWeatherSource = selectedWeatherSnapshot?.source === 'manual'
-    ? '手动修正'
-    : selectedWeatherSnapshot?.source === 'auto'
-      ? 'API 天气'
-      : '天气待确认';
   const selectedIndex = selectedDate
     ? tripDates.findIndex((date) => date.id === selectedDate.id)
     : -1;
 
   const riskItems = useMemo(
-    () => buildRiskItems(normalizedPlans, tripDates, schedule, plansById, weatherData, dayWeather),
-    [dayWeather, normalizedPlans, plansById, schedule, tripDates, weatherData],
+    () => buildRiskItems(normalizedPlans, tripDates, schedule, plansById, weatherData),
+    [normalizedPlans, plansById, schedule, tripDates, weatherData],
   );
   const riskGroups = useMemo(
     () => buildRiskGroups(riskItems, tripDates),
@@ -1385,16 +1555,15 @@ function App() {
         const notes = [];
         const isCurrent = selectedPlan?.id === plan.id;
         const assignedDateId = planAssignments.get(plan.id) || '';
-        const weather = evaluateWeather(plan, selectedDate.id, weatherData, dayWeather);
+        const weather = evaluateWeather(plan, selectedDate.id, weatherData);
         const { clears, nextSchedule } = buildAssignmentPreview(schedule, selectedDate.id, plan, plansById);
-        const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData, dayWeather)
+        const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData)
           .filter((risk) => risk.level !== 'info');
         const newRisks = nextRisks.filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
 
         if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push('日期不适合');
         if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push('当天不可用/闭馆');
         if (weather.level === 'blocked') hardReasons.push(weather.label);
-        if (weather.level === 'mismatch') notes.push('天气不是推荐条件');
         if (weather.level === 'unknown') notes.push('天气未知');
 
         const priorityScore = getPlanPriorityWeight(plan) * 3;
@@ -1419,7 +1588,6 @@ function App() {
         return b.score - a.score;
       });
   }, [
-    dayWeather,
     normalizedPlans,
     planAssignments,
     plansById,
@@ -1443,7 +1611,6 @@ function App() {
       tripDays,
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
-      dayWeather,
       weatherData,
     };
     const persistedTrips = trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip));
@@ -1453,7 +1620,6 @@ function App() {
     localStorage.setItem(STORAGE_KEYS.currentTrip, activeTripId);
   }, [
     activeTripId,
-    dayWeather,
     normalizedPlans,
     schedule,
     startDateStr,
@@ -1482,7 +1648,6 @@ function App() {
     tripDays,
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
-    dayWeather,
     weatherData,
   });
 
@@ -1494,10 +1659,8 @@ function App() {
     setTripDays(normalizedTrip.tripDays);
     setPlans(normalizedTrip.plans);
     setSchedule(normalizedTrip.schedule);
-    setDayWeather(normalizedTrip.dayWeather);
     setWeatherData(normalizedTrip.weatherData);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
-    setOpenWeatherEditorDateId('');
     setWeatherError('');
   };
 
@@ -1531,7 +1694,7 @@ function App() {
 
     const { clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
 
-    const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData, dayWeather)
+    const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData)
       .filter((risk) => risk.level !== 'info');
 
     return { clears, nextSchedule, nextRisks, targetPlan, dateId };
@@ -1567,19 +1730,6 @@ function App() {
       return next;
     });
     notify('当天安排已清空');
-  };
-
-  const pickRecommendedPlan = () => {
-    if (!selectedDate) return;
-    const assignable = switchCandidates.filter((candidate) => candidate.canAssign);
-
-    if (!assignable.length) {
-      notify('这一天没有可替换方案');
-      return;
-    }
-
-    const selected = assignable[0];
-    requestAssignPlan(selectedDate.id, selected.plan.id);
   };
 
   const selectNeighborDate = (step) => {
@@ -1623,14 +1773,16 @@ function App() {
     const timeoutId = window.setTimeout(() => {
       timedOut = true;
       setWeatherLoading(false);
-      setWeatherError('天气更新超时，可稍后重试或先手动设置天气。');
-    }, 12000);
+      setWeatherError('天气更新超时，可稍后重试或检查网络。');
+    }, WEATHER_BATCH_TIMEOUT_MS);
 
     try {
-      const nextWeatherData = await fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr);
+      const nextWeatherData = await fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherData);
       if (!timedOut) {
         setWeatherData(nextWeatherData);
-        notify('天气已更新');
+        const warning = formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || []);
+        setWeatherError(warning);
+        notify(nextWeatherData[WEATHER_CACHE_HIT_KEY] ? '天气缓存仍有效' : warning ? '天气已更新，部分地点失败' : '天气已更新');
       }
     } catch (error) {
       if (!timedOut) {
@@ -1666,13 +1818,16 @@ function App() {
       timedOut = true;
       if (!cancelled) {
         setWeatherLoading(false);
-        setWeatherError('自动天气更新超时，可稍后重试或先手动设置天气。');
+        setWeatherError('自动天气更新超时，可稍后重试或检查网络。');
       }
-    }, 12000);
+    }, WEATHER_BATCH_TIMEOUT_MS);
 
-    fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr)
+    fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherData)
       .then((nextWeatherData) => {
-        if (!cancelled && !timedOut) setWeatherData(nextWeatherData);
+        if (!cancelled && !timedOut) {
+          setWeatherData(nextWeatherData);
+          setWeatherError(formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || []));
+        }
       })
       .catch((error) => {
         if (!cancelled && !timedOut) setWeatherError(`自动天气更新失败：${error.message}`);
@@ -1689,7 +1844,7 @@ function App() {
       if (!settled && autoWeatherKeyRef.current === autoWeatherKey) autoWeatherKeyRef.current = '';
       setWeatherLoading(false);
     };
-  }, [normalizedPlans, startDateStr, tripDates]);
+  }, [normalizedPlans, startDateStr, tripDates, weatherData]);
 
   const copySystemPrompt = () => {
     const prompt = `你是旅行动态规划助手。请只输出 JSON，不要输出解释文字。
@@ -1701,12 +1856,12 @@ JSON 格式如下：
       "name": "短标题",
       "description": "当天做什么，适合什么情况",
       "priority": "must | preferred | backup | optional",
-      "location": { "label": "地点展示名", "query": "可被天气 API 搜索的城市/地点" },
+      "location": { "label": "地点展示名", "weather_location": "用于天气 API 的城市/区县/坐标，不一定展示" },
       "stops": [
         {
           "time": "09:30",
           "title": "节点标题",
-          "location": { "label": "具体地点", "query": "可被天气 API 搜索的城市/地点" },
+          "location": { "label": "具体地点", "weather_location": "跨城或不同区县时填写，否则继承计划地点" },
           "note": "这个节点做什么",
           "weather_relevant": true
         }
@@ -1722,6 +1877,8 @@ JSON 格式如下：
         "blocked": ["..."]
       },
       "conflicts": ["other_plan_id"],
+      "reminders": [{"time": "HH:mm 或文字时间", "text": "必须注意的事项"}],
+      "tips": ["普通提示"],
       "tags": ["标签"],
       "assigned_day": "YYYY-MM-DD"
     }
@@ -1737,14 +1894,13 @@ JSON 格式如下：
       .map(({ plan, score, notes, weather, assignedDateId }) => ({
         ...plan,
         assigned_day: assignedDateId || null,
-        recommendation_score: score,
+        fit_score: score,
         notes,
         weather_status: weather.label,
       }));
 
     const prompt = `我正在旅行中调整 ${selectedDate.display} (${selectedDate.id}) 的安排。
 当天状态：
-- 天气：${selectedWeatherSummary}（${selectedWeatherSource}）
 - 已安排计划：${selectedPlan?.name || '无'}
 
 当前可选计划：
@@ -1801,7 +1957,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
   };
 
   const handleExportState = () => {
-    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, dayWeather, weatherData };
+    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
@@ -1824,7 +1980,6 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
         if (data.tripDays) setTripDays(clampTripDays(data.tripDays));
         if (Array.isArray(data.plans)) setPlans(data.plans);
         if (data.schedule) setSchedule(normalizeSchedule(data.schedule));
-        if (data.dayWeather) setDayWeather(data.dayWeather);
         if (data.weatherData) setWeatherData(data.weatherData);
         notify('备份已恢复');
       } catch (error) {
@@ -1844,7 +1999,6 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
     setTripDays(DEFAULT_TRIP_DAYS);
     setPlans(createInitialPlans(nextStartDate));
     setSchedule(createInitialSchedule(nextStartDate));
-    setDayWeather({});
     setWeatherData({});
     setSelectedDateId(nextStartDate);
     notify('数据已重置');
@@ -1869,13 +2023,34 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
     );
   };
 
-  const renderPlanMeta = (plan) => {
-    if (!plan) return null;
+  const renderPlanNotes = (plan) => {
+    if (!plan || (!plan.reminders.length && !plan.tips.length)) return null;
 
     return (
-      <div className="meta-grid" aria-label="计划信息">
-        <span>{getPlanLocationSummary(plan)}</span>
-        <span>{plan.time_window}</span>
+      <div className="plan-notes">
+        {plan.reminders.length > 0 && (
+          <div className="plan-note plan-reminders" aria-label="特别提醒">
+            <strong>特别提醒</strong>
+            <ul>
+              {plan.reminders.map((item) => (
+                <li key={item.id}>
+                  {item.time && <span>{item.time}</span>}
+                  <em>{item.text}</em>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        {plan.tips.length > 0 && (
+          <div className="plan-note plan-tips" aria-label="Tips">
+            <strong>Tips</strong>
+            <ul>
+              {plan.tips.map((tip) => (
+                <li key={tip}>{tip}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     );
   };
@@ -1892,7 +2067,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
       <>
         <div className={`weather-line ${weather.level}`}>
           <strong>{weather.label}</strong>
-          <span>{weather.snapshot?.summary || '未查询天气，使用手动条件或先更新天气'}</span>
+          <span>{weather.snapshot?.summary || '尚未获取地点天气，先更新天气'}</span>
         </div>
 
         {(visibleHardReasons.length > 0 || notes.length > 0) && (
@@ -1921,18 +2096,14 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
         )}
       </div>
       <p>{selectedPlan?.description || '从下面的候选里换一个，系统会先评估是否影响后续计划。'}</p>
-      {renderPlanMeta(selectedPlan)}
       {renderPlanStops(selectedPlan)}
+      {renderPlanNotes(selectedPlan)}
       {renderCandidateSignals(currentCandidate)}
     </div>
   );
 
   const renderCurrentPlanActions = () => (
     <div className="current-actions">
-      <button className="btn btn-primary" type="button" onClick={pickRecommendedPlan}>
-        <span className="recommend-icon" aria-hidden="true" />
-        推荐
-      </button>
       {selectedDate && (
         <button className="btn btn-outline" type="button" onClick={copyDayPrompt}>
           问 AI
@@ -1992,57 +2163,12 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
     );
   };
 
-  const renderWeatherConditionCard = (compact = false) => (
-    <div className={`condition-card ${compact ? 'compact-card' : ''}`}>
-      <div className="condition-top">
-        <div>
-          <h2>当天条件</h2>
-          <div className="weather-current">
-            <span>{selectedWeatherSource}</span>
-            <strong>{selectedWeatherSummary}</strong>
-          </div>
-        </div>
-        <button
-          className={`icon-btn weather-edit-btn ${weatherEditorOpen ? 'is-active' : ''}`}
-          type="button"
-          aria-label={weatherEditorOpen ? '收起天气修正' : '修正天气'}
-          title={weatherEditorOpen ? '收起天气修正' : '修正天气'}
-          onClick={() =>
-            setOpenWeatherEditorDateId((current) => (current === selectedDate?.id ? '' : selectedDate?.id || ''))
-          }
-        />
-      </div>
-
-      {weatherEditorOpen && (
-        <div className="weather-editor">
-          <div className="chip-group" aria-label="修正天气">
-            {WEATHER_OPTIONS.map((option) => (
-              <button
-                className={`chip ${selectedManualWeather === option.id ? 'is-active' : ''}`}
-                key={option.id}
-                type="button"
-                onClick={() =>
-                  selectedDate &&
-                  setDayWeather((current) => ({ ...current, [selectedDate.id]: option.id }))
-                }
-              >
-                {option.id === 'unknown' ? '用 API' : option.short}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-
   const renderMobileDayWorkspace = () => (
     <div className="mobile-workspace">
       <div className="mobile-workspace-header">
         <span>D{selectedDate?.dayNumber || 1} 当天</span>
         <span>{availableCandidateCount} 个可切换</span>
       </div>
-
-      {renderWeatherConditionCard(true)}
 
       <div className="section-title compact-section-title">
         <h2>候选</h2>
@@ -2070,8 +2196,8 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
               </div>
             </div>
 
-            {renderPlanMeta(plan)}
             {renderPlanStops(plan)}
+            {renderPlanNotes(plan)}
             {renderCandidateSignals({ plan, canAssign, assignedDateId, ...candidate })}
 
             <button
@@ -2165,7 +2291,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
               const entry = schedule[date.id];
               const plan = entry ? plansById.get(entry.planId) : null;
               const selected = selectedDate?.id === date.id;
-              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, dayWeather);
+              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData);
               const calendarState = getCalendarDayState(plan, insight);
 
               return (
@@ -2191,7 +2317,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
               const entry = schedule[date.id];
               const plan = entry ? plansById.get(entry.planId) : null;
               const selected = selectedDate?.id === date.id;
-              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, dayWeather);
+              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData);
               return (
                 <Fragment key={date.id}>
                   <button
@@ -2258,8 +2384,6 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
             </button>
           </div>
 
-          {renderWeatherConditionCard()}
-
           <div className="current-plan">
             {renderCurrentPlanBody()}
             {renderCurrentPlanActions()}
@@ -2291,8 +2415,8 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
                   </div>
                 </div>
 
-                {renderPlanMeta(plan)}
                 {renderPlanStops(plan)}
+                {renderPlanNotes(plan)}
                 {renderCandidateSignals({ plan, canAssign, assignedDateId, ...candidate })}
 
                 <button
@@ -2327,7 +2451,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
               </button>
             </div>
             <p className="helper-text">
-              使用 Open-Meteo 自动按计划地点查询。无网络或超出预报范围时，可在当天卡片里手动修正。
+              使用 Open-Meteo 按计划地点查询；同地点和同日期范围 2 小时内复用缓存，跨城和多地点计划会合并评估对应地点天气。
             </p>
             {weatherError && <div className="risk-item warning"><p>{weatherError}</p></div>}
             <div className="weather-source-list">

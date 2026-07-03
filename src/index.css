@@ -578,37 +578,6 @@ label {
   padding: 0 0.55rem;
 }
 
-.recommend-icon {
-  position: relative;
-  display: inline-block;
-  flex: 0 0 auto;
-  width: 1rem;
-  height: 1rem;
-}
-
-.recommend-icon::before {
-  position: absolute;
-  top: 0.06rem;
-  left: 0.3rem;
-  width: 0.36rem;
-  height: 0.36rem;
-  background: currentColor;
-  content: "";
-  clip-path: polygon(50% 0, 62% 36%, 100% 50%, 62% 64%, 50% 100%, 38% 64%, 0 50%, 38% 36%);
-}
-
-.recommend-icon::after {
-  position: absolute;
-  right: 0.1rem;
-  bottom: 0.08rem;
-  left: 0.12rem;
-  height: 0.42rem;
-  border-bottom: 2px solid currentColor;
-  border-left: 2px solid currentColor;
-  content: "";
-  transform: rotate(-45deg);
-}
-
 .edit-icon {
   position: relative;
   display: inline-block;
@@ -659,114 +628,9 @@ label {
   gap: 0.65rem;
 }
 
-.condition-card {
-  display: grid;
-  gap: 0.75rem;
-  padding: 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-}
-
-.condition-top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.weather-current {
-  display: grid;
-  gap: 0.25rem;
-  margin-top: 0.45rem;
-}
-
-.weather-current span {
-  width: fit-content;
-  padding: 0.08rem 0.42rem;
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
-.weather-current strong {
-  color: var(--text);
-  font-size: 0.92rem;
-  line-height: 1.35;
-}
-
-.weather-edit-btn {
-  position: relative;
-  flex: 0 0 auto;
-  min-width: 2rem;
-  width: 2rem;
-  height: 2rem;
-  padding: 0;
-}
-
-.weather-edit-btn::before {
-  width: 0.78rem;
-  height: 0.22rem;
-  border-radius: 999px;
-  background: currentColor;
-  content: "";
-  transform: rotate(-42deg);
-}
-
-.weather-edit-btn::after {
-  position: absolute;
-  top: 0.58rem;
-  right: 0.53rem;
-  width: 0.2rem;
-  height: 0.2rem;
-  border-radius: 1px;
-  background: currentColor;
-  content: "";
-  transform: rotate(-42deg);
-}
-
-.weather-edit-btn.is-active {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent-strong);
-}
-
-.weather-editor {
-  padding-top: 0.65rem;
-  border-top: 1px solid var(--border);
-}
-
-.condition-card p,
 .helper-text {
   color: var(--muted);
   font-size: 0.86rem;
-}
-
-.chip-group {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.chip {
-  min-height: 2rem;
-  padding: 0.25rem 0.58rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 0.8rem;
-  font-weight: 850;
-}
-
-.chip.is-active {
-  border-color: var(--coral);
-  background: var(--coral-soft);
-  color: var(--coral-strong);
 }
 
 .segmented {
@@ -833,7 +697,6 @@ label {
   color: var(--muted);
 }
 
-.current-plan .meta-grid,
 .current-plan .weather-line,
 .current-plan .reason-row {
   margin-top: 0.7rem;
@@ -1021,24 +884,6 @@ label {
   color: var(--coral-strong);
 }
 
-.meta-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.45rem;
-}
-
-.meta-grid span {
-  min-height: 2rem;
-  padding: 0.35rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface-soft);
-  color: var(--muted);
-  font-size: 0.78rem;
-  font-weight: 750;
-  overflow-wrap: anywhere;
-}
-
 .stop-list {
   display: grid;
   gap: 0.42rem;
@@ -1086,6 +931,72 @@ label {
   font-size: 0.76rem;
   font-style: normal;
   line-height: 1.35;
+}
+
+.plan-notes {
+  display: grid;
+  gap: 0.42rem;
+  margin-top: 0.65rem;
+}
+
+.plan-card .plan-notes {
+  margin-top: -0.05rem;
+}
+
+.plan-note {
+  display: grid;
+  gap: 0.32rem;
+  padding: 0.58rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+}
+
+.plan-note strong {
+  font-size: 0.76rem;
+  font-weight: 950;
+}
+
+.plan-note ul {
+  display: grid;
+  gap: 0.22rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.plan-note li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.35;
+}
+
+.plan-note li span {
+  flex: 0 0 auto;
+  color: inherit;
+  font-weight: 900;
+}
+
+.plan-note li em {
+  min-width: 0;
+  font-style: normal;
+}
+
+.plan-reminders {
+  border-color: var(--amber-soft);
+  background: var(--amber-soft);
+}
+
+.plan-reminders strong,
+.plan-reminders li {
+  color: var(--amber);
+}
+
+.plan-tips strong {
+  color: var(--muted);
 }
 
 .weather-line {
@@ -1724,7 +1635,6 @@ label {
   }
 
   .condition-bar,
-  .meta-grid,
   .action-grid,
   .trip-editor-grid {
     grid-template-columns: 1fr;
@@ -1788,17 +1698,9 @@ label {
     font-size: 0.84rem;
   }
 
-  .selected-day-plan .meta-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
   .mobile-workspace .compact-card,
   .mobile-workspace .plan-card {
     padding: 0.75rem;
-  }
-
-  .mobile-workspace .meta-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .mobile-plan-grid {
@@ -1816,8 +1718,8 @@ label {
   }
 
   .mobile-workspace .plan-card.is-mobile-collapsed .plan-card-header p,
-  .mobile-workspace .plan-card.is-mobile-collapsed .meta-grid,
   .mobile-workspace .plan-card.is-mobile-collapsed .stop-list,
+  .mobile-workspace .plan-card.is-mobile-collapsed .plan-notes,
   .mobile-workspace .plan-card.is-mobile-collapsed .weather-line,
   .mobile-workspace .plan-card.is-mobile-collapsed .btn-card {
     display: none;
