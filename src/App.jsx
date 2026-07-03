@@ -1066,6 +1066,61 @@ function buildRiskItems(plans, tripDates, schedule, plansById, weatherData, dayW
   });
 }
 
+function buildAssignmentPreview(schedule, dateId, targetPlan, plansById) {
+  const nextSchedule = { ...schedule };
+  const clearsByDate = new Map();
+
+  Object.entries(schedule).forEach(([otherDateId, entry]) => {
+    if (!entry?.planId || otherDateId === dateId) return;
+    const otherPlan = plansById.get(entry.planId);
+    if (!otherPlan) return;
+
+    const isSamePlan = otherPlan.id === targetPlan.id;
+    const isConflict = planConflicts(targetPlan, otherPlan);
+    if (!isSamePlan && !isConflict) return;
+
+    clearsByDate.set(otherDateId, {
+      dateId: otherDateId,
+      plan: otherPlan,
+      reason: isSamePlan ? '同一计划被移动' : '计划互斥',
+    });
+    delete nextSchedule[otherDateId];
+  });
+
+  nextSchedule[dateId] = { planId: targetPlan.id };
+
+  return {
+    clears: Array.from(clearsByDate.values()),
+    nextSchedule,
+  };
+}
+
+function getRiskIdentity(risk) {
+  return `${risk.dateId || 'unscheduled'}:${risk.plan.id}:${risk.title}`;
+}
+
+function getPlanPriorityWeight(plan) {
+  return PRIORITY_META[plan.priority]?.rank || 1;
+}
+
+function getWeatherScore(level) {
+  if (level === 'best') return 5;
+  if (level === 'ok') return 3;
+  if (level === 'mismatch') return 1;
+  return 0;
+}
+
+function getClearPenalty(clears) {
+  return clears.reduce((total, item) => total + getPlanPriorityWeight(item.plan) * 3, 0);
+}
+
+function getRiskPenalty(risks) {
+  return risks.reduce((total, risk) => {
+    const levelPenalty = risk.level === 'critical' ? 16 : 6;
+    return total + levelPenalty + getPlanPriorityWeight(risk.plan) * 2;
+  }, 0);
+}
+
 function getRiskGroupTitle(title) {
   if (title === '必去计划没有可安排日期') return '必去未排';
   return title;
@@ -1322,15 +1377,19 @@ function App() {
 
   const candidates = useMemo(() => {
     if (!selectedDate) return [];
+    const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
 
     return normalizedPlans
       .map((plan) => {
         const hardReasons = [];
         const notes = [];
-        const clears = [];
         const isCurrent = selectedPlan?.id === plan.id;
         const assignedDateId = planAssignments.get(plan.id) || '';
         const weather = evaluateWeather(plan, selectedDate.id, weatherData, dayWeather);
+        const { clears, nextSchedule } = buildAssignmentPreview(schedule, selectedDate.id, plan, plansById);
+        const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData, dayWeather)
+          .filter((risk) => risk.level !== 'info');
+        const newRisks = nextRisks.filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
 
         if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push('日期不适合');
         if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push('当天不可用/闭馆');
@@ -1338,24 +1397,8 @@ function App() {
         if (weather.level === 'mismatch') notes.push('天气不是推荐条件');
         if (weather.level === 'unknown') notes.push('天气未知');
 
-        Object.entries(schedule).forEach(([dateId, entry]) => {
-          if (!entry?.planId || dateId === selectedDate.id) return;
-          const otherPlan = plansById.get(entry.planId);
-          if (!otherPlan) return;
-
-          if (otherPlan.id === plan.id) {
-            clears.push({ dateId, plan: otherPlan, reason: '同一计划会移到当前日期' });
-          }
-
-          if (planConflicts(plan, otherPlan)) {
-            clears.push({ dateId, plan: otherPlan, reason: '与当前选择互斥' });
-          }
-        });
-
-        const weatherScore = weather.level === 'best' ? 5 : weather.level === 'ok' ? 3 : weather.level === 'mismatch' ? 1 : 0;
-        const priorityScore = PRIORITY_META[plan.priority].rank * 3;
-        const clearPenalty = clears.length * 2;
-        const score = priorityScore + weatherScore - clearPenalty;
+        const priorityScore = getPlanPriorityWeight(plan) * 3;
+        const score = priorityScore + getWeatherScore(weather.level) - getClearPenalty(clears) - getRiskPenalty(newRisks);
 
         return {
           plan,
@@ -1363,6 +1406,7 @@ function App() {
           hardReasons: uniq(hardReasons),
           notes: uniq(notes),
           clears,
+          newRisks,
           score,
           isCurrent,
           assignedDateId,
@@ -1379,9 +1423,11 @@ function App() {
     normalizedPlans,
     planAssignments,
     plansById,
+    riskItems,
     schedule,
     selectedDate,
     selectedPlan,
+    tripDates,
     weatherData,
   ]);
 
@@ -1483,27 +1529,7 @@ function App() {
     const targetPlan = plansById.get(planId);
     if (!targetPlan) return null;
 
-    const clears = [];
-    const nextSchedule = { ...schedule };
-
-    Object.entries(schedule).forEach(([otherDateId, entry]) => {
-      if (!entry?.planId || otherDateId === dateId) return;
-      const otherPlan = plansById.get(entry.planId);
-      if (!otherPlan) return;
-
-      if (otherPlan.id === targetPlan.id || planConflicts(targetPlan, otherPlan)) {
-        clears.push({
-          dateId: otherDateId,
-          plan: otherPlan,
-          reason: otherPlan.id === targetPlan.id ? '同一计划被移动' : '计划互斥',
-        });
-        delete nextSchedule[otherDateId];
-      }
-    });
-
-    nextSchedule[dateId] = {
-      planId,
-    };
+    const { clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
 
     const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData, dayWeather)
       .filter((risk) => risk.level !== 'info');
