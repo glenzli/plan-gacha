@@ -1612,24 +1612,16 @@ label {
 }
 
 .checklist-modal {
-  max-width: 43rem;
-}
-
-.checklist-meta {
-  display: block;
-  margin-top: 0.25rem;
-  color: var(--faint);
-  font-size: 0.76rem;
-  font-weight: 800;
+  max-width: 41rem;
 }
 
 .checklist-overview {
   display: grid;
-  gap: 0.5rem;
-  padding: 0.72rem;
-  border: 1px solid var(--border);
+  gap: 0.48rem;
+  padding: 0.72rem 0.8rem;
+  border: 1px solid #bbf7d0;
   border-radius: var(--radius);
-  background: var(--surface-soft);
+  background: #f0fdf4;
 }
 
 .checklist-overview > div:first-child {
@@ -1640,20 +1632,21 @@ label {
 }
 
 .checklist-overview strong {
-  font-size: 0.92rem;
+  color: #15803d;
+  font-size: 0.88rem;
 }
 
 .checklist-overview span {
-  color: var(--muted);
+  color: #15803d;
   font-size: 0.78rem;
   font-weight: 850;
 }
 
 .checklist-progress {
   overflow: hidden;
-  height: 0.45rem;
+  height: 0.34rem;
   border-radius: 999px;
-  background: var(--surface-strong);
+  background: rgba(22, 163, 74, 0.14);
 }
 
 .checklist-progress span {
@@ -1666,12 +1659,12 @@ label {
 
 .checklist-groups {
   display: grid;
-  gap: 1rem;
+  gap: 1.15rem;
 }
 
 .checklist-group {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.46rem;
 }
 
 .checklist-group-head {
@@ -1679,14 +1672,20 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
+  padding: 0 0.1rem;
 }
 
 .checklist-group-head h3 {
   margin: 0;
   font-size: 1rem;
+  line-height: 1.2;
 }
 
 .checklist-group-head span {
+  min-height: 1.45rem;
+  padding: 0.18rem 0.5rem;
+  border-radius: 999px;
+  background: var(--surface-soft);
   color: var(--muted);
   font-size: 0.76rem;
   font-weight: 850;
@@ -1695,45 +1694,51 @@ label {
 
 .checklist-items {
   display: grid;
-  gap: 0.38rem;
-}
-
-.checklist-item {
-  display: grid;
-  grid-template-columns: 1.7rem minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.6rem;
-  min-height: 2.8rem;
-  padding: 0.48rem 0.55rem;
+  overflow: hidden;
+  gap: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   box-shadow: var(--shadow-sm);
 }
 
-.checklist-item:hover {
-  border-color: var(--border-strong);
+.checklist-item {
+  display: grid;
+  grid-template-columns: 1.55rem minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.68rem;
+  min-height: 3.05rem;
+  padding: 0.56rem 0.62rem;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
 }
 
-.checklist-item span {
+.checklist-item:last-child {
+  border-bottom: 0;
+}
+
+.checklist-item:hover {
+  background: var(--surface-soft);
+}
+
+.checklist-item > span {
   min-width: 0;
-  font-size: 0.9rem;
+  color: var(--text);
+  font-size: 0.91rem;
+  line-height: 1.35;
 }
 
 .checklist-item.status-done > span {
-  color: var(--green);
-  text-decoration: line-through;
+  color: var(--muted);
 }
 
 .checklist-item.status-skipped {
-  border-color: var(--border);
-  background: var(--surface-soft);
+  background: #fafafa;
   color: var(--faint);
-  box-shadow: none;
 }
 
 .checklist-item.status-skipped > span {
-  text-decoration: line-through;
+  color: var(--faint);
 }
 
 .checklist-check {
@@ -1742,7 +1747,7 @@ label {
   height: 1.38rem;
   place-items: center;
   border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
+  border-radius: 0.42rem;
   background: var(--surface);
   color: var(--green);
   cursor: pointer;
@@ -1751,7 +1756,7 @@ label {
 .checklist-item.status-done .checklist-check {
   border-color: var(--green);
   background: var(--green-soft);
-  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.08);
 }
 
 .checklist-item.status-skipped .checklist-check {
@@ -1760,29 +1765,25 @@ label {
 }
 
 .checklist-check .check-icon {
-  width: 0.9rem;
-  height: 0.9rem;
+  width: 0.68rem;
+  height: 0.68rem;
+  border-radius: 0.22rem;
+  background: currentColor;
 }
 
 .checklist-check .check-icon::before {
-  top: 50%;
-  left: 50%;
-  width: 0.58rem;
-  height: 0.32rem;
-  border-bottom-width: 2.5px;
-  border-left-width: 2.5px;
-  transform: translate(-50%, -58%) rotate(-45deg);
+  content: none;
 }
 
 .checklist-skip {
-  min-height: 1.75rem;
-  padding: 0.15rem 0.42rem;
+  min-height: 1.6rem;
+  padding: 0.1rem 0.46rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
+  border-radius: 999px;
+  background: var(--surface-soft);
   color: var(--muted);
   cursor: pointer;
-  font-size: 0.74rem;
+  font-size: 0.72rem;
   font-weight: 900;
   white-space: nowrap;
 }

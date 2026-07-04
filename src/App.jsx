@@ -4354,10 +4354,6 @@ ${schema}`}
               <div>
                 <p className="eyebrow">{t('checklist')}</p>
                 <h2>{t('checklistTitle')}</h2>
-                <span className="checklist-meta">
-                  {t('checklistProgress', { done: checklistStats.done, total: checklistStats.total })}
-                  {checklistStats.skipped > 0 && ` · ${t('checklistSkipped', { count: checklistStats.skipped })}`}
-                </span>
               </div>
               <button className="icon-btn" type="button" onClick={() => setChecklistOpen(false)} aria-label={t('close')}>
                 ×
