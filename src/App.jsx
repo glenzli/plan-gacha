@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
-const APP_SCHEMA_VERSION = '11';
+const APP_SCHEMA_VERSION = '13';
 const DEFAULT_TRIP_DAYS = 5;
 const WEATHER_FETCH_TIMEOUT_MS = 20000;
 const WEATHER_BATCH_TIMEOUT_MS = 60000;
@@ -8,27 +9,473 @@ const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const WEATHER_FETCH_CONCURRENCY = 4;
 const WEATHER_ERRORS_KEY = Symbol('weatherErrors');
 const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
+const NEW_PLAN_EDITOR_ID = '__new_plan__';
+const DEFAULT_LANGUAGE = 'zh';
+const SUPPORTED_LANGUAGES = ['zh', 'en'];
+
+const UI_TEXT = {
+  zh: {
+    appName: '行程扭蛋',
+    langSwitch: 'EN',
+    langSwitchTitle: 'Switch to English',
+    emptyTripName: '未创建行程',
+    unnamedTrip: '未命名旅行',
+    emptyPlanNotice: '当前已经是空计划',
+    newTripCreated: '新计划已创建',
+    overwriteExampleConfirm: '用完整示例覆盖当前计划？',
+    exampleTripName: '青岛 5 日示例',
+    exampleLoaded: '示例已加入',
+    deletePlanConfirm: ({ name }) => `删除「${name}」？已安排到日期上的引用也会移除。`,
+    planDeleted: '计划已删除',
+    bookingDone: '已标记完成',
+    bookingPending: '已改回待处理',
+    archiveTripConfirm: ({ name }) => `归档「${name}」？归档后会从顶部切换列表隐藏，可在编辑计划里恢复。`,
+    tripArchived: '当前旅行已归档',
+    deleteTripConfirm: ({ name }) => `永久删除「${name}」？这个操作不会进入归档。`,
+    tripDeleted: '当前旅行已删除',
+    archivedRestored: '已恢复归档旅行',
+    scheduleUpdated: '安排已更新',
+    dayPlanUpdated: '当天方案已更新',
+    impactedDatesCleared: '已更新，并清空受影响日期',
+    dayCleared: '当天安排已清空',
+    copyFailed: '复制失败，请手动选中文本',
+    weatherTimeout: '天气更新超时，可稍后重试或检查网络。',
+    autoWeatherTimeout: '自动天气更新超时，可稍后重试或检查网络。',
+    weatherCacheValid: '天气缓存仍有效',
+    weatherUpdatedPartial: '天气已更新，部分地点失败',
+    weatherUpdated: '天气已更新',
+    autoWeatherFailed: ({ message }) => `自动天气更新失败：${message}`,
+    jsonApplied: 'JSON 已应用',
+    aiPlanApplied: 'AI 规划结果已应用',
+    applyFailed: ({ message }) => `应用失败：${message}`,
+    noApplicableJson: '没有找到可应用的 plans 或 schedule',
+    planCreated: '计划已新增',
+    planUpdated: '计划已更新',
+    importDone: 'JSON 已导入',
+    importFailed: ({ message }) => `导入失败：${message}`,
+    jsonCopied: 'JSON 已复制',
+    aiPromptCopied: ({ label }) => `${label} Prompt 已复制`,
+    addPlanPromptCopied: '新增计划 Prompt 已复制',
+    editPlanPromptCopied: '编辑计划 Prompt 已复制',
+    planSetup: 'Plan Setup',
+    emptyTitle: '还没有计划',
+    emptyDescription: '先建立计划池，再按每天的天气、日期限制、预约订票和冲突关系动态切换。',
+    aiGenerate: 'AI 生成',
+    viewExample: '看示例',
+    import: '导入',
+    export: '导出',
+    editPlan: '编辑计划',
+    noEditablePlan: '暂无可编辑计划',
+    createOrImportFirst: '先新建或导入计划',
+    createTrip: '新建旅行计划',
+    tripSwitcher: '切换旅行计划',
+    tripList: '旅行计划',
+    itinerary: '行程',
+    dailyOverview: '每日状态速览',
+    aiReplan: 'AI 重排',
+    open: '打开',
+    dateList: '日期列表',
+    unassigned: '未安排',
+    previousDay: '上一天',
+    nextDay: '下一天',
+    chooseDate: '选择日期',
+    switchablePlans: '可切换计划',
+    available: ({ count }) => `${count} 可用`,
+    warnings: '预警',
+    warningClasses: ({ count }) => `${count} 类`,
+    noBlockingRisks: '当前安排没有把未排计划卡死。',
+    aiReplanHelper: '用于大改剩余行程：整理未完成计划、当前安排、天气和预警，再复制给你常用的 AI。',
+    aiGenerateHelperWhenEmpty: '当前还是空计划，会直接进入 AI 生成，用来创建计划池、备选方案和初始日程。',
+    weather: '天气',
+    updating: '更新中',
+    updateWeather: '更新天气',
+    weatherHelper: '使用 Open-Meteo 按计划地点查询；同地点和同日期范围 2 小时内复用缓存，跨城和多地点计划会合并评估对应地点天气。',
+    noWeather: '尚未获取天气',
+    aiPlanning: 'AI Planning',
+    closeAiPlanning: '关闭 AI 规划',
+    aiPlanningSummary: '我们会整理当前行程、天气、限制和预警；你补充临时需求后，复制 Prompt 给常用 AI。',
+    extraQuestion: '你的补充问题',
+    aiResult: 'AI 返回结果',
+    aiResultPlaceholder: '粘贴 AI 输出的 JSON，例如 {"plans": [...]} 或 {"schedule": [...]}',
+    close: '关闭',
+    copyToAi: '复制给 AI',
+    applyResult: '应用结果',
+    closeEditor: '关闭编辑计划',
+    addPlan: '新增计划',
+    editSinglePlan: '编辑单个计划',
+    backToList: '返回列表',
+    newPlan: 'New Plan',
+    currentPlan: 'Current Plan',
+    planMissing: '计划不存在',
+    newPlanHelp: '写下你想新增的内容，复制给 AI 后，把返回的 JSON 粘贴回来应用。',
+    yourRequest: '你的需求',
+    newPlanPlaceholder: '例如：新增一个雨天室内备用计划，下午半天，适合体力低的时候。',
+    editPlanPlaceholder: '例如：把这个计划改成雨天可执行，减少户外路段，保留必去点。',
+    planAiResultPlaceholder: '粘贴 AI 输出的 JSON，例如 {"plans": [{"id": "..."}]}',
+    planName: '计划名称',
+    dateRange: '日期范围',
+    start: '开始',
+    end: '结束',
+    daysCount: ({ count }) => `${count} 天`,
+    planData: '计划数据',
+    plansCount: ({ count }) => `${count} 个计划`,
+    loadFullExample: '载入完整示例',
+    importJsonTitle: '导入 JSON',
+    copyCurrentJson: '复制当前 JSON',
+    aiPlanPoolTitle: 'AI 生成计划池',
+    aiPlanPoolHelp: '适合初始规划、批量补 backup、增加天数或补充候选计划。',
+    planList: '计划清单',
+    itemsCount: ({ count }) => `${count} 项`,
+    scheduledOn: ({ date }) => `已排 ${date}`,
+    scheduledSuffix: ({ date }) => ` · 已排 ${date}`,
+    unscheduledSuffix: ' · 未排',
+    addPlanHelp: '用 AI 生成后粘贴 JSON 应用',
+    archive: '归档',
+    delete: '删除',
+    archived: '已归档',
+    restore: '恢复',
+    cancel: '取消',
+    impactPreview: '调整影响预览',
+    assignToDate: ({ date }) => `安排到 ${date}`,
+    datesToClear: '会清空这些日期',
+    nextRisks: '继续后产生的风险',
+    continueAdjust: '继续调整',
+    currentPlanLabel: '当前方案',
+    unplannedToday: '当天未安排',
+    currentPlanHelp: '从下面的候选里换一个，系统会先评估是否影响后续计划。',
+    clear: '清空',
+    moreItems: ({ count }) => `还有 ${count} 项`,
+    riskDetail: '预警详情',
+    noClearRisk: '当前安排没有明显冲突',
+    noWarnings: '暂无预警',
+    collapse: '收起',
+    expand: '展开',
+    switchableCount: ({ count }) => `${count} 个可切换`,
+    candidates: '候选',
+    select: '选择',
+    noWeatherForPlace: '尚未获取地点天气，先更新天气',
+    reminders: '特别提醒',
+    bookingAndTickets: '预约和订票',
+    stopsAria: ({ name }) => `${name} 行程节点`,
+    bookingAria: ({ name }) => `${name} 预约和订票`,
+    flexible: '弹性',
+    noActionNeeded: '无需处理',
+    undo: '撤销',
+    manage: '退改',
+    dayCurrent: ({ day }) => `D${day} 当天`,
+    assignedAriaEmpty: '未安排',
+    assignedAriaAdjust: '需要调整',
+    assignedAriaNotice: '天气或条件待确认',
+    assignedAriaPlanned: '已安排',
+    adjust: '调整',
+    adjustRecommended: '建议调整',
+    weatherNotIdeal: '天气不是最理想',
+    confirmWeather: '先确认天气',
+    weatherUnknown: '天气未知',
+    temporarySlot: '留给临时调整',
+    normal: '普通',
+    partialWeatherFailed: ({ errors }) => `部分天气未更新：${errors}`,
+    dateNotSuitable: '日期不适合',
+    closedOrUnavailable: '当天不可用/闭馆',
+    dateNotAllowed: '不在可去日期',
+    dayOccupied: '当天已有安排',
+    alreadyScheduledOn: ({ date }) => `已安排在 ${date}`,
+    conflictsWith: ({ name }) => `与 ${name} 互斥`,
+    samePlanMoved: '同一计划被移动',
+    planConflict: '计划互斥',
+    weatherNotSuitable: '天气不合适',
+    dayUnavailable: '当天不可用',
+    incompatibleDate: '日期不合适',
+    arrangementConflict: '和其他安排冲突',
+    scheduledElsewhere: '已经排在别的日期',
+    needsAdjustment: '需要调整',
+    mustUnscheduled: '必去未排',
+    mustNoAvailableDate: '必去计划没有可安排日期',
+    bookingIncomplete: '预约/订票未完成',
+    dayUnit: '天',
+    itemUnit: '项',
+  },
+  en: {
+    appName: 'Plan Gacha',
+    langSwitch: '中',
+    langSwitchTitle: '切换到中文',
+    emptyTripName: 'No trip yet',
+    unnamedTrip: 'Untitled trip',
+    emptyPlanNotice: 'This trip is already empty',
+    newTripCreated: 'New trip created',
+    overwriteExampleConfirm: 'Replace the current trip with the full example?',
+    exampleTripName: 'Qingdao 5-day example',
+    exampleLoaded: 'Example loaded',
+    deletePlanConfirm: ({ name }) => `Delete "${name}"? References on scheduled days will also be removed.`,
+    planDeleted: 'Plan deleted',
+    bookingDone: 'Marked as done',
+    bookingPending: 'Moved back to pending',
+    archiveTripConfirm: ({ name }) => `Archive "${name}"? It will be hidden from the top switcher and can be restored in the editor.`,
+    tripArchived: 'Trip archived',
+    deleteTripConfirm: ({ name }) => `Permanently delete "${name}"? This will not be archived.`,
+    tripDeleted: 'Trip deleted',
+    archivedRestored: 'Archived trip restored',
+    scheduleUpdated: 'Schedule updated',
+    dayPlanUpdated: 'Day plan updated',
+    impactedDatesCleared: 'Updated and cleared impacted dates',
+    dayCleared: 'Day cleared',
+    copyFailed: 'Copy failed. Select the text manually.',
+    weatherTimeout: 'Weather update timed out. Try again later or check the network.',
+    autoWeatherTimeout: 'Automatic weather update timed out. Try again later or check the network.',
+    weatherCacheValid: 'Weather cache is still valid',
+    weatherUpdatedPartial: 'Weather updated, with some locations failed',
+    weatherUpdated: 'Weather updated',
+    autoWeatherFailed: ({ message }) => `Automatic weather update failed: ${message}`,
+    jsonApplied: 'JSON applied',
+    aiPlanApplied: 'AI planning result applied',
+    applyFailed: ({ message }) => `Apply failed: ${message}`,
+    noApplicableJson: 'No applicable plans or schedule found',
+    planCreated: 'Plan added',
+    planUpdated: 'Plan updated',
+    importDone: 'JSON imported',
+    importFailed: ({ message }) => `Import failed: ${message}`,
+    jsonCopied: 'JSON copied',
+    aiPromptCopied: ({ label }) => `${label} prompt copied`,
+    addPlanPromptCopied: 'New plan prompt copied',
+    editPlanPromptCopied: 'Edit plan prompt copied',
+    planSetup: 'Plan Setup',
+    emptyTitle: 'No plans yet',
+    emptyDescription: 'Create a plan pool first, then switch day by day based on weather, date limits, bookings and conflicts.',
+    aiGenerate: 'AI Generate',
+    viewExample: 'Example',
+    import: 'Import',
+    export: 'Export',
+    editPlan: 'Edit trip',
+    noEditablePlan: 'No trip to edit',
+    createOrImportFirst: 'Create or import a trip first',
+    createTrip: 'Create trip',
+    tripSwitcher: 'Switch trip',
+    tripList: 'Trips',
+    itinerary: 'Itinerary',
+    dailyOverview: 'Daily status overview',
+    aiReplan: 'AI Replan',
+    open: 'Open',
+    dateList: 'Date list',
+    unassigned: 'Unassigned',
+    previousDay: 'Previous day',
+    nextDay: 'Next day',
+    chooseDate: 'Choose date',
+    switchablePlans: 'Switchable plans',
+    available: ({ count }) => `${count} available`,
+    warnings: 'Warnings',
+    warningClasses: ({ count }) => `${count} types`,
+    noBlockingRisks: 'No current arrangement blocks the remaining plans.',
+    aiReplanHelper: 'For larger changes: collect remaining plans, current schedule, weather and warnings, then copy them to your usual AI.',
+    aiGenerateHelperWhenEmpty: 'This is still empty, so it opens AI Generate to create a plan pool, backups and initial schedule.',
+    weather: 'Weather',
+    updating: 'Updating',
+    updateWeather: 'Update',
+    weatherHelper: 'Uses Open-Meteo by plan location. The same location and date range reuse cache for 2 hours; multi-city plans are evaluated across their locations.',
+    noWeather: 'No weather yet',
+    aiPlanning: 'AI Planning',
+    closeAiPlanning: 'Close AI planning',
+    aiPlanningSummary: 'We collect the current itinerary, weather, limits and warnings. Add your temporary request, then copy the prompt to your usual AI.',
+    extraQuestion: 'Your extra request',
+    aiResult: 'AI result',
+    aiResultPlaceholder: 'Paste AI JSON, for example {"plans": [...]} or {"schedule": [...]}',
+    close: 'Close',
+    copyToAi: 'Copy to AI',
+    applyResult: 'Apply',
+    closeEditor: 'Close trip editor',
+    addPlan: 'Add plan',
+    editSinglePlan: 'Edit one plan',
+    backToList: 'Back to list',
+    newPlan: 'New Plan',
+    currentPlan: 'Current Plan',
+    planMissing: 'Plan not found',
+    newPlanHelp: 'Describe what you want to add, copy it to AI, then paste the returned JSON here.',
+    yourRequest: 'Your request',
+    newPlanPlaceholder: 'Example: add a rainy-day indoor backup for a low-energy afternoon.',
+    editPlanPlaceholder: 'Example: make this plan workable in rain, reduce outdoor segments, keep the must-go stop.',
+    planAiResultPlaceholder: 'Paste AI JSON, for example {"plans": [{"id": "..."}]}',
+    planName: 'Trip name',
+    dateRange: 'Date range',
+    start: 'Start',
+    end: 'End',
+    daysCount: ({ count }) => `${count} days`,
+    planData: 'Plan data',
+    plansCount: ({ count }) => `${count} plans`,
+    loadFullExample: 'Load full example',
+    importJsonTitle: 'Import JSON',
+    copyCurrentJson: 'Copy current JSON',
+    aiPlanPoolTitle: 'AI plan pool',
+    aiPlanPoolHelp: 'For initial planning, batch backups, added days or more candidate plans.',
+    planList: 'Plan list',
+    itemsCount: ({ count }) => `${count} items`,
+    scheduledOn: ({ date }) => `Scheduled ${date}`,
+    scheduledSuffix: ({ date }) => ` · Scheduled ${date}`,
+    unscheduledSuffix: ' · Unscheduled',
+    addPlanHelp: 'Generate with AI, then paste JSON to apply',
+    archive: 'Archive',
+    delete: 'Delete',
+    archived: 'Archived',
+    restore: 'Restore',
+    cancel: 'Cancel',
+    impactPreview: 'Impact preview',
+    assignToDate: ({ date }) => `Assign to ${date}`,
+    datesToClear: 'Dates to clear',
+    nextRisks: 'Risks after continuing',
+    continueAdjust: 'Continue',
+    currentPlanLabel: 'Current plan',
+    unplannedToday: 'No plan today',
+    currentPlanHelp: 'Pick one from the candidates below. The system checks whether it impacts later plans first.',
+    clear: 'Clear',
+    moreItems: ({ count }) => `${count} more`,
+    riskDetail: 'Warning details',
+    noClearRisk: 'No obvious conflicts in the current schedule.',
+    noWarnings: 'No warnings',
+    collapse: 'Collapse',
+    expand: 'Expand',
+    switchableCount: ({ count }) => `${count} switchable`,
+    candidates: 'Candidates',
+    select: 'Select',
+    noWeatherForPlace: 'No location weather yet. Update weather first.',
+    reminders: 'Reminders',
+    bookingAndTickets: 'Bookings and tickets',
+    stopsAria: ({ name }) => `${name} itinerary stops`,
+    bookingAria: ({ name }) => `${name} bookings and tickets`,
+    flexible: 'Flexible',
+    noActionNeeded: 'No action',
+    undo: 'Undo',
+    manage: 'Manage',
+    dayCurrent: ({ day }) => `D${day} Today`,
+    assignedAriaEmpty: 'Unassigned',
+    assignedAriaAdjust: 'Needs adjustment',
+    assignedAriaNotice: 'Weather or conditions need review',
+    assignedAriaPlanned: 'Scheduled',
+    adjust: 'Adjust',
+    adjustRecommended: 'Adjust',
+    weatherNotIdeal: 'Weather is not ideal',
+    confirmWeather: 'Check weather first',
+    weatherUnknown: 'Weather unknown',
+    temporarySlot: 'Leave for ad-hoc changes',
+    normal: 'Normal',
+    partialWeatherFailed: ({ errors }) => `Some weather failed: ${errors}`,
+    dateNotSuitable: 'Date not suitable',
+    closedOrUnavailable: 'Unavailable or closed that day',
+    dateNotAllowed: 'Outside allowed dates',
+    dayOccupied: 'Day already has a plan',
+    alreadyScheduledOn: ({ date }) => `Already scheduled on ${date}`,
+    conflictsWith: ({ name }) => `Conflicts with ${name}`,
+    samePlanMoved: 'Same plan moved',
+    planConflict: 'Plan conflict',
+    weatherNotSuitable: 'Weather unsuitable',
+    dayUnavailable: 'Unavailable that day',
+    incompatibleDate: 'Date unsuitable',
+    arrangementConflict: 'Conflicts with another plan',
+    scheduledElsewhere: 'Already scheduled elsewhere',
+    needsAdjustment: 'Needs adjustment',
+    mustUnscheduled: 'Must-go unplanned',
+    mustNoAvailableDate: 'Must-go plan has no feasible date',
+    bookingIncomplete: 'Booking/ticket incomplete',
+    dayUnit: 'days',
+    itemUnit: 'items',
+  },
+};
+
+const PRIORITY_LABELS = {
+  zh: { must: '必去', preferred: '想去', backup: '备用', optional: '可放弃' },
+  en: { must: 'Must', preferred: 'Want', backup: 'Backup', optional: 'Optional' },
+};
+
+const BOOKING_TYPE_LABELS = {
+  zh: {
+    reservation: { pending: '未预约', done: '已预约', link: '预约', doneAction: '标记已预约' },
+    ticket: { pending: '未订票', done: '已订票', link: '订票', doneAction: '标记已订票' },
+    confirmation: { pending: '待确认', done: '已确认', link: '查看', doneAction: '标记已确认' },
+  },
+  en: {
+    reservation: { pending: 'Not reserved', done: 'Reserved', link: 'Reserve', doneAction: 'Mark reserved' },
+    ticket: { pending: 'No ticket', done: 'Ticketed', link: 'Book', doneAction: 'Mark ticketed' },
+    confirmation: { pending: 'To confirm', done: 'Confirmed', link: 'View', doneAction: 'Mark confirmed' },
+  },
+};
+
+const WEATHER_LABELS = {
+  zh: {
+    unknown: '未知',
+    sunny: '晴',
+    partly_cloudy: '少云',
+    cloudy: '阴',
+    drizzle: '小雨',
+    rain: '雨',
+    heavy_rain: '大雨',
+    storm: '雷雨',
+    fog: '雾',
+    hot: '热',
+    cold: '冷',
+    windy: '大风',
+  },
+  en: {
+    unknown: 'Unknown',
+    sunny: 'Sunny',
+    partly_cloudy: 'Partly cloudy',
+    cloudy: 'Cloudy',
+    drizzle: 'Drizzle',
+    rain: 'Rain',
+    heavy_rain: 'Heavy rain',
+    storm: 'Storm',
+    fog: 'Fog',
+    hot: 'Hot',
+    cold: 'Cold',
+    windy: 'Windy',
+  },
+};
+
+const WEATHER_STATUS_LABELS = {
+  zh: {
+    unknown: '天气待确认',
+    blocked: '天气不合适',
+    best: '天气很适合',
+    ok: '天气可以',
+    mismatch: '天气一般',
+  },
+  en: {
+    unknown: 'Weather pending',
+    blocked: 'Weather unsuitable',
+    best: 'Great weather',
+    ok: 'Weather works',
+    mismatch: 'Weather is okay',
+  },
+};
+
+const AI_PLANNER_MODE_TEXT = {
+  zh: {
+    replan: {
+      label: 'AI 重排',
+      helper: '适合天气、体力或必去计划冲突后，重排后面的日期。',
+      placeholder: '例如：明天大雨，我想减少户外，但海边日出和博物馆必须保留，帮我重排剩下几天。',
+    },
+    generate: {
+      label: 'AI 生成',
+      helper: '适合生成计划池、补充 backup、新增天数或扩展候选计划。',
+      placeholder: '例如：新增一个轻松雨天备用方案；如果现在还是空计划，请生成完整计划池和初始日程。',
+    },
+  },
+  en: {
+    replan: {
+      label: 'AI Replan',
+      helper: 'Useful after weather, energy or must-go conflicts require rearranging the remaining days.',
+      placeholder: 'Example: tomorrow has heavy rain. Reduce outdoor time, but keep the sunrise and museum, then replan the remaining days.',
+    },
+    generate: {
+      label: 'AI Generate',
+      helper: 'Useful for creating the plan pool, adding backups, adding days or expanding candidates.',
+      placeholder: 'Example: add an easy rainy-day indoor backup. If this trip is still empty, generate a full plan pool and initial schedule.',
+    },
+  },
+};
 
 const STORAGE_KEYS = {
   schemaVersion: 'pg_schemaVersion',
   trips: 'pg_trips',
   currentTrip: 'pg_currentTripId',
 };
-
-const WEATHER_OPTIONS = [
-  { id: 'unknown', label: '未知', short: '未' },
-  { id: 'sunny', label: '晴', short: '晴' },
-  { id: 'partly_cloudy', label: '少云', short: '少云' },
-  { id: 'cloudy', label: '阴', short: '阴' },
-  { id: 'drizzle', label: '小雨', short: '小雨' },
-  { id: 'rain', label: '雨', short: '雨' },
-  { id: 'heavy_rain', label: '大雨', short: '大雨' },
-  { id: 'storm', label: '雷雨', short: '雷雨' },
-  { id: 'fog', label: '雾', short: '雾' },
-  { id: 'hot', label: '热', short: '热' },
-  { id: 'cold', label: '冷', short: '冷' },
-  { id: 'windy', label: '大风', short: '风' },
-];
 
 const INTENSITY_META = {
   easy: { label: '轻松', rank: 1 },
@@ -43,29 +490,107 @@ const PRIORITY_META = {
   optional: { label: '可放弃', rank: 1 },
 };
 
-const AI_PLANNER_MODES = {
-  replan: {
-    label: '重排剩余',
-    helper: '适合天气、体力或必去计划冲突后，重排后面的日期。',
-    placeholder: '例如：明天大雨，我想减少户外，但海边日出和博物馆必须保留，帮我重排剩下几天。',
-  },
-  initial: {
-    label: '初始规划',
-    helper: '适合新建旅行计划时，让 AI 先产出计划池和日程草案。',
-    placeholder: '例如：7 月底去厦门 4 天，想轻松一点，海边、咖啡、博物馆优先，不想每天赶很多点。',
-  },
-  extend: {
-    label: '增量规划',
-    helper: '适合原本只排了几天，现在新增 1 天或几天，需要补计划。',
-    placeholder: '例如：现在多留一天，想新增一个轻松的雨天备用方案，并把最后两天重新衔接好。',
-  },
-};
-
 const LEGACY_INTENSITY_MAP = {
   relaxed: 'easy',
   normal: 'normal',
   full: 'hard',
 };
+
+function normalizeLanguage(value) {
+  return SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
+}
+
+function getInitialLanguage() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return normalizeLanguage(params.get('lang') || DEFAULT_LANGUAGE);
+  } catch {
+    return DEFAULT_LANGUAGE;
+  }
+}
+
+function getLocale(language) {
+  return language === 'en' ? 'en-US' : 'zh-CN';
+}
+
+function translate(key, language = DEFAULT_LANGUAGE, vars = {}) {
+  const messages = UI_TEXT[normalizeLanguage(language)] || UI_TEXT[DEFAULT_LANGUAGE];
+  const fallback = UI_TEXT[DEFAULT_LANGUAGE][key] ?? key;
+  const value = messages[key] ?? fallback;
+
+  if (typeof value === 'function') return value(vars);
+  return String(value).replace(/\{(\w+)\}/g, (_, name) => vars[name] ?? '');
+}
+
+function getPriorityLabel(priority, language = DEFAULT_LANGUAGE) {
+  return PRIORITY_LABELS[normalizeLanguage(language)]?.[priority] || PRIORITY_META[priority]?.label || priority;
+}
+
+function getBookingTypeMeta(type, language = DEFAULT_LANGUAGE) {
+  return BOOKING_TYPE_LABELS[normalizeLanguage(language)]?.[type] || BOOKING_TYPE_LABELS[DEFAULT_LANGUAGE].reservation;
+}
+
+function getWeatherLabel(condition, language = DEFAULT_LANGUAGE) {
+  return WEATHER_LABELS[normalizeLanguage(language)]?.[condition] || condition || translate('weatherUnknown', language);
+}
+
+function getWeatherStatusLabel(level, language = DEFAULT_LANGUAGE) {
+  return WEATHER_STATUS_LABELS[normalizeLanguage(language)]?.[level] || level;
+}
+
+function getAiModeText(mode, language = DEFAULT_LANGUAGE) {
+  return AI_PLANNER_MODE_TEXT[normalizeLanguage(language)]?.[mode] || AI_PLANNER_MODE_TEXT[DEFAULT_LANGUAGE][mode];
+}
+
+function formatCount(count, unit, language = DEFAULT_LANGUAGE) {
+  if (language === 'en') {
+    const isDay = unit === '天' || unit === 'day' || unit === 'days';
+    const noun = isDay ? (count === 1 ? 'day' : 'days') : (count === 1 ? 'item' : 'items');
+    return `${count} ${noun}`;
+  }
+
+  return `${count} ${unit}`;
+}
+
+function translateIssue(issue, language = DEFAULT_LANGUAGE) {
+  const exactMap = {
+    不在可去日期: 'dateNotAllowed',
+    '当天不可用/闭馆': 'closedOrUnavailable',
+    当天已有安排: 'dayOccupied',
+    日期不适合: 'dateNotSuitable',
+    天气未知: 'weatherUnknown',
+    天气不合适: 'weatherNotSuitable',
+    同一计划被移动: 'samePlanMoved',
+    计划互斥: 'planConflict',
+    天气不是最理想: 'weatherNotIdeal',
+    先确认天气: 'confirmWeather',
+  };
+  if (exactMap[issue]) return translate(exactMap[issue], language);
+
+  const scheduledMatch = issue.match(/^已安排在 (.+)$/);
+  if (scheduledMatch) return translate('alreadyScheduledOn', language, { date: scheduledMatch[1] });
+
+  const conflictMatch = issue.match(/^与 (.+) 互斥$/);
+  if (conflictMatch) return translate('conflictsWith', language, { name: conflictMatch[1] });
+
+  return issue;
+}
+
+function translateRiskTitle(title, language = DEFAULT_LANGUAGE) {
+  const titleMap = {
+    必去计划没有可安排日期: 'mustNoAvailableDate',
+    必去未排: 'mustUnscheduled',
+    '预约/订票未完成': 'bookingIncomplete',
+    天气不合适: 'weatherNotSuitable',
+    当天不可用: 'dayUnavailable',
+    日期不合适: 'incompatibleDate',
+    和其他安排冲突: 'arrangementConflict',
+    已经排在别的日期: 'scheduledElsewhere',
+    需要调整: 'needsAdjustment',
+  };
+
+  return titleMap[title] ? translate(titleMap[title], language) : title;
+}
 
 function formatDateId(date) {
   const year = date.getFullYear();
@@ -85,16 +610,24 @@ function addDays(dateId, offset) {
   return formatDateId(date);
 }
 
+function getInclusiveDateSpan(startDateId, endDateId) {
+  const start = parseDateId(startDateId);
+  const end = parseDateId(endDateId);
+  const diff = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  return clampTripDays(diff);
+}
+
 function getTodayId() {
   return formatDateId(new Date());
 }
 
-function formatTripRange(startDateStr, tripDays) {
+function formatTripRange(startDateStr, tripDays, language = DEFAULT_LANGUAGE) {
   const start = parseDateId(startDateStr);
   const endId = addDays(startDateStr, Math.max(tripDays - 1, 0));
   const end = parseDateId(endId);
-  const startText = start.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
-  const endText = end.toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' });
+  const locale = getLocale(language);
+  const startText = start.toLocaleDateString(locale, { month: 'numeric', day: 'numeric' });
+  const endText = end.toLocaleDateString(locale, { month: 'numeric', day: 'numeric' });
   return `${startText} - ${endText}`;
 }
 
@@ -123,13 +656,13 @@ function uniq(values) {
   return Array.from(new Set(values.filter(Boolean)));
 }
 
-function createTripDates(startDateStr, tripDays) {
+function createTripDates(startDateStr, tripDays, language = DEFAULT_LANGUAGE) {
   if (!startDateStr || tripDays < 1) return [];
 
   return Array.from({ length: tripDays }, (_, index) => {
     const id = addDays(startDateStr, index);
     const date = parseDateId(id);
-    const display = date.toLocaleDateString('zh-CN', {
+    const display = date.toLocaleDateString(getLocale(language), {
       month: 'short',
       day: 'numeric',
       weekday: 'short',
@@ -176,19 +709,11 @@ const YANTAI_LOCATION = {
   longitude: 121.4479,
 };
 
-const HANGZHOU_LOCATION = {
-  label: '杭州市',
-  query: 'Hangzhou',
-  weatherLabel: '杭州市',
-  latitude: 30.2741,
-  longitude: 120.1551,
-};
-
-function place(baseLocation, label) {
-  return { ...baseLocation, label };
+function place(baseLocation, label, address = '') {
+  return { ...baseLocation, label, address };
 }
 
-function createInitialPlans(startDate) {
+function createExamplePlans(startDate) {
   const dates = Array.from({ length: DEFAULT_TRIP_DAYS }, (_, index) => addDays(startDate, index));
   const museumClosed = dates.filter(isMonday);
 
@@ -200,8 +725,8 @@ function createInitialPlans(startDate) {
       priority: 'must',
       location: { ...QINGDAO_LOCATION, label: '青岛海边' },
       stops: [
-        { time: '05:00', title: '栈桥看日出', location: place(QINGDAO_LOCATION, '栈桥海边'), note: '提前看潮汐和云量，适合天气好时执行' },
-        { time: '07:10', title: '团岛早市早餐', location: place(QINGDAO_LOCATION, '团岛农贸市场'), note: '海鲜馄饨、甜沫或烧饼，作为早起奖励' },
+        { time: '05:00', title: '栈桥看日出', location: place(QINGDAO_LOCATION, '栈桥海边', '青岛市市南区太平路12号附近'), note: '提前看潮汐和云量，适合天气好时执行' },
+        { time: '07:10', title: '团岛早市早餐', location: place(QINGDAO_LOCATION, '团岛农贸市场', '青岛市市南区四川路31号附近'), note: '海鲜馄饨、甜沫或烧饼，作为早起奖励' },
         { time: '09:00', title: '八大峡海岸散步', location: place(QINGDAO_LOCATION, '八大峡广场'), note: '慢慢走回酒店，上午结束前留休息时间' },
       ],
       available_dates: dates.slice(0, 2),
@@ -225,8 +750,8 @@ function createInitialPlans(startDate) {
       priority: 'must',
       location: { ...WEIHAI_LOCATION, label: '威海海岸线' },
       stops: [
-        { time: '07:20', title: '青岛站出发', location: place(QINGDAO_LOCATION, '青岛站'), note: '预留早餐和进站时间，车票约束强' },
-        { time: '09:10', title: '威海站到达', location: place(WEIHAI_LOCATION, '威海站'), note: '先确认返程车次，避免晚上太被动' },
+        { time: '07:20', title: '青岛站出发', location: place(QINGDAO_LOCATION, '青岛站', '青岛市市南区泰安路2号'), note: '预留早餐和进站时间，车票约束强' },
+        { time: '09:10', title: '威海站到达', location: place(WEIHAI_LOCATION, '威海站', '威海市环翠区疏站路'), note: '先确认返程车次，避免晚上太被动' },
         { time: '10:20', title: '火炬八街和海水浴场', location: place(WEIHAI_LOCATION, '火炬八街'), note: '主拍照点，风大或雨大体验会明显下降' },
         { time: '13:00', title: '环海路午餐', location: place(WEIHAI_LOCATION, '环海路'), note: '中午不赶路，给下午海岸线留体力' },
         { time: '15:30', title: '猫头山观景台', location: place(WEIHAI_LOCATION, '猫头山'), note: '看风和能见度，雾天直接降级为市区轻量版' },
@@ -246,6 +771,18 @@ function createInitialPlans(startDate) {
         { time: '前一晚', text: '确认高铁票和返程班次，必要时先买返程票' },
         { time: '18:00', text: '开始往威海站收束，避免错过返程' },
       ],
+      bookings: [
+        {
+          id: 'weihai-train-ticket',
+          type: 'ticket',
+          title: '青岛往返威海高铁票',
+          status: 'pending',
+          address: '青岛站 / 威海站',
+          url: 'https://www.12306.cn/index/',
+          cancel_url: 'https://www.12306.cn/index/',
+          note: '跨城当天交通约束强，建议至少前一晚确认车次',
+        },
+      ],
       tips: ['跨城当天不要再叠加夜市或高体力计划'],
       tags: ['跨城', '高铁', '户外多点'],
     },
@@ -256,7 +793,7 @@ function createInitialPlans(startDate) {
       priority: 'preferred',
       location: { ...QINGDAO_LOCATION, label: '青岛市博物馆' },
       stops: [
-        { time: '10:30', title: '青岛市博物馆', location: place(QINGDAO_LOCATION, '青岛市博物馆'), note: '闭馆日需要避开，适合雨天或高温' },
+        { time: '10:30', title: '青岛市博物馆', location: place(QINGDAO_LOCATION, '青岛市博物馆', '青岛市崂山区梅岭东路51号'), note: '闭馆日需要避开，适合雨天或高温' },
         { time: '13:00', title: '石老人咖啡午休', location: place(QINGDAO_LOCATION, '石老人咖啡街区'), note: '午餐和休息，不把下午排满' },
         { time: '15:00', title: '雕塑园短逛', location: place(QINGDAO_LOCATION, '青岛雕塑园'), note: '天气可接受时加一段轻量户外' },
       ],
@@ -272,6 +809,17 @@ function createInitialPlans(startDate) {
       },
       conflicts: [],
       reminders: [{ time: '出发前', text: '确认预约、开放时间和临时展闭展信息' }],
+      bookings: [
+        {
+          id: 'qingdao-museum-reservation',
+          type: 'reservation',
+          title: '青岛市博物馆预约',
+          status: 'pending',
+          address: '青岛市崂山区梅岭东路51号',
+          url: 'https://www.qingdaomuseum.com/',
+          note: '闭馆日和临时展预约入口可能变化，出发前再确认',
+        },
+      ],
       tags: ['室内', museumClosed.length ? '周一闭馆' : '闭馆日留意'],
     },
     {
@@ -388,6 +936,18 @@ function createInitialPlans(startDate) {
         blocked: ['cloudy', 'drizzle', 'rain', 'heavy_rain', 'storm', 'windy', 'fog', 'hot'],
       },
       conflicts: ['weihai-coast-day', 'old-town-walk', 'night-market'],
+      bookings: [
+        {
+          id: 'yantai-train-ticket',
+          type: 'ticket',
+          title: '青岛到烟台往返车票',
+          status: 'pending',
+          address: '青岛北站 / 烟台南站',
+          url: 'https://www.12306.cn/index/',
+          cancel_url: 'https://www.12306.cn/index/',
+          note: '备用跨城线，确定执行后再订，避免退改',
+        },
+      ],
       tags: ['跨城备用', '交通约束', '高体力'],
     },
     {
@@ -415,7 +975,7 @@ function createInitialPlans(startDate) {
   ];
 }
 
-function createInitialSchedule(startDate) {
+function createExampleSchedule(startDate) {
   return {
     [addDays(startDate, 0)]: { planId: 'sunrise-sea' },
     [addDays(startDate, 1)]: { planId: 'weihai-coast-day' },
@@ -425,154 +985,18 @@ function createInitialSchedule(startDate) {
   };
 }
 
-function createHangzhouPlans(startDate) {
-  const dates = Array.from({ length: 3 }, (_, index) => addDays(startDate, index));
-  const museumClosed = dates.filter(isMonday);
-
-  return [
-    {
-      id: 'west-lake-walk',
-      name: '西湖环线和日落',
-      description: '从湖滨慢慢走到孤山，天气好时把日落留给湖边。',
-      priority: 'must',
-      location: { ...HANGZHOU_LOCATION, label: '杭州西湖' },
-      stops: [
-        { time: '15:00', title: '湖滨码头出发', location: place(HANGZHOU_LOCATION, '湖滨码头'), note: '下午开始走，避开正午暴晒' },
-        { time: '16:30', title: '孤山和白堤', location: place(HANGZHOU_LOCATION, '孤山'), note: '主步行段，阴天或少云最舒服' },
-        { time: '18:20', title: '断桥附近看日落', location: place(HANGZHOU_LOCATION, '断桥残雪'), note: '天气好时保留，雨天切室内' },
-      ],
-      available_dates: dates,
-      time_window: '15:00-20:00',
-      duration: '半天',
-      intensity: 'normal',
-      weather_rules: {
-        best: ['sunny', 'partly_cloudy'],
-        ok: ['cloudy'],
-        blocked: ['rain', 'heavy_rain', 'storm', 'hot', 'windy'],
-      },
-      conflicts: ['canal-night'],
-      reminders: [{ time: '17:30', text: '如果云层太厚，提前切换晚餐，不等日落' }],
-      tags: ['户外', '日落'],
-    },
-    {
-      id: 'lingyin-temple',
-      name: '灵隐寺和飞来峰',
-      description: '需要早出发，避开午后人流，雨天石阶湿滑时不建议去。',
-      priority: 'must',
-      location: { ...HANGZHOU_LOCATION, label: '杭州灵隐寺' },
-      stops: [
-        { time: '08:00', title: '灵隐寺入园', location: place(HANGZHOU_LOCATION, '灵隐寺'), note: '早到减少排队和人流压力' },
-        { time: '10:00', title: '飞来峰石刻', location: place(HANGZHOU_LOCATION, '飞来峰'), note: '石阶和山路，雨天风险更高' },
-        { time: '12:00', title: '法云安缦周边午餐', location: place(HANGZHOU_LOCATION, '法云村'), note: '中午收束，下午留恢复时间' },
-      ],
-      available_dates: dates.slice(0, 2),
-      time_window: '08:00-13:00',
-      duration: '半天',
-      intensity: 'hard',
-      weather_rules: {
-        best: ['cloudy', 'partly_cloudy'],
-        ok: ['sunny'],
-        blocked: ['rain', 'heavy_rain', 'storm', 'hot'],
-      },
-      conflicts: [],
-      reminders: [{ time: '07:30', text: '确认门票和打车排队情况，晚到体验会明显下降' }],
-      tips: ['雨后石阶滑，鞋底不合适就换室内计划'],
-      tags: ['户外', '早出发'],
-    },
-    {
-      id: 'museum-tea',
-      name: '博物馆和茶馆',
-      description: '雨天或太热时切到室内，下午找茶馆慢慢休息。',
-      priority: 'preferred',
-      location: { ...HANGZHOU_LOCATION, label: '杭州博物馆' },
-      stops: [
-        { time: '10:30', title: '浙江省博物馆', location: place(HANGZHOU_LOCATION, '浙江省博物馆'), note: '闭馆日避开，雨天优先级上升' },
-        { time: '13:30', title: '中国茶叶博物馆', location: place(HANGZHOU_LOCATION, '中国茶叶博物馆'), note: '室内和轻量步行结合' },
-        { time: '16:00', title: '茶馆休息', location: place(HANGZHOU_LOCATION, '龙井路茶馆'), note: '为晚上留体力' },
-      ],
-      available_dates: dates,
-      closed_dates: museumClosed,
-      time_window: '10:00-17:00',
-      duration: '半天',
-      intensity: 'easy',
-      weather_rules: {
-        best: ['rain', 'drizzle', 'hot', 'cold'],
-        ok: ['cloudy', 'partly_cloudy'],
-        blocked: [],
-      },
-      conflicts: [],
-      reminders: [{ time: '出发前', text: '确认博物馆预约和闭馆日' }],
-      tags: ['室内', museumClosed.length ? '周一闭馆' : '闭馆日留意'],
-    },
-    {
-      id: 'canal-night',
-      name: '运河夜游和小吃',
-      description: '晚上坐船或沿河散步，和西湖日落二选一更从容。',
-      priority: 'preferred',
-      location: { ...HANGZHOU_LOCATION, label: '杭州运河' },
-      stops: [
-        { time: '18:00', title: '小河直街晚餐', location: place(HANGZHOU_LOCATION, '小河直街'), note: '先吃饭，避免夜游太赶' },
-        { time: '19:30', title: '拱宸桥散步', location: place(HANGZHOU_LOCATION, '拱宸桥'), note: '沿河夜景，雨大时取消' },
-        { time: '20:30', title: '运河游船', location: place(HANGZHOU_LOCATION, '武林门码头'), note: '看当天船班和排队情况' },
-      ],
-      available_dates: dates.slice(1, 3),
-      time_window: '18:00-22:00',
-      duration: '晚上',
-      intensity: 'easy',
-      weather_rules: {
-        best: ['cloudy', 'partly_cloudy'],
-        ok: ['sunny', 'drizzle'],
-        blocked: ['rain', 'heavy_rain', 'storm'],
-      },
-      conflicts: ['west-lake-walk'],
-      reminders: [{ time: '17:00', text: '查看当晚船班和停航公告' }],
-      tags: ['夜间', '美食'],
-    },
-    {
-      id: 'mall-reset',
-      name: '商场补给和休整',
-      description: '留给暴雨、高温或临时疲惫时用，顺便补给和吃饭。',
-      priority: 'backup',
-      location: { ...HANGZHOU_LOCATION, label: '杭州湖滨商圈' },
-      stops: [
-        { time: '12:00', title: '湖滨银泰午餐', location: place(HANGZHOU_LOCATION, '湖滨银泰 in77'), note: '室内备用，适合高温或雨天' },
-        { time: '15:00', title: '嘉里中心补给', location: place(HANGZHOU_LOCATION, '杭州嘉里中心'), note: '补给和休息，给后续计划回血' },
-      ],
-      available_dates: dates,
-      time_window: '12:00-20:00',
-      duration: '半天',
-      intensity: 'easy',
-      weather_rules: {
-        best: ['rain', 'heavy_rain', 'hot', 'cold'],
-        ok: ['cloudy', 'drizzle'],
-        blocked: [],
-      },
-      conflicts: [],
-      tags: ['室内', '恢复'],
-    },
-  ];
-}
-
-function createHangzhouSchedule(startDate) {
-  return {
-    [addDays(startDate, 0)]: { planId: 'lingyin-temple' },
-    [addDays(startDate, 1)]: { planId: 'west-lake-walk' },
-    [addDays(startDate, 2)]: { planId: 'canal-night' },
-  };
-}
-
 function createTripId() {
   return `trip-${Date.now()}-${Math.round(Math.random() * 1000)}`;
 }
 
-function createTripSnapshot(name = '青岛 5 日', startDate = getTodayId(), id = createTripId()) {
+function createExampleTripSnapshot(name = '青岛 5 日示例', startDate = getTodayId(), id = createTripId()) {
   return {
     id,
     name,
     startDateStr: startDate,
     tripDays: DEFAULT_TRIP_DAYS,
-    plans: createInitialPlans(startDate),
-    schedule: createInitialSchedule(startDate),
+    plans: createExamplePlans(startDate),
+    schedule: createExampleSchedule(startDate),
     weatherData: {},
     archived: false,
   };
@@ -591,24 +1015,6 @@ function createEmptyTripSnapshot(name = '新旅行计划', startDate = getTodayI
   };
 }
 
-function createDebugTrips(baseDate = getTodayId()) {
-  const hangzhouStartDate = addDays(baseDate, 3);
-
-  return [
-    createTripSnapshot('青岛 5 日', baseDate, 'trip-qingdao'),
-    {
-      id: 'trip-hangzhou',
-      name: '杭州 3 日调试',
-      startDateStr: hangzhouStartDate,
-      tripDays: 3,
-      plans: createHangzhouPlans(hangzhouStartDate),
-      schedule: createHangzhouSchedule(hangzhouStartDate),
-      weatherData: {},
-      archived: false,
-    },
-  ];
-}
-
 function normalizeTripSnapshot(trip, index = 0) {
   const startDate = trip.startDateStr || trip.startDate || getTodayId();
   const tripDays = clampTripDays(trip.tripDays || trip.days || DEFAULT_TRIP_DAYS);
@@ -618,8 +1024,8 @@ function normalizeTripSnapshot(trip, index = 0) {
     name: trip.name || trip.title || `旅行计划 ${index + 1}`,
     startDateStr: startDate,
     tripDays,
-    plans: Array.isArray(trip.plans) ? trip.plans : createInitialPlans(startDate),
-    schedule: normalizeSchedule(trip.schedule || createInitialSchedule(startDate)),
+    plans: Array.isArray(trip.plans) ? trip.plans : [],
+    schedule: normalizeSchedule(trip.schedule || {}),
     weatherData: trip.weatherData || {},
     archived: Boolean(trip.archived),
   };
@@ -653,6 +1059,7 @@ function normalizeLocation(location, area) {
       label: location,
       query: area || location,
       weatherLabel: area || location,
+      address: '',
     };
   }
 
@@ -681,10 +1088,11 @@ function normalizeLocation(location, area) {
       weatherLabel,
       latitude: weatherLocationObject?.latitude ?? location.latitude,
       longitude: weatherLocationObject?.longitude ?? location.longitude,
+      address: location.address || location.addr || location.full_address || '',
     };
   }
 
-  return { label: area || '待定地点', query: area || '' };
+  return { label: area || '待定地点', query: area || '', address: '' };
 }
 
 function hasCoordinates(location) {
@@ -740,6 +1148,7 @@ function normalizeStopLocation(rawLocation, fallbackLocation) {
     ...fallbackLocation,
     label: displayLocation.label,
     weatherLabel: getWeatherLocationLabel(fallbackLocation),
+    address: displayLocation.address || fallbackLocation.address || '',
   };
 }
 
@@ -794,6 +1203,72 @@ function normalizePlanTips(value) {
   return toArray(value)
     .map((item) => (typeof item === 'string' ? item : item.text || item.title || item.note || item.description || ''))
     .filter(Boolean);
+}
+
+function normalizeBookingType(value) {
+  const type = String(value || '').toLowerCase();
+  if (['ticket', 'train', 'flight', 'boat', 'ferry', 'pass', '票', '车票', '门票'].includes(type)) return 'ticket';
+  if (['confirm', 'confirmation', 'check', 'notice', '确认'].includes(type)) return 'confirmation';
+  return 'reservation';
+}
+
+function normalizeBookingStatus(value, item = {}) {
+  if (item.done || item.booked || item.reserved || item.purchased || item.confirmed) return 'done';
+
+  const status = String(value || '').toLowerCase();
+  if (['done', 'booked', 'reserved', 'purchased', 'confirmed', 'complete', 'completed', '已预约', '已订票', '已确认'].includes(status)) {
+    return 'done';
+  }
+  if (['none', 'not_needed', 'optional', '无需', '无需预约'].includes(status)) return 'none';
+  return 'pending';
+}
+
+function normalizeBookingItem(item, index, fallbackType = 'reservation') {
+  if (typeof item === 'string') {
+    return {
+      id: `booking-${index + 1}`,
+      type: normalizeBookingType(fallbackType),
+      title: item,
+      status: 'pending',
+      address: '',
+      url: '',
+      cancelUrl: '',
+      note: '',
+    };
+  }
+
+  const type = normalizeBookingType(item.type || item.kind || fallbackType);
+  const location = item.location && typeof item.location === 'object' ? item.location : null;
+
+  return {
+    id: item.id || `booking-${index + 1}`,
+    type,
+    title: item.title || item.name || item.label || (type === 'ticket' ? '订票' : '预约'),
+    status: normalizeBookingStatus(item.status, item),
+    address: item.address || item.addr || location?.address || item.place || location?.label || '',
+    url: item.url || item.link || item.booking_url || item.bookingUrl || item.reserve_url || item.reserveUrl || '',
+    cancelUrl: item.cancel_url || item.cancelUrl || item.refund_url || item.refundUrl || item.manage_url || item.manageUrl || '',
+    note: item.note || item.description || item.text || '',
+  };
+}
+
+function normalizePlanBookings(plan) {
+  const bookings = [
+    ...toArray(plan.bookings),
+    ...toArray(plan.reservations).map((item) => (
+      typeof item === 'string' ? item : { ...item, type: item.type || 'reservation' }
+    )),
+    ...toArray(plan.appointments).map((item) => (
+      typeof item === 'string' ? item : { ...item, type: item.type || 'reservation' }
+    )),
+    ...toArray(plan.tickets).map((item) => (
+      typeof item === 'string' ? item : { ...item, type: item.type || 'ticket' }
+    )),
+  ];
+
+  return bookings
+    .map((item, index) => normalizeBookingItem(item, index))
+    .filter((item) => item.title);
 }
 
 function uniqueLocations(locations) {
@@ -871,6 +1346,7 @@ function normalizePlan(plan, index = 0, tripDates = []) {
     conflicts: toArray(plan.conflicts || plan.mutually_exclusive_with),
     reminders: normalizePlanReminders(plan.reminders || plan.special_reminders || plan.alerts),
     tips: normalizePlanTips(plan.tips || plan.hints),
+    bookings: normalizePlanBookings(plan),
     tags: toArray(plan.tags),
   };
 }
@@ -894,6 +1370,18 @@ function normalizeSchedule(schedule) {
   );
 }
 
+function isEmptyTripDraft(trip) {
+  return !Array.isArray(trip?.plans) || trip.plans.length === 0;
+}
+
+function pruneEmptyTripDrafts(tripList, activeTripId) {
+  return tripList.filter((trip) => !isEmptyTripDraft(trip) || trip.id === activeTripId);
+}
+
+function getPendingBookings(plan) {
+  return toArray(plan?.bookings).filter((booking) => booking.status === 'pending');
+}
+
 function getSmartSelectedDate(startDate, tripDays) {
   const tripDateIds = createTripDates(startDate, tripDays).map((date) => date.id);
   const today = getTodayId();
@@ -905,13 +1393,16 @@ function getSmartSelectedDate(startDate, tripDays) {
 function loadInitialState() {
   const currentVersion = localStorage.getItem(STORAGE_KEYS.schemaVersion);
   const storedTrips = safeJsonRead(STORAGE_KEYS.trips, null);
-  const trips = currentVersion === APP_SCHEMA_VERSION && Array.isArray(storedTrips) && storedTrips.length > 0
+  const loadedTrips = currentVersion === APP_SCHEMA_VERSION && Array.isArray(storedTrips) && storedTrips.length > 0
     ? storedTrips.map(normalizeTripSnapshot)
-    : createDebugTrips();
+    : [createEmptyTripSnapshot('新旅行计划', getTodayId(), 'trip-default')];
 
-  const activeTripId = localStorage.getItem(STORAGE_KEYS.currentTrip) || trips[0].id;
+  const requestedActiveTripId = localStorage.getItem(STORAGE_KEYS.currentTrip) || loadedTrips[0].id;
+  const visibleLoadedTrips = loadedTrips.filter((trip) => !trip.archived);
+  const loadedActiveTrip = visibleLoadedTrips.find((trip) => trip.id === requestedActiveTripId) || visibleLoadedTrips[0] || loadedTrips[0];
+  const trips = pruneEmptyTripDrafts(loadedTrips, loadedActiveTrip.id);
   const visibleTrips = trips.filter((trip) => !trip.archived);
-  const activeTrip = visibleTrips.find((trip) => trip.id === activeTripId) || visibleTrips[0] || trips[0];
+  const activeTrip = visibleTrips.find((trip) => trip.id === loadedActiveTrip.id) || visibleTrips[0] || trips[0];
 
   return {
     trips,
@@ -932,12 +1423,25 @@ function parseImportJson(text) {
   return JSON.parse(fenced ? fenced[1].trim() : trimmed);
 }
 
-function getWeatherOption(condition) {
-  return WEATHER_OPTIONS.find((option) => option.id === condition);
+function formatWeatherMetrics(primary, tempMin, tempMax, precipitationProbability, windMax, language = DEFAULT_LANGUAGE) {
+  const precipLabel = language === 'en' ? 'Rain ' : '降水';
+  const windLabel = language === 'en' ? 'Wind ' : '风';
+  return `${getWeatherLabel(primary, language)} ${Math.round(tempMin)}-${Math.round(tempMax)}°C / ${precipLabel}${Math.round(precipitationProbability || 0)}% / ${windLabel}${Math.round(windMax || 0)}km/h`;
 }
 
-function weatherLabel(condition) {
-  return getWeatherOption(condition)?.label || condition || '未知';
+function formatWeatherSummary(snapshot, language = DEFAULT_LANGUAGE) {
+  if (!snapshot) return '';
+  if (Array.isArray(snapshot.entries) && snapshot.entries.length) {
+    return snapshot.entries
+      .map((entry) => `${getWeatherLocationLabel(entry.location)} ${formatWeatherSummary(entry.snapshot, language)}`)
+      .join(language === 'en' ? '; ' : '；');
+  }
+
+  if (Number.isFinite(snapshot.tempMin) && Number.isFinite(snapshot.tempMax)) {
+    return formatWeatherMetrics(snapshot.primary, snapshot.tempMin, snapshot.tempMax, snapshot.precipitationProbability, snapshot.windMax, language);
+  }
+
+  return snapshot.summary || '';
 }
 
 function planConflicts(a, b) {
@@ -981,7 +1485,11 @@ function buildWeatherSnapshot(day) {
   return {
     primary,
     categories: Array.from(categories),
-    summary: `${weatherLabel(primary)} ${Math.round(day.tempMin)}-${Math.round(day.tempMax)}°C / 降水${Math.round(day.precipitationProbability || 0)}% / 风${Math.round(day.windMax || 0)}km/h`,
+    tempMin: Math.round(day.tempMin),
+    tempMax: Math.round(day.tempMax),
+    precipitationProbability: Math.round(day.precipitationProbability || 0),
+    windMax: Math.round(day.windMax || 0),
+    summary: formatWeatherMetrics(primary, day.tempMin, day.tempMax, day.precipitationProbability, day.windMax),
     source: 'auto',
   };
 }
@@ -1013,6 +1521,7 @@ function buildAggregatedWeatherSnapshot(entries) {
     primary: pickPrimaryWeatherCategory(categories),
     categories,
     summary,
+    entries,
     source: 'auto',
   };
 }
@@ -1031,69 +1540,69 @@ function getPlanWeatherSnapshot(plan, dateId, weatherData) {
   return buildAggregatedWeatherSnapshot(snapshots);
 }
 
-function evaluateWeather(plan, dateId, weatherData) {
+function evaluateWeather(plan, dateId, weatherData, language = DEFAULT_LANGUAGE) {
   const snapshot = getPlanWeatherSnapshot(plan, dateId, weatherData);
-  if (!snapshot) return { level: 'unknown', label: '天气待确认', snapshot: null };
+  if (!snapshot) return { level: 'unknown', label: getWeatherStatusLabel('unknown', language), snapshot: null };
 
   const categories = snapshot.categories;
   const { best, ok, blocked } = plan.weather_rules;
 
   if (categories.some((category) => blocked.includes(category))) {
-    return { level: 'blocked', label: '天气不合适', snapshot };
+    return { level: 'blocked', label: getWeatherStatusLabel('blocked', language), snapshot };
   }
 
   if (categories.some((category) => best.includes(category))) {
-    return { level: 'best', label: '天气很适合', snapshot };
+    return { level: 'best', label: getWeatherStatusLabel('best', language), snapshot };
   }
 
   if (ok.includes('any') || categories.some((category) => ok.includes(category))) {
-    return { level: 'ok', label: '天气可以', snapshot };
+    return { level: 'ok', label: getWeatherStatusLabel('ok', language), snapshot };
   }
 
-  return { level: 'mismatch', label: '天气一般', snapshot };
+  return { level: 'mismatch', label: getWeatherStatusLabel('mismatch', language), snapshot };
 }
 
-function getDayInsight(plan, dateId, schedule, plansById, weatherData) {
+function getDayInsight(plan, dateId, schedule, plansById, weatherData, language = DEFAULT_LANGUAGE) {
   if (!plan) {
     return {
       level: 'empty',
       label: '',
-      weatherText: '留给临时调整',
+      weatherText: translate('temporarySlot', language),
       riskText: '',
       issueCount: 0,
     };
   }
 
-  const weather = evaluateWeather(plan, dateId, weatherData);
+  const weather = evaluateWeather(plan, dateId, weatherData, language);
   const issues = getDateHardIssues(plan, dateId, schedule, plansById, weatherData, {
     ignoreOccupancy: true,
   });
   const hasHardIssue = issues.length > 0;
   const isCritical = hasHardIssue && plan.priority === 'must';
-  const weatherText = weather.snapshot?.summary || '未查询天气';
+  const weatherText = weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : translate('noWeather', language);
 
   return {
     level: isCritical ? 'critical' : hasHardIssue ? 'danger' : weather.level,
-    label: hasHardIssue ? '建议调整' : '',
+    label: hasHardIssue ? translate('adjustRecommended', language) : '',
     weatherText,
-    riskText: issues[0] || (weather.level === 'mismatch' ? '天气不是最理想' : weather.level === 'unknown' ? '先确认天气' : ''),
+    riskText: issues[0] ? translateIssue(issues[0], language) : (weather.level === 'mismatch' ? translate('weatherNotIdeal', language) : weather.level === 'unknown' ? translate('confirmWeather', language) : ''),
     riskTone: issues.length ? 'danger' : weather.level === 'mismatch' || weather.level === 'unknown' ? 'notice' : '',
     issueCount: issues.length,
   };
 }
 
-function getCalendarDayState(plan, insight) {
-  if (!plan) return { key: 'empty', label: '', ariaLabel: '未安排' };
+function getCalendarDayState(plan, insight, language = DEFAULT_LANGUAGE) {
+  if (!plan) return { key: 'empty', label: '', ariaLabel: translate('assignedAriaEmpty', language) };
 
   if (insight.issueCount > 0 || ['blocked', 'danger', 'critical'].includes(insight.level)) {
-    return { key: 'adjust', label: '调整', ariaLabel: '需要调整' };
+    return { key: 'adjust', label: translate('adjust', language), ariaLabel: translate('assignedAriaAdjust', language) };
   }
 
   if (['unknown', 'mismatch'].includes(insight.level)) {
-    return { key: 'notice', label: '', ariaLabel: '天气或条件待确认' };
+    return { key: 'notice', label: '', ariaLabel: translate('assignedAriaNotice', language) };
   }
 
-  return { key: 'planned', label: '', ariaLabel: '已安排' };
+  return { key: 'planned', label: '', ariaLabel: translate('assignedAriaPlanned', language) };
 }
 
 function getDateHardIssues(plan, dateId, schedule, plansById, weatherData, options = {}) {
@@ -1183,7 +1692,23 @@ function buildRiskItems(plans, tripDates, schedule, plansById, weatherData) {
     .filter(Boolean)
     .sort((a, b) => PRIORITY_META[b.plan.priority].rank - PRIORITY_META[a.plan.priority].rank);
 
-  return [...scheduledRisks, ...unscheduledRisks].sort((a, b) => {
+  const bookingRisks = Object.entries(schedule)
+    .map(([dateId, entry]) => {
+      const plan = plansById.get(entry.planId);
+      const pendingBookings = getPendingBookings(plan);
+      if (!plan || pendingBookings.length === 0) return null;
+
+      return {
+        plan,
+        dateId,
+        level: 'warning',
+        title: '预约/订票未完成',
+        reasons: pendingBookings.map((booking) => booking.title),
+      };
+    })
+    .filter(Boolean);
+
+  return [...scheduledRisks, ...unscheduledRisks, ...bookingRisks].sort((a, b) => {
     const levelRank = { critical: 3, warning: 2, info: 1 };
     const levelDiff = levelRank[b.level] - levelRank[a.level];
     if (levelDiff) return levelDiff;
@@ -1502,11 +2027,113 @@ async function fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, ca
   return nextWeatherData;
 }
 
-function formatWeatherUpdateWarning(errors) {
-  return errors.length ? `部分天气未更新：${errors.join('；')}` : '';
+function formatWeatherUpdateWarning(errors, language = DEFAULT_LANGUAGE) {
+  return errors.length ? translate('partialWeatherFailed', language, { errors: errors.join(language === 'en' ? '; ' : '；') }) : '';
+}
+
+function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
+  if (language === 'en') {
+    return `{
+  "plans": [
+    {
+      "id": "unique_plan_id",
+      "name": "Short title",
+      "description": "What to do and when this plan is suitable",
+      "priority": "must | preferred | backup | optional",
+      "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": "City/district/coordinates for weather API, not necessarily displayed" },
+      "stops": [
+        {
+          "time": "09:30",
+          "title": "Stop title",
+          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": "Fill when crossing city/district, otherwise inherit plan location" },
+          "note": "What happens at this stop",
+          "weather_relevant": true
+        }
+      ],
+      "available_dates": ["YYYY-MM-DD"],
+      "closed_dates": ["YYYY-MM-DD"],
+      "time_window": "10:00-16:00",
+      "duration": "half day",
+      "intensity": "easy | normal | hard",
+      "weather_rules": {
+        "best": ["sunny", "partly_cloudy", "cloudy", "drizzle", "rain", "heavy_rain", "hot", "cold", "windy"],
+        "ok": ["..."],
+        "blocked": ["..."]
+      },
+      "conflicts": ["other_plan_id"],
+      "bookings": [
+        {
+          "id": "booking_id",
+          "type": "reservation | ticket | confirmation",
+          "title": "Reservation/ticket item",
+          "status": "pending | done | none",
+          "address": "Service or arrival address",
+          "url": "Reservation or booking link, optional",
+          "cancel_url": "Cancellation/change/manage link, optional",
+          "note": "Lead time, ID requirements, cancellation rules, etc."
+        }
+      ],
+      "reminders": [{"time": "HH:mm or text time", "text": "Important reminder"}],
+      "tips": ["General tip"],
+      "tags": ["tag"],
+      "assigned_day": "YYYY-MM-DD"
+    }
+  ]
+}`;
+  }
+
+  return `{
+  "plans": [
+    {
+      "id": "unique_plan_id",
+      "name": "短标题",
+      "description": "当天做什么，适合什么情况",
+      "priority": "must | preferred | backup | optional",
+      "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": "用于天气 API 的城市/区县/坐标，不一定展示" },
+      "stops": [
+        {
+          "time": "09:30",
+          "title": "节点标题",
+          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": "跨城或不同区县时填写，否则继承计划地点" },
+          "note": "这个节点做什么",
+          "weather_relevant": true
+        }
+      ],
+      "available_dates": ["YYYY-MM-DD"],
+      "closed_dates": ["YYYY-MM-DD"],
+      "time_window": "10:00-16:00",
+      "duration": "半天",
+      "intensity": "easy | normal | hard",
+      "weather_rules": {
+        "best": ["sunny", "partly_cloudy", "cloudy", "drizzle", "rain", "heavy_rain", "hot", "cold", "windy"],
+        "ok": ["..."],
+        "blocked": ["..."]
+      },
+      "conflicts": ["other_plan_id"],
+      "bookings": [
+        {
+          "id": "booking_id",
+          "type": "reservation | ticket | confirmation",
+          "title": "需要预约/订票的项目",
+          "status": "pending | done | none",
+          "address": "办理或到达地址",
+          "url": "预约或订票链接，可空",
+          "cancel_url": "退订/改签/管理链接，可空",
+          "note": "提前多久、证件要求、退改规则等"
+        }
+      ],
+      "reminders": [{"time": "HH:mm 或文字时间", "text": "必须注意的事项"}],
+      "tips": ["普通提示"],
+      "tags": ["标签"],
+      "assigned_day": "YYYY-MM-DD"
+    }
+  ]
+}`;
 }
 
 function App() {
+  const { i18n } = useTranslation();
+  const [language, setLanguage] = useState(() => normalizeLanguage(i18n.language || getInitialLanguage()));
   const [initial] = useState(loadInitialState);
   const [trips, setTrips] = useState(initial.trips);
   const [activeTripId, setActiveTripId] = useState(initial.activeTripId);
@@ -1522,9 +2149,14 @@ function App() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
+  const [editorPlanId, setEditorPlanId] = useState(null);
+  const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
   const [aiPlannerMode, setAiPlannerMode] = useState('replan');
   const [aiPlannerQuestion, setAiPlannerQuestion] = useState('');
+  const [aiPlannerResult, setAiPlannerResult] = useState('');
+  const [planAiQuestion, setPlanAiQuestion] = useState('');
+  const [planAiResult, setPlanAiResult] = useState('');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [pendingAssignment, setPendingAssignment] = useState(null);
@@ -1533,9 +2165,16 @@ function App() {
   const toastTimerRef = useRef(null);
   const autoWeatherKeyRef = useRef('');
   const dayTileRefs = useRef(new Map());
+  const t = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
+  const aiReplanText = getAiModeText('replan', language);
+  const aiGenerateText = getAiModeText('generate', language);
 
   const tripDates = useMemo(
-    () => createTripDates(startDateStr, tripDays),
+    () => createTripDates(startDateStr, tripDays, language),
+    [language, startDateStr, tripDays],
+  );
+  const endDateStr = useMemo(
+    () => addDays(startDateStr, Math.max(tripDays - 1, 0)),
     [startDateStr, tripDays],
   );
 
@@ -1574,7 +2213,10 @@ function App() {
     [riskItems, tripDates],
   );
 
-  const visibleTrips = useMemo(() => trips.filter((trip) => !trip.archived), [trips]);
+  const visibleTrips = useMemo(
+    () => pruneEmptyTripDrafts(trips, activeTripId).filter((trip) => !trip.archived),
+    [activeTripId, trips],
+  );
   const archivedTrips = useMemo(() => trips.filter((trip) => trip.archived), [trips]);
   const activeTripOption = trips.find((trip) => trip.id === activeTripId);
   const activeTripArchived = activeTripOption?.archived || false;
@@ -1596,16 +2238,16 @@ function App() {
         const notes = [];
         const isCurrent = selectedPlan?.id === plan.id;
         const assignedDateId = planAssignments.get(plan.id) || '';
-        const weather = evaluateWeather(plan, selectedDate.id, weatherData);
+        const weather = evaluateWeather(plan, selectedDate.id, weatherData, language);
         const { clears, nextSchedule } = buildAssignmentPreview(schedule, selectedDate.id, plan, plansById);
         const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData)
           .filter((risk) => risk.level !== 'info');
         const newRisks = nextRisks.filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
 
-        if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push('日期不适合');
-        if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push('当天不可用/闭馆');
+        if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push(t('dateNotSuitable'));
+        if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push(t('closedOrUnavailable'));
         if (weather.level === 'blocked') hardReasons.push(weather.label);
-        if (weather.level === 'unknown') notes.push('天气未知');
+        if (weather.level === 'unknown') notes.push(t('weatherUnknown'));
 
         const priorityScore = getPlanPriorityWeight(plan) * 3;
         const score = priorityScore + getWeatherScore(weather.level) - getClearPenalty(clears) - getRiskPenalty(newRisks);
@@ -1636,6 +2278,8 @@ function App() {
     schedule,
     selectedDate,
     selectedPlan,
+    language,
+    t,
     tripDates,
     weatherData,
   ]);
@@ -1643,11 +2287,45 @@ function App() {
   const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
   const switchCandidates = candidates.filter((candidate) => !candidate.isCurrent);
   const availableCandidateCount = switchCandidates.filter((candidate) => candidate.canAssign).length;
+  const isCreatingPlan = editorPlanId === NEW_PLAN_EDITOR_ID;
+  const editorPlan = editorPlanId && !isCreatingPlan ? plansById.get(editorPlanId) : null;
+
+  const changeLanguage = (nextLanguage) => {
+    const normalizedLanguage = normalizeLanguage(nextLanguage);
+    setLanguage(normalizedLanguage);
+    i18n.changeLanguage(normalizedLanguage);
+    document.documentElement.lang = normalizedLanguage;
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('lang', normalizedLanguage);
+    window.history.replaceState(null, '', nextUrl);
+  };
+
+  const toggleLanguage = () => {
+    changeLanguage(language === 'zh' ? 'en' : 'zh');
+  };
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    if (i18n.language !== language) i18n.changeLanguage(language);
+  }, [i18n, language]);
+
+  useEffect(() => {
+    const syncLanguageFromUrl = () => {
+      const nextLanguage = getInitialLanguage();
+      setLanguage(nextLanguage);
+      document.documentElement.lang = nextLanguage;
+      if (i18n.language !== nextLanguage) i18n.changeLanguage(nextLanguage);
+    };
+
+    window.addEventListener('popstate', syncLanguageFromUrl);
+    return () => window.removeEventListener('popstate', syncLanguageFromUrl);
+  }, [i18n]);
 
   useEffect(() => {
     const currentTrip = {
       id: activeTripId,
-      name: tripName || '未命名旅行',
+      name: tripName || t('unnamedTrip'),
       startDateStr,
       tripDays,
       plans: normalizedPlans,
@@ -1655,7 +2333,10 @@ function App() {
       weatherData,
       archived: activeTripArchived,
     };
-    const persistedTrips = trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip));
+    const persistedTrips = pruneEmptyTripDrafts(
+      trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip)),
+      activeTripId,
+    );
 
     localStorage.setItem(STORAGE_KEYS.schemaVersion, APP_SCHEMA_VERSION);
     localStorage.setItem(STORAGE_KEYS.trips, JSON.stringify(persistedTrips));
@@ -1663,6 +2344,7 @@ function App() {
   }, [
     activeTripId,
     activeTripArchived,
+    t,
     normalizedPlans,
     schedule,
     startDateStr,
@@ -1686,7 +2368,7 @@ function App() {
 
   const getCurrentTripSnapshot = () => ({
     id: activeTripId,
-    name: tripName || '未命名旅行',
+    name: tripName || t('unnamedTrip'),
     startDateStr,
     tripDays,
     plans: normalizedPlans,
@@ -1719,44 +2401,108 @@ function App() {
     const nextTrip = visibleTrips.find((trip) => trip.id === nextTripId);
     if (!nextTrip) return;
 
-    setTrips(saveCurrentTripInto(trips));
+    setTrips(pruneEmptyTripDrafts(saveCurrentTripInto(trips), nextTripId));
     applyTripSnapshot(nextTrip);
   };
 
   const createNewTrip = () => {
-    const nextTrip = createEmptyTripSnapshot(`旅行计划 ${trips.length + 1}`, getTodayId());
+    if (!hasInitializedPlans) {
+      setTripMenuOpen(false);
+      setEditorOpen(true);
+      setBatchAiOpen(false);
+      notify(t('emptyPlanNotice'));
+      return;
+    }
+
+    const nextTrip = createEmptyTripSnapshot(language === 'en' ? `Trip ${trips.length + 1}` : `旅行计划 ${trips.length + 1}`, getTodayId());
     setTripMenuOpen(false);
-    setTrips([...saveCurrentTripInto(trips), nextTrip]);
+    setTrips([...pruneEmptyTripDrafts(saveCurrentTripInto(trips), activeTripId), nextTrip]);
     applyTripSnapshot(nextTrip);
     setEditorOpen(true);
-    notify('新计划已创建');
+    setBatchAiOpen(false);
+    notify(t('newTripCreated'));
+  };
+
+  const loadExampleTrip = () => {
+    const hasCurrentContent = normalizedPlans.length > 0 || Object.keys(schedule).length > 0;
+    if (hasCurrentContent && !window.confirm(t('overwriteExampleConfirm'))) return;
+
+    const exampleTrip = createExampleTripSnapshot(t('exampleTripName'), startDateStr, activeTripId);
+    setTripName(exampleTrip.name);
+    setTripDays(exampleTrip.tripDays);
+    setPlans(exampleTrip.plans);
+    setSchedule(exampleTrip.schedule);
+    setWeatherData({});
+    setSelectedDateId(exampleTrip.startDateStr);
+    closePlanEditor();
+    setBatchAiOpen(false);
+    notify(t('exampleLoaded'));
+  };
+
+  const openBatchAiGenerator = () => {
+    setAiPlannerMode('generate');
+    setAiPlannerOpen(false);
+    setEditorPlanId(null);
+    setEditorOpen(true);
+    setBatchAiOpen(true);
+    setAiPlannerResult('');
   };
 
   const openAiPlanner = (mode = 'replan') => {
-    const nextMode = hasInitializedPlans
-      ? mode === 'initial'
-        ? 'extend'
-        : mode
-      : 'initial';
-    setAiPlannerMode(nextMode);
+    if (mode === 'generate' || !hasInitializedPlans) {
+      openBatchAiGenerator();
+      return;
+    }
+
+    setAiPlannerMode('replan');
     setEditorOpen(false);
+    setAiPlannerResult('');
     setAiPlannerOpen(true);
+  };
+
+  const openPlanEditor = (planId = NEW_PLAN_EDITOR_ID) => {
+    setEditorPlanId(planId);
+    setPlanAiQuestion('');
+    setPlanAiResult('');
+  };
+
+  const closePlanEditor = () => {
+    setEditorPlanId(null);
+    setPlanAiQuestion('');
+    setPlanAiResult('');
   };
 
   const removePlan = (planId) => {
     const plan = plansById.get(planId);
-    if (!plan || !window.confirm(`删除「${plan.name}」？已安排到日期上的引用也会移除。`)) return;
+    if (!plan || !window.confirm(t('deletePlanConfirm', { name: plan.name }))) return;
 
-    setPlans((current) => current.filter((item) => item.id !== planId));
+    setPlans((current) => current.filter((item, index) => normalizePlan(item, index, tripDates).id !== planId));
     setSchedule((current) => Object.fromEntries(
       Object.entries(current).filter(([, entry]) => entry?.planId !== planId),
     ));
-    notify('计划已删除');
+    if (editorPlanId === planId) closePlanEditor();
+    notify(t('planDeleted'));
+  };
+
+  const updatePlanBookingStatus = (planId, bookingId, nextStatus) => {
+    setPlans((current) => current.map((plan, index) => {
+      const normalizedPlan = normalizePlan(plan, index, tripDates);
+      if (normalizedPlan.id !== planId) return plan;
+
+      return {
+        ...plan,
+        bookings: normalizedPlan.bookings.map((booking) => (
+          booking.id === bookingId ? { ...booking, status: nextStatus } : booking
+        )),
+      };
+    }));
+    notify(nextStatus === 'done' ? t('bookingDone') : t('bookingPending'));
   };
 
   const applyTripListAfterCurrentRemoved = (nextTrips, message) => {
-    const nextTrip = nextTrips.find((trip) => !trip.archived && trip.id !== activeTripId) || createEmptyTripSnapshot(`旅行计划 ${nextTrips.length + 1}`, getTodayId());
-    const finalTrips = nextTrips.some((trip) => trip.id === nextTrip.id) ? nextTrips : [...nextTrips, nextTrip];
+    const tripsWithContent = nextTrips.filter((trip) => !isEmptyTripDraft(trip));
+    const nextTrip = tripsWithContent.find((trip) => !trip.archived && trip.id !== activeTripId) || createEmptyTripSnapshot(language === 'en' ? `Trip ${tripsWithContent.length + 1}` : `旅行计划 ${tripsWithContent.length + 1}`, getTodayId());
+    const finalTrips = tripsWithContent.some((trip) => trip.id === nextTrip.id) ? tripsWithContent : [...tripsWithContent, nextTrip];
 
     setTrips(finalTrips);
     applyTripSnapshot(nextTrip);
@@ -1765,18 +2511,19 @@ function App() {
   };
 
   const archiveCurrentTrip = () => {
-    if (!window.confirm(`归档「${tripName || '当前旅行'}」？归档后会从顶部切换列表隐藏，可在编辑计划里恢复。`)) return;
+    if (!window.confirm(t('archiveTripConfirm', { name: tripName || t('unnamedTrip') }))) return;
 
     const archivedTrip = { ...getCurrentTripSnapshot(), archived: true };
     const updatedTrips = trips.map((trip) => (trip.id === activeTripId ? archivedTrip : trip));
-    applyTripListAfterCurrentRemoved(updatedTrips, '当前旅行已归档');
+    applyTripListAfterCurrentRemoved(updatedTrips, t('tripArchived'));
   };
 
   const deleteCurrentTrip = () => {
-    if (!window.confirm(`永久删除「${tripName || '当前旅行'}」？这个操作不会进入归档。`)) return;
+    const currentTripIsEmpty = !hasInitializedPlans && Object.keys(schedule).length === 0;
+    if (!currentTripIsEmpty && !window.confirm(t('deleteTripConfirm', { name: tripName || t('unnamedTrip') }))) return;
 
     const updatedTrips = trips.filter((trip) => trip.id !== activeTripId);
-    applyTripListAfterCurrentRemoved(updatedTrips, '当前旅行已删除');
+    applyTripListAfterCurrentRemoved(updatedTrips, t('tripDeleted'));
   };
 
   const restoreArchivedTrip = (tripId) => {
@@ -1787,7 +2534,7 @@ function App() {
     setTrips(saveCurrentTripInto(restoredTrips));
     applyTripSnapshot(restoredTrip);
     setEditorOpen(false);
-    notify('已恢复归档旅行');
+    notify(t('archivedRestored'));
   };
 
   const buildAssignmentImpact = (dateId, planId) => {
@@ -1802,7 +2549,7 @@ function App() {
     return { clears, nextSchedule, nextRisks, targetPlan, dateId };
   };
 
-  const applySchedule = (nextSchedule, message = '安排已更新') => {
+  const applySchedule = (nextSchedule, message = t('scheduleUpdated')) => {
     setSchedule(nextSchedule);
     notify(message);
   };
@@ -1816,12 +2563,12 @@ function App() {
       return;
     }
 
-    applySchedule(impact.nextSchedule, '当天方案已更新');
+    applySchedule(impact.nextSchedule, t('dayPlanUpdated'));
   };
 
   const confirmPendingAssignment = () => {
     if (!pendingAssignment) return;
-    applySchedule(pendingAssignment.nextSchedule, pendingAssignment.clears.length ? '已更新，并清空受影响日期' : '当天方案已更新');
+    applySchedule(pendingAssignment.nextSchedule, pendingAssignment.clears.length ? t('impactedDatesCleared') : t('dayPlanUpdated'));
     setPendingAssignment(null);
   };
 
@@ -1831,7 +2578,7 @@ function App() {
       delete next[dateId];
       return next;
     });
-    notify('当天安排已清空');
+    notify(t('dayCleared'));
   };
 
   const selectNeighborDate = (step) => {
@@ -1863,7 +2610,7 @@ function App() {
       await navigator.clipboard.writeText(text);
       notify(message);
     } catch {
-      notify('复制失败，请手动选中文本');
+      notify(t('copyFailed'));
     }
   };
 
@@ -1875,16 +2622,16 @@ function App() {
     const timeoutId = window.setTimeout(() => {
       timedOut = true;
       setWeatherLoading(false);
-      setWeatherError('天气更新超时，可稍后重试或检查网络。');
+      setWeatherError(t('weatherTimeout'));
     }, WEATHER_BATCH_TIMEOUT_MS);
 
     try {
       const nextWeatherData = await fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherData);
       if (!timedOut) {
         setWeatherData(nextWeatherData);
-        const warning = formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || []);
+        const warning = formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || [], language);
         setWeatherError(warning);
-        notify(nextWeatherData[WEATHER_CACHE_HIT_KEY] ? '天气缓存仍有效' : warning ? '天气已更新，部分地点失败' : '天气已更新');
+        notify(nextWeatherData[WEATHER_CACHE_HIT_KEY] ? t('weatherCacheValid') : warning ? t('weatherUpdatedPartial') : t('weatherUpdated'));
       }
     } catch (error) {
       if (!timedOut) {
@@ -1920,7 +2667,7 @@ function App() {
       timedOut = true;
       if (!cancelled) {
         setWeatherLoading(false);
-        setWeatherError('自动天气更新超时，可稍后重试或检查网络。');
+        setWeatherError(t('autoWeatherTimeout'));
       }
     }, WEATHER_BATCH_TIMEOUT_MS);
 
@@ -1928,11 +2675,11 @@ function App() {
       .then((nextWeatherData) => {
         if (!cancelled && !timedOut) {
           setWeatherData(nextWeatherData);
-          setWeatherError(formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || []));
+          setWeatherError(formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || [], language));
         }
       })
       .catch((error) => {
-        if (!cancelled && !timedOut) setWeatherError(`自动天气更新失败：${error.message}`);
+        if (!cancelled && !timedOut) setWeatherError(t('autoWeatherFailed', { message: error.message }));
       })
       .finally(() => {
         settled = true;
@@ -1946,9 +2693,9 @@ function App() {
       if (!settled && autoWeatherKeyRef.current === autoWeatherKey) autoWeatherKeyRef.current = '';
       setWeatherLoading(false);
     };
-  }, [normalizedPlans, startDateStr, tripDates, weatherData]);
+  }, [language, normalizedPlans, startDateStr, t, tripDates, weatherData]);
 
-  const buildAiPlanningPrompt = () => {
+  const buildAiPlanningPrompt = (mode = aiPlannerMode) => {
     const planningStartDate = selectedDate || tripDates[0];
     const fixedDates = planningStartDate
       ? tripDates.filter((date) => date.id < planningStartDate.id)
@@ -1965,14 +2712,14 @@ function App() {
 
     const summarizeScheduleDate = (date) => {
       const plan = schedule[date.id]?.planId ? plansById.get(schedule[date.id].planId) : null;
-      const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData);
+      const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, language);
       return {
         date: date.id,
         day: `D${date.dayNumber}`,
         display: date.display,
         plan_id: plan?.id || null,
         plan_name: plan?.name || null,
-        status: insight.label || '普通',
+        status: insight.label || t('normal'),
         weather: insight.weatherText || '',
         note: insight.riskText || '',
       };
@@ -1981,7 +2728,7 @@ function App() {
     const summarizePlan = (plan) => ({
       plan_id: plan.id,
       name: plan.name,
-      priority: PRIORITY_META[plan.priority]?.label || plan.priority,
+      priority: getPriorityLabel(plan.priority, language),
       description: plan.description,
       current_assigned_date: planAssignments.get(plan.id) || null,
       available_dates: plan.available_dates,
@@ -1990,87 +2737,99 @@ function App() {
       location: {
         label: plan.location.label,
         weather_location: getWeatherLocationLabel(plan.location),
+        address: plan.location.address || '',
       },
       time_window: plan.time_window,
       stops: plan.stops.map((stop) => ({
         time: stop.time,
         title: stop.title,
         location: stop.location.label,
+        address: stop.location.address || '',
         note: stop.note,
+      })),
+      bookings: plan.bookings.map((booking) => ({
+        title: booking.title,
+        type: booking.type,
+        status: booking.status,
+        address: booking.address,
+        url: booking.url,
+        cancel_url: booking.cancelUrl,
+        note: booking.note,
       })),
       reminders: plan.reminders.map((item) => `${item.time ? `${item.time} ` : ''}${item.text}`),
       tips: plan.tips,
       conflicts: plan.conflicts,
       weather_by_adjustable_date: adjustableDates.map((date) => {
-        const weather = evaluateWeather(plan, date.id, weatherData);
+        const weather = evaluateWeather(plan, date.id, weatherData, language);
         return {
           date: date.id,
           status: weather.label,
-          summary: weather.snapshot?.summary || '天气未知',
+          summary: weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('weatherUnknown'),
         };
       }),
     });
 
     const tripContext = {
       trip: {
-        name: tripName || '未命名旅行',
-        range: formatTripRange(startDateStr, tripDays),
+        name: tripName || t('unnamedTrip'),
+        range: formatTripRange(startDateStr, tripDays, language),
         days: tripDays,
         planning_from: planningStartDate?.id || null,
       },
       existing_schedule: tripDates.map(summarizeScheduleDate),
       existing_plans: normalizedPlans.map(summarizePlan),
       current_warnings: riskGroups.map((group) => ({
-        title: group.title,
+        title: translateRiskTitle(group.title, language),
         level: group.level,
         items: group.items,
       })),
       user_request: aiPlannerQuestion.trim(),
     };
 
-    const planSchema = `{
-  "plans": [
-    {
-      "id": "unique_plan_id",
-      "name": "短标题",
-      "description": "当天做什么，适合什么情况",
-      "priority": "must | preferred | backup | optional",
-      "location": { "label": "地点展示名", "weather_location": "用于天气 API 的城市/区县/坐标，不一定展示" },
-      "stops": [
-        {
-          "time": "09:30",
-          "title": "节点标题",
-          "location": { "label": "具体地点", "weather_location": "跨城或不同区县时填写，否则继承计划地点" },
-          "note": "这个节点做什么",
-          "weather_relevant": true
-        }
-      ],
-      "available_dates": ["YYYY-MM-DD"],
-      "closed_dates": ["YYYY-MM-DD"],
-      "time_window": "10:00-16:00",
-      "duration": "半天",
-      "intensity": "easy | normal | hard",
-      "weather_rules": {
-        "best": ["sunny", "partly_cloudy", "cloudy", "drizzle", "rain", "heavy_rain", "hot", "cold", "windy"],
-        "ok": ["..."],
-        "blocked": ["..."]
-      },
-      "conflicts": ["other_plan_id"],
-      "reminders": [{"time": "HH:mm 或文字时间", "text": "必须注意的事项"}],
-      "tips": ["普通提示"],
-      "tags": ["标签"],
-      "assigned_day": "YYYY-MM-DD"
-    }
-  ]
-}`;
+    const planSchema = getPlanJsonSchema(language);
 
-    if (aiPlannerMode === 'initial') {
-      return `你是旅行初始规划助手。请根据我的补充要求，生成一个「n 天 + backup」的旅行计划池，并给出初始日程。
+    if (mode === 'generate') {
+      const unplannedDates = tripDates.filter((date) => !schedule[date.id]?.planId);
+      if (language === 'en') {
+        return `You are a travel plan-pool assistant. Generate or extend travel plans based on the current state.
 
-当前旅行壳：
+Data:
 ${JSON.stringify({
-  trip: tripContext.trip,
-  user_request: tripContext.user_request || '请先根据目的地、日期、天气敏感度和体力节奏，生成一版可动态调整的旅行计划。',
+  ...tripContext,
+  mode: hasInitializedPlans ? 'extend existing plan pool' : 'generate a full plan pool from empty state',
+  keep_existing_schedule_by_default: hasInitializedPlans,
+  unplanned_dates: unplannedDates.map(summarizeScheduleDate),
+  existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
+  user_request: tripContext.user_request || (hasInitializedPlans
+    ? 'Add candidate plans for backups or added days; include assigned_day when useful.'
+    : 'Generate an n-day trip plus backup plans, and include an initial schedule.'),
+}, null, 2)}
+
+Requirements:
+1. A day may contain multiple places. Cross-city plans must state the cities clearly.
+2. The number of plans may exceed the number of trip days so they can be used as backups.
+3. Fill available_dates, closed_dates, weather_rules and conflicts carefully.
+4. Use city/district/coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
+5. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
+6. Add reminders and tips when useful; otherwise use empty arrays.
+7. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
+
+Only output importable JSON. If a plan should be scheduled, write assigned_day on that plan. Format:
+${planSchema}`;
+      }
+
+      return `你是旅行计划池生成助手。请根据当前状态生成或补充旅行计划。
+
+数据：
+${JSON.stringify({
+  ...tripContext,
+  mode: hasInitializedPlans ? '补充现有计划池' : '从空计划池生成完整规划',
+  keep_existing_schedule_by_default: hasInitializedPlans,
+  unplanned_dates: unplannedDates.map(summarizeScheduleDate),
+  existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
+  user_request: tripContext.user_request || (hasInitializedPlans
+    ? '请补充计划池、backup 或新增天数需要的候选计划；必要时给出 assigned_day。'
+    : '请生成一个「n 天 + backup」的旅行计划池，并给出初始日程。'),
 }, null, 2)}
 
 要求：
@@ -2078,32 +2837,11 @@ ${JSON.stringify({
 2. 计划数量可以多于旅行天数，用于备选。
 3. 必须写清 available_dates、closed_dates、weather_rules、conflicts。
 4. location.weather_location 用城市/区县/坐标，不要用景点名做天气查询。
-5. 有特别提醒和 tips 就写，没有就留空数组。
+5. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
+6. 有特别提醒和 tips 就写，没有就留空数组。
+7. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
 
-请只输出可导入 JSON，格式如下：
-${planSchema}`;
-    }
-
-    if (aiPlannerMode === 'extend') {
-      const unplannedDates = tripDates.filter((date) => !schedule[date.id]?.planId);
-      return `你是旅行增量规划助手。请保留已有安排，在新增或未安排日期上补充计划；如果必须调整相邻日期，请说明原因。
-
-数据：
-${JSON.stringify({
-  ...tripContext,
-  keep_existing_schedule_by_default: true,
-  unplanned_dates: unplannedDates.map(summarizeScheduleDate),
-  existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
-  user_request: tripContext.user_request || '请为未安排日期补充计划；如果现有计划池不够，请新增 backup 计划并给出可导入 JSON。',
-}, null, 2)}
-
-请输出：
-1. 增量安排建议
-2. 是否需要新增计划及原因
-3. 对已有日期的影响
-4. JSON，包含新增/更新的 plans；需要安排日期时在对应 plan 上写 assigned_day
-
-JSON 格式：
+请只输出可导入 JSON；需要安排日期时在对应 plan 上写 assigned_day。格式如下：
 ${planSchema}`;
     }
 
@@ -2112,17 +2850,49 @@ ${planSchema}`;
       fixed_dates_do_not_change: fixedDates.map(summarizeScheduleDate),
       adjustable_dates: adjustableDates.map(summarizeScheduleDate),
       remaining_or_adjustable_plans: remainingPlans.map(summarizePlan),
-      user_request: tripContext.user_request || '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。',
+      user_request: tripContext.user_request || (language === 'en' ? 'Replan the remaining dates based on current weather, date limits, must-go priority and itinerary intensity.' : '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。'),
     };
+
+    if (language === 'en') {
+      return `You are a travel itinerary replanning assistant. Only adjust the remaining itinerary based on the data below. Do not change dates listed in fixed_dates_do_not_change.
+
+You need to:
+1. Rearrange the dates in adjustable_dates.
+2. Prioritize must-go plans and reduce weather-unsuitable or date-unsuitable choices.
+3. Do not casually move reserved/ticketed plans; call out pending reservations/tickets in the reasons.
+4. Explain if a plan must be dropped.
+5. Clearly list anything I need to confirm if the adjustment creates risk.
+6. End with JSON so I can import or compare changes manually.
+
+Data:
+${JSON.stringify(context, null, 2)}
+
+Please answer in this structure:
+1. Recommended new schedule
+2. Reasons for changes
+3. Unassigned plans and reasons
+4. Risks to confirm
+5. JSON:
+{
+  "schedule": [
+    { "date": "YYYY-MM-DD", "plan_id": "plan_id", "reason": "why this plan fits here" }
+  ],
+  "unassigned": [
+    { "plan_id": "plan_id", "reason": "why it is not scheduled" }
+  ],
+  "warnings": ["items the user needs to confirm"]
+}`;
+    }
 
     return `你是旅行行程重排助手。请只基于下面的数据调整剩余行程，不要改动 fixed_dates_do_not_change 里的日期。
 
 你需要做：
 1. 重新安排 adjustable_dates 中的日期。
 2. 优先保留必去计划，尽量减少天气不合适和日期不合适。
-3. 如果必须放弃计划，请说明原因。
-4. 如果某个调整会带来风险，请明确列出需要我确认的事项。
-5. 最后输出一个 JSON，方便我手动导入或对照修改。
+3. 已预约/已订票的计划不要随意挪动；未预约/未订票的计划需要在原因里提醒。
+4. 如果必须放弃计划，请说明原因。
+5. 如果某个调整会带来风险，请明确列出需要我确认的事项。
+6. 最后输出一个 JSON，方便我手动导入或对照修改。
 
 数据：
 ${JSON.stringify(context, null, 2)}
@@ -2145,81 +2915,238 @@ ${JSON.stringify(context, null, 2)}
   };
 
   const copyAiPlanningPrompt = () => {
-    copyText(buildAiPlanningPrompt(), `${AI_PLANNER_MODES[aiPlannerMode].label} Prompt 已复制`);
+    copyText(buildAiPlanningPrompt(), t('aiPromptCopied', { label: getAiModeText(aiPlannerMode, language).label }));
+  };
+
+  const copyBatchAiPrompt = () => {
+    copyText(buildAiPlanningPrompt('generate'), t('aiPromptCopied', { label: aiGenerateText.label }));
+  };
+
+  const applyImportedPayload = (parsed, message = t('jsonApplied')) => {
+    let touched = false;
+
+    if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
+    if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
+    if (parsed.weatherData) setWeatherData(parsed.weatherData);
+
+    if (Array.isArray(parsed.plans)) {
+      touched = true;
+      setPlans((current) => {
+        const next = [...current];
+        parsed.plans.forEach((incomingPlan, index) => {
+          const normalized = normalizePlan(incomingPlan, index, tripDates);
+          const existingIndex = next.findIndex((plan) => plan.id === normalized.id);
+          if (existingIndex >= 0) {
+            next[existingIndex] = { ...next[existingIndex], ...normalized };
+          } else {
+            next.push(normalized);
+          }
+        });
+        return next;
+      });
+
+      const assigned = parsed.plans.reduce((accumulator, plan) => {
+        if (plan.assigned_day && plan.id) {
+          accumulator[plan.assigned_day] = { planId: plan.id };
+        }
+        return accumulator;
+      }, {});
+
+      if (Object.keys(assigned).length) {
+        touched = true;
+        setSchedule((current) => ({ ...current, ...assigned }));
+      }
+    }
+
+    if (Array.isArray(parsed.schedule)) {
+      const importedSchedule = parsed.schedule.reduce((accumulator, item) => {
+        const dateId = item.date || item.dateId || item.day;
+        const planId = item.plan_id || item.planId || item.id;
+        if (dateId && planId) accumulator[dateId] = { planId };
+        return accumulator;
+      }, {});
+
+      if (Object.keys(importedSchedule).length) {
+        touched = true;
+        setSchedule((current) => ({ ...current, ...importedSchedule }));
+      }
+    } else if (parsed.schedule && typeof parsed.schedule === 'object') {
+      touched = true;
+      setSchedule((current) => ({ ...current, ...normalizeSchedule(parsed.schedule) }));
+    }
+
+    if (!touched && !parsed.startDateStr && !parsed.tripDays && !parsed.weatherData) {
+      throw new Error(t('noApplicableJson'));
+    }
+
+    notify(message);
+  };
+
+  const applyAiPlannerResult = () => {
+    try {
+      applyImportedPayload(parseImportJson(aiPlannerResult), t('aiPlanApplied'));
+      setAiPlannerResult('');
+      setAiPlannerOpen(false);
+      setBatchAiOpen(false);
+    } catch (error) {
+      notify(t('applyFailed', { message: error.message }));
+    }
+  };
+
+  const buildPlanAiPrompt = () => {
+    const schema = getPlanJsonSchema(language);
+    const currentPlan = editorPlan
+      ? {
+        ...editorPlan,
+        assigned_day: planAssignments.get(editorPlan.id) || null,
+      }
+      : null;
+
+    return `${language === 'en'
+    ? `You are a single travel-plan editing assistant. ${isCreatingPlan ? 'Add one plan' : 'Modify the current plan'} based on the user request. Only output importable JSON.`
+    : `你是旅行单个计划编辑助手。请根据用户需求${isCreatingPlan ? '新增一个计划' : '修改当前计划'}，只输出可导入 JSON。`}
+
+${language === 'en' ? 'Trip context:' : '旅行上下文：'}
+${JSON.stringify({
+  trip: {
+    name: tripName || t('unnamedTrip'),
+    range: formatTripRange(startDateStr, tripDays, language),
+    dates: tripDates.map((date) => ({ date: date.id, day: `D${date.dayNumber}`, display: date.display })),
+  },
+  existing_plan_ids: normalizedPlans.map((plan) => plan.id),
+  current_plan: currentPlan,
+  user_request: planAiQuestion.trim() || (isCreatingPlan
+    ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
+    : (language === 'en' ? 'Improve the current plan.' : '请优化当前计划。')),
+}, null, 2)}
+
+${language === 'en' ? `Requirements:
+1. ${isCreatingPlan ? 'The new plan id must not duplicate existing_plan_ids.' : 'Keep the current plan id unless the user explicitly asks to change it.'}
+2. Use city/district/coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
+3. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
+4. If the plan fits a specific day, include assigned_day.
+5. Output JSON only, with no explanation.
+
+JSON format:
+${schema}` : `要求：
+1. ${isCreatingPlan ? '新增计划 id 不要和 existing_plan_ids 重复。' : '除非用户明确要求，否则保留当前计划 id。'}
+2. location.weather_location 用城市/区县/坐标，不要用景点名做天气查询。
+3. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
+4. 如果计划适合安排到某一天，可以写 assigned_day。
+5. 只输出 JSON，不要解释。
+
+JSON 格式：
+${schema}`}
+`;
+  };
+
+  const copyPlanAiPrompt = () => {
+    copyText(buildPlanAiPrompt(), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
+  };
+
+  const applyPlanAiResult = () => {
+    try {
+      const parsed = parseImportJson(planAiResult);
+      const normalizedPayload = Array.isArray(parsed.plans)
+        ? parsed
+        : parsed.id || parsed.name
+          ? { plans: [parsed] }
+          : parsed;
+
+      if (!isCreatingPlan && Array.isArray(normalizedPayload.plans)) {
+        normalizedPayload.plans = normalizedPayload.plans.map((plan, index) => (
+          index === 0 ? { ...plan, id: plan.id || editorPlanId } : plan
+        ));
+      }
+
+      applyImportedPayload(normalizedPayload, isCreatingPlan ? t('planCreated') : t('planUpdated'));
+      closePlanEditor();
+    } catch (error) {
+      notify(t('applyFailed', { message: error.message }));
+    }
   };
 
   const handleImport = () => {
     try {
-      const parsed = parseImportJson(importText);
-      if (Array.isArray(parsed.plans)) {
-        setPlans((current) => {
-          const next = [...current];
-          parsed.plans.forEach((incomingPlan, index) => {
-            const normalized = normalizePlan(incomingPlan, index, tripDates);
-            const existingIndex = next.findIndex((plan) => plan.id === normalized.id);
-            if (existingIndex >= 0) {
-              next[existingIndex] = { ...next[existingIndex], ...normalized };
-            } else {
-              next.push(normalized);
-            }
-          });
-          return next;
-        });
-
-        const assigned = parsed.plans.reduce((accumulator, plan) => {
-          if (plan.assigned_day && plan.id) {
-            accumulator[plan.assigned_day] = { planId: plan.id };
-          }
-          return accumulator;
-        }, {});
-
-        if (Object.keys(assigned).length) {
-          setSchedule((current) => ({ ...current, ...assigned }));
-        }
-      }
-
-      if (Array.isArray(parsed.schedule)) {
-        const importedSchedule = parsed.schedule.reduce((accumulator, item) => {
-          const dateId = item.date || item.dateId || item.day;
-          const planId = item.plan_id || item.planId || item.id;
-          if (dateId && planId) accumulator[dateId] = { planId };
-          return accumulator;
-        }, {});
-
-        if (Object.keys(importedSchedule).length) {
-          setSchedule((current) => ({ ...current, ...importedSchedule }));
-        }
-      }
-
+      applyImportedPayload(parseImportJson(importText), t('importDone'));
       setImportModalOpen(false);
       setImportText('');
-      notify('JSON 已导入');
     } catch (error) {
-      notify(`导入失败：${error.message}`);
+      notify(t('importFailed', { message: error.message }));
     }
   };
 
   const handleExportState = () => {
     const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
-    copyText(JSON.stringify(data, null, 2), 'JSON 已复制');
+    copyText(JSON.stringify(data, null, 2), t('jsonCopied'));
   };
 
   const renderPlanStops = (plan) => {
     if (!plan?.stops.length) return null;
 
     return (
-      <ol className="stop-list" aria-label={`${plan.name} 行程节点`}>
+      <ol className="stop-list" aria-label={t('stopsAria', { name: plan.name })}>
         {plan.stops.map((stop) => (
           <li className="stop-item" key={stop.id}>
-            <span className="stop-time">{stop.time || '弹性'}</span>
+            <span className="stop-time">{stop.time || t('flexible')}</span>
             <span className="stop-detail">
               <strong>{stop.title}</strong>
-              <span>{stop.location.label}</span>
+              <span>
+                {stop.location.label}
+                {stop.location.address && <small>{stop.location.address}</small>}
+              </span>
               {stop.note && <em>{stop.note}</em>}
             </span>
           </li>
         ))}
       </ol>
+    );
+  };
+
+  const renderPlanBookings = (plan) => {
+    if (!plan?.bookings.length) return null;
+
+    return (
+      <div className="booking-list" aria-label={t('bookingAria', { name: plan.name })}>
+        {plan.bookings.map((booking) => {
+          const meta = getBookingTypeMeta(booking.type, language);
+          const isDone = booking.status === 'done';
+          const isNone = booking.status === 'none';
+          const statusText = isNone ? t('noActionNeeded') : isDone ? meta.done : meta.pending;
+          const nextStatus = isDone ? 'pending' : 'done';
+          const linkUrl = isDone ? booking.cancelUrl || booking.url : booking.url;
+          const linkLabel = isDone && booking.cancelUrl ? t('manage') : meta.link;
+
+          return (
+            <div className={`booking-item status-${booking.status}`} key={booking.id}>
+              <div className="booking-main">
+                <div className="booking-title-row">
+                  <strong>{booking.title}</strong>
+                  <span className={`booking-status status-${booking.status}`}>{statusText}</span>
+                </div>
+                {booking.address && <span className="booking-address">{booking.address}</span>}
+                {booking.note && <em>{booking.note}</em>}
+              </div>
+              <div className="booking-actions">
+                {linkUrl && (
+                  <a className="booking-link" href={linkUrl} target="_blank" rel="noreferrer">
+                    {linkLabel}
+                  </a>
+                )}
+                {!isNone && (
+                  <button
+                    className="booking-toggle"
+                    type="button"
+                    onClick={() => updatePlanBookingStatus(plan.id, booking.id, nextStatus)}
+                  >
+                    {isDone ? t('undo') : meta.doneAction}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     );
   };
 
@@ -2229,8 +3156,8 @@ ${JSON.stringify(context, null, 2)}
     return (
       <div className="plan-notes">
         {plan.reminders.length > 0 && (
-          <div className="plan-note plan-reminders" aria-label="特别提醒">
-            <strong>特别提醒</strong>
+          <div className="plan-note plan-reminders" aria-label={t('reminders')}>
+            <strong>{t('reminders')}</strong>
             <ul>
               {plan.reminders.map((item) => (
                 <li key={item.id}>
@@ -2260,14 +3187,14 @@ ${JSON.stringify(context, null, 2)}
 
     const { hardReasons, notes, weather } = candidate;
     const visibleHardReasons = hardReasons.filter(
-      (reason) => !(weather.level === 'blocked' && reason.includes('天气')),
+      (reason) => !(weather.level === 'blocked' && reason === weather.label),
     );
 
     return (
       <>
         <div className={`weather-line ${weather.level}`}>
           <strong>{weather.label}</strong>
-          <span>{weather.snapshot?.summary || '尚未获取地点天气，先更新天气'}</span>
+          <span>{weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('noWeatherForPlace')}</span>
         </div>
 
         {(visibleHardReasons.length > 0 || notes.length > 0) && (
@@ -2286,17 +3213,18 @@ ${JSON.stringify(context, null, 2)}
 
   const renderCurrentPlanBody = () => (
     <div>
-      <p className="eyebrow">当前方案</p>
+      <p className="eyebrow">{t('currentPlanLabel')}</p>
       <div className="title-row current-title-row">
-        <h2>{selectedPlan?.name || '当天未安排'}</h2>
+        <h2>{selectedPlan?.name || t('unplannedToday')}</h2>
         {selectedPlan && (
           <span className={`priority-badge ${selectedPlan.priority}`}>
-            {PRIORITY_META[selectedPlan.priority].label}
+            {getPriorityLabel(selectedPlan.priority, language)}
           </span>
         )}
       </div>
-      <p>{selectedPlan?.description || '从下面的候选里换一个，系统会先评估是否影响后续计划。'}</p>
+      <p>{selectedPlan?.description || t('currentPlanHelp')}</p>
       {renderPlanStops(selectedPlan)}
+      {renderPlanBookings(selectedPlan)}
       {renderPlanNotes(selectedPlan)}
       {renderCandidateSignals(currentCandidate)}
     </div>
@@ -2308,7 +3236,7 @@ ${JSON.stringify(context, null, 2)}
     return (
       <div className="current-actions">
         <button className="btn btn-ghost" type="button" onClick={() => clearDay(selectedDate.id)}>
-          清空
+          {t('clear')}
         </button>
       </div>
     );
@@ -2317,14 +3245,14 @@ ${JSON.stringify(context, null, 2)}
   const renderRiskGroup = (group) => (
     <div className={`risk-item risk-group ${group.level}`} key={group.title}>
       <div className="risk-group-head">
-        <strong>{group.title}</strong>
-        <span>{group.items.length} {group.unit}</span>
+        <strong>{translateRiskTitle(group.title, language)}</strong>
+        <span>{formatCount(group.items.length, group.unit, language)}</span>
       </div>
       <ul>
         {group.items.slice(0, 6).map((item) => (
           <li key={item}>{item}</li>
         ))}
-        {group.items.length > 6 && <li>还有 {group.items.length - 6} 项</li>}
+        {group.items.length > 6 && <li>{t('moreItems', { count: group.items.length - 6 })}</li>}
       </ul>
     </div>
   );
@@ -2333,9 +3261,9 @@ ${JSON.stringify(context, null, 2)}
     const primaryRisk = riskGroups[0];
     const summaryTitle = primaryRisk
       ? mobileRisksOpen
-        ? '预警详情'
-        : `${primaryRisk.title} · ${primaryRisk.items.length} ${primaryRisk.unit}`
-      : '当前安排没有明显冲突';
+        ? t('riskDetail')
+        : `${translateRiskTitle(primaryRisk.title, language)} · ${formatCount(primaryRisk.items.length, primaryRisk.unit, language)}`
+      : t('noClearRisk');
 
     return (
       <div className={`mobile-risk-panel ${primaryRisk ? `level-${primaryRisk.level}` : 'is-clear'}`}>
@@ -2345,14 +3273,14 @@ ${JSON.stringify(context, null, 2)}
           aria-expanded={mobileRisksOpen}
           onClick={() => setMobileRisksOpen((current) => !current)}
         >
-          <span>{riskGroups.length ? `${riskGroups.length} 类预警` : '暂无预警'}</span>
+          <span>{riskGroups.length ? t('warningClasses', { count: riskGroups.length }) : t('noWarnings')}</span>
           <strong>{summaryTitle}</strong>
-          <em>{mobileRisksOpen ? '收起' : '展开'}</em>
+          <em>{mobileRisksOpen ? t('collapse') : t('expand')}</em>
         </button>
 
         {mobileRisksOpen && (
           <div className="risk-list mobile-risk-list">
-            {riskGroups.length === 0 && <div className="empty-state">当前安排没有把未排计划卡死。</div>}
+            {riskGroups.length === 0 && <div className="empty-state">{t('noBlockingRisks')}</div>}
             {riskGroups.slice(0, 6).map(renderRiskGroup)}
           </div>
         )}
@@ -2363,13 +3291,13 @@ ${JSON.stringify(context, null, 2)}
   const renderMobileDayWorkspace = () => (
     <div className="mobile-workspace">
       <div className="mobile-workspace-header">
-        <span>D{selectedDate?.dayNumber || 1} 当天</span>
-        <span>{availableCandidateCount} 个可切换</span>
+        <span>{t('dayCurrent', { day: selectedDate?.dayNumber || 1 })}</span>
+        <span>{t('switchableCount', { count: availableCandidateCount })}</span>
       </div>
 
       <div className="section-title compact-section-title">
-        <h2>候选</h2>
-        <span>{availableCandidateCount} 可用</span>
+        <h2>{t('candidates')}</h2>
+        <span>{t('available', { count: availableCandidateCount })}</span>
       </div>
 
       <div className="plan-grid mobile-plan-grid">
@@ -2382,10 +3310,10 @@ ${JSON.stringify(context, null, 2)}
               <div>
                 <div className="title-row">
                   <h3>{plan.name}</h3>
-                  <span className={`priority-badge ${plan.priority}`}>{PRIORITY_META[plan.priority].label}</span>
+                  <span className={`priority-badge ${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>
                   {assignedDateId && (
                     <span className="assigned-badge">
-                      已排 {formatAssignedDate(assignedDateId, tripDates)}
+                      {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
                     </span>
                   )}
                 </div>
@@ -2394,6 +3322,7 @@ ${JSON.stringify(context, null, 2)}
             </div>
 
             {renderPlanStops(plan)}
+            {renderPlanBookings(plan)}
             {renderPlanNotes(plan)}
             {renderCandidateSignals({ plan, canAssign, assignedDateId, ...candidate })}
 
@@ -2403,7 +3332,7 @@ ${JSON.stringify(context, null, 2)}
               disabled={!canAssign || !selectedDate}
               onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
             >
-              选择
+              {t('select')}
             </button>
           </article>
         ))}
@@ -2411,14 +3340,59 @@ ${JSON.stringify(context, null, 2)}
     </div>
   );
 
+  const renderEmptyPlanState = () => (
+    <main className="empty-plan-layout">
+      <section className="empty-plan-panel">
+        <p className="eyebrow">{t('planSetup')}</p>
+        <h2>{t('emptyTitle')}</h2>
+        <p>
+          {t('emptyDescription')}
+        </p>
+        <div className="empty-plan-actions">
+          <button className="btn btn-primary" type="button" onClick={openBatchAiGenerator}>
+            {t('aiGenerate')}
+          </button>
+          <button className="btn btn-outline" type="button" onClick={loadExampleTrip}>
+            {t('viewExample')}
+          </button>
+          <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(true)}>
+            {t('import')}
+          </button>
+        </div>
+      </section>
+    </main>
+  );
+
+  const getTripDisplay = (trip, isCurrentTrip = false) => {
+    const tripHasPlans = isCurrentTrip
+      ? hasInitializedPlans
+      : Array.isArray(trip.plans) && trip.plans.length > 0;
+
+    return {
+      isEmpty: !tripHasPlans,
+      name: tripHasPlans ? (isCurrentTrip ? tripName : trip.name) : t('emptyTripName'),
+      meta: tripHasPlans
+        ? `${formatTripRange(isCurrentTrip ? startDateStr : trip.startDateStr, isCurrentTrip ? tripDays : trip.tripDays, language)} · ${t('daysCount', { count: isCurrentTrip ? tripDays : trip.tripDays })}`
+        : '',
+    };
+  };
+
+  const activeTripDisplay = getTripDisplay(activeTripOption || {}, true);
+  const tripMenuDisabled = activeTripDisplay.isEmpty && visibleTrips.length <= 1;
+
   return (
     <div className="app-shell">
       <header className="trip-header">
         <div className="trip-brand">
-          <p className="eyebrow">Travel Gacha</p>
-          <h1>行程扭蛋</h1>
+          <div className="brand-topline">
+            <p className="eyebrow">Travel Gacha</p>
+            <button className="language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')}>
+              {t('langSwitch')}
+            </button>
+          </div>
+          <h1>{t('appName')}</h1>
         </div>
-        <div className="trip-switcher" aria-label="切换旅行计划">
+        <div className="trip-switcher" aria-label={t('tripSwitcher')}>
           <div
             className="trip-menu"
             onBlur={(event) => {
@@ -2426,27 +3400,25 @@ ${JSON.stringify(context, null, 2)}
             }}
           >
             <button
-              className={`trip-menu-trigger ${tripMenuOpen ? 'is-open' : ''}`}
+              className={`trip-menu-trigger ${tripMenuOpen ? 'is-open' : ''} ${activeTripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
               type="button"
               aria-haspopup="listbox"
               aria-expanded={tripMenuOpen}
+              disabled={tripMenuDisabled}
               onClick={() => setTripMenuOpen((current) => !current)}
             >
-              <span>{activeTripOption?.id === activeTripId ? tripName : activeTripOption?.name || tripName}</span>
-              <em>{formatTripRange(startDateStr, tripDays)} · {tripDays} 天</em>
+              <span>{activeTripDisplay.name}</span>
+              {activeTripDisplay.meta && <em>{activeTripDisplay.meta}</em>}
             </button>
             {tripMenuOpen && (
-              <div className="trip-menu-popover" role="listbox" aria-label="旅行计划">
+              <div className="trip-menu-popover" role="listbox" aria-label={t('tripList')}>
                 {visibleTrips.map((trip) => {
                   const isCurrentTrip = trip.id === activeTripId;
-                  const displayName = isCurrentTrip ? tripName : trip.name;
-                  const displayRange = isCurrentTrip
-                    ? formatTripRange(startDateStr, tripDays)
-                    : formatTripRange(trip.startDateStr, trip.tripDays);
+                  const tripDisplay = getTripDisplay(trip, isCurrentTrip);
 
                   return (
                     <button
-                      className={`trip-menu-option ${isCurrentTrip ? 'is-selected' : ''}`}
+                      className={`trip-menu-option ${isCurrentTrip ? 'is-selected' : ''} ${tripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
                       key={trip.id}
                       type="button"
                       role="option"
@@ -2454,8 +3426,8 @@ ${JSON.stringify(context, null, 2)}
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={() => switchTrip(trip.id)}
                     >
-                      <span>{displayName}</span>
-                      <em>{displayRange} · {isCurrentTrip ? tripDays : trip.tripDays} 天</em>
+                      <span>{tripDisplay.name}</span>
+                      {tripDisplay.meta && <em>{tripDisplay.meta}</em>}
                     </button>
                   );
                 })}
@@ -2465,31 +3437,36 @@ ${JSON.stringify(context, null, 2)}
           <button
             className="icon-btn trip-edit-btn"
             type="button"
+            disabled={activeTripDisplay.isEmpty}
             onClick={() => { setTripMenuOpen(false); setEditorOpen(true); }}
-            aria-label="编辑计划"
-            title="编辑计划"
+            aria-label={activeTripDisplay.isEmpty ? t('noEditablePlan') : t('editPlan')}
+            title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('editPlan')}
           >
             <span className="edit-icon" aria-hidden="true" />
           </button>
-          <button className="icon-btn" type="button" onClick={createNewTrip} aria-label="新建旅行计划">
+          <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')}>
             +
+          </button>
+          <button className="icon-btn mobile-language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')} aria-label={t('langSwitchTitle')}>
+            {t('langSwitch')}
           </button>
         </div>
       </header>
 
+      {hasInitializedPlans ? (
       <main className="app-layout">
         <aside className="side-panel schedule-panel">
           <div className="panel-header">
-            <h2>行程</h2>
+            <h2>{t('itinerary')}</h2>
           </div>
 
-          <div className="mini-calendar" aria-label="每日状态速览">
+          <div className="mini-calendar" aria-label={t('dailyOverview')}>
             {tripDates.map((date) => {
               const entry = schedule[date.id];
               const plan = entry ? plansById.get(entry.planId) : null;
               const selected = selectedDate?.id === date.id;
-              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData);
-              const calendarState = getCalendarDayState(plan, insight);
+              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, language);
+              const calendarState = getCalendarDayState(plan, insight, language);
 
               return (
                 <button
@@ -2510,17 +3487,21 @@ ${JSON.stringify(context, null, 2)}
           {renderMobileRiskPanel()}
 
           <div className="mobile-ai-entry">
-            <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('replan')}>
-              AI 规划
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => openAiPlanner(hasInitializedPlans ? 'replan' : 'generate')}
+            >
+              {hasInitializedPlans ? t('aiReplan') : t('aiGenerate')}
             </button>
           </div>
 
-          <div className="day-list" aria-label="日期列表">
+          <div className="day-list" aria-label={t('dateList')}>
             {tripDates.map((date) => {
               const entry = schedule[date.id];
               const plan = entry ? plansById.get(entry.planId) : null;
               const selected = selectedDate?.id === date.id;
-              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData);
+              const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, language);
               return (
                 <Fragment key={date.id}>
                   <button
@@ -2536,8 +3517,8 @@ ${JSON.stringify(context, null, 2)}
                     <span className="day-main">
                       <span className="day-date">{date.display}</span>
                       <span className="day-plan">
-                        {plan?.name || '未安排'}
-                        {plan && <span className={`day-priority priority-${plan.priority}`}>{PRIORITY_META[plan.priority].label}</span>}
+                        {plan?.name || t('unassigned')}
+                        {plan && <span className={`day-priority priority-${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>}
                       </span>
                     </span>
                     {insight.label && (
@@ -2568,20 +3549,20 @@ ${JSON.stringify(context, null, 2)}
               type="button"
               onClick={() => selectNeighborDate(-1)}
               disabled={selectedIndex <= 0}
-              aria-label="上一天"
+              aria-label={t('previousDay')}
             >
               ‹
             </button>
             <div>
               <p className="eyebrow">D{selectedDate?.dayNumber || 1}</p>
-              <h2>{selectedDate?.display || '选择日期'}</h2>
+              <h2>{selectedDate?.display || t('chooseDate')}</h2>
             </div>
             <button
               className="nav-btn"
               type="button"
               onClick={() => selectNeighborDate(1)}
               disabled={selectedIndex < 0 || selectedIndex >= tripDates.length - 1}
-              aria-label="下一天"
+              aria-label={t('nextDay')}
             >
               ›
             </button>
@@ -2593,8 +3574,8 @@ ${JSON.stringify(context, null, 2)}
           </div>
 
           <div className="section-title">
-            <h2>可切换计划</h2>
-            <span>{availableCandidateCount} 可用</span>
+            <h2>{t('switchablePlans')}</h2>
+            <span>{t('available', { count: availableCandidateCount })}</span>
           </div>
 
           <div className="plan-grid">
@@ -2607,10 +3588,10 @@ ${JSON.stringify(context, null, 2)}
                   <div>
                     <div className="title-row">
                       <h3>{plan.name}</h3>
-                      <span className={`priority-badge ${plan.priority}`}>{PRIORITY_META[plan.priority].label}</span>
+                      <span className={`priority-badge ${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>
                       {assignedDateId && (
                         <span className="assigned-badge">
-                          已排 {formatAssignedDate(assignedDateId, tripDates)}
+                          {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
                         </span>
                       )}
                     </div>
@@ -2619,6 +3600,7 @@ ${JSON.stringify(context, null, 2)}
                 </div>
 
                 {renderPlanStops(plan)}
+                {renderPlanBookings(plan)}
                 {renderPlanNotes(plan)}
                 {renderCandidateSignals({ plan, canAssign, assignedDateId, ...candidate })}
 
@@ -2628,7 +3610,7 @@ ${JSON.stringify(context, null, 2)}
                   disabled={!canAssign || !selectedDate}
                   onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
                 >
-                  选择
+                  {t('select')}
                 </button>
               </article>
             ))}
@@ -2637,42 +3619,46 @@ ${JSON.stringify(context, null, 2)}
 
         <aside className="side-panel status-panel">
           <div className="panel-header">
-            <h2>预警</h2>
-            <span className="small-stat">{riskGroups.length} 类</span>
+            <h2>{t('warnings')}</h2>
+            <span className="small-stat">{t('warningClasses', { count: riskGroups.length })}</span>
           </div>
 
           <div className="risk-list">
-            {riskGroups.length === 0 && <div className="empty-state">当前安排没有把未排计划卡死。</div>}
+            {riskGroups.length === 0 && <div className="empty-state">{t('noBlockingRisks')}</div>}
             {riskGroups.slice(0, 8).map(renderRiskGroup)}
           </div>
 
           <div className="workflow-panel ai-workflow-panel">
             <div className="panel-header compact">
-              <h2>AI 规划</h2>
-              <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('replan')}>
-                打开
+              <h2>{t('aiReplan')}</h2>
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => openAiPlanner(hasInitializedPlans ? 'replan' : 'generate')}
+              >
+                {t('open')}
               </button>
             </div>
             <p className="helper-text">
               {hasInitializedPlans
-                ? '用于大改剩余行程：整理未完成计划、当前安排、天气和预警，再复制给你常用的 AI。'
-                : '用于从空计划开始生成计划池、备选方案和初始日程。'}
+                ? t('aiReplanHelper')
+                : t('aiGenerateHelperWhenEmpty')}
             </p>
           </div>
 
           <div className="workflow-panel">
             <div className="panel-header compact">
-              <h2>天气</h2>
+              <h2>{t('weather')}</h2>
               <button className="btn btn-primary" type="button" onClick={refreshWeather} disabled={weatherLoading}>
-                {weatherLoading ? '更新中' : '更新天气'}
+                {weatherLoading ? t('updating') : t('updateWeather')}
               </button>
             </div>
             <p className="helper-text">
-              使用 Open-Meteo 按计划地点查询；同地点和同日期范围 2 小时内复用缓存，跨城和多地点计划会合并评估对应地点天气。
+              {t('weatherHelper')}
             </p>
             {weatherError && <div className="risk-item warning"><p>{weatherError}</p></div>}
             <div className="weather-source-list">
-              {Object.entries(weatherData).length === 0 && <span>尚未获取天气</span>}
+              {Object.entries(weatherData).length === 0 && <span>{t('noWeather')}</span>}
               {Object.entries(weatherData).map(([key, value]) => (
                 <span key={key}>{value.label || key}</span>
               ))}
@@ -2681,64 +3667,55 @@ ${JSON.stringify(context, null, 2)}
 
         </aside>
       </main>
+      ) : renderEmptyPlanState()}
 
       {aiPlannerOpen && (
         <div className="modal-overlay" onClick={() => setAiPlannerOpen(false)}>
           <div className="modal ai-planner-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <div>
-                <p className="eyebrow">AI Planning</p>
-                <h2>AI 规划 · {AI_PLANNER_MODES[aiPlannerMode].label}</h2>
+                <p className="eyebrow">{t('aiPlanning')}</p>
+                <h2>{t('aiReplan')}</h2>
               </div>
-              <button className="icon-btn" type="button" onClick={() => setAiPlannerOpen(false)} aria-label="关闭 AI 规划">
+              <button className="icon-btn" type="button" onClick={() => setAiPlannerOpen(false)} aria-label={t('closeAiPlanning')}>
                 ×
               </button>
             </div>
 
-            <div className="ai-mode-tabs" role="tablist" aria-label="AI 规划类型">
-              {Object.entries(AI_PLANNER_MODES)
-                .filter(([mode]) => (hasInitializedPlans ? mode !== 'initial' : mode === 'initial'))
-                .map(([mode, meta]) => (
-                  <button
-                    className={aiPlannerMode === mode ? 'is-selected' : ''}
-                    key={mode}
-                    type="button"
-                    onClick={() => setAiPlannerMode(mode)}
-                  >
-                    {meta.label}
-                  </button>
-                ))}
-            </div>
             <p className="ai-planner-summary">
-              我们会整理当前行程、天气、限制和预警；你补充临时需求后，复制 Prompt 给常用 AI。
-              <span>{AI_PLANNER_MODES[aiPlannerMode].helper}</span>
+              {t('aiPlanningSummary')}
+              <span>{aiReplanText.helper}</span>
             </p>
 
             <label>
-              <span>你的补充问题</span>
+              <span>{t('extraQuestion')}</span>
               <textarea
                 className="textarea ai-question"
                 value={aiPlannerQuestion}
                 onChange={(event) => setAiPlannerQuestion(event.target.value)}
-                placeholder={AI_PLANNER_MODES[aiPlannerMode].placeholder}
+                placeholder={aiReplanText.placeholder}
               />
             </label>
 
             <label>
-              <span>将复制给 AI 的内容</span>
+              <span>{t('aiResult')}</span>
               <textarea
-                className="textarea ai-prompt-preview"
-                readOnly
-                value={buildAiPlanningPrompt()}
+                className="textarea ai-result"
+                value={aiPlannerResult}
+                onChange={(event) => setAiPlannerResult(event.target.value)}
+                placeholder={t('aiResultPlaceholder')}
               />
             </label>
 
             <div className="modal-actions">
               <button className="btn btn-outline" type="button" onClick={() => setAiPlannerOpen(false)}>
-                关闭
+                {t('close')}
               </button>
               <button className="btn btn-primary" type="button" onClick={copyAiPlanningPrompt}>
-                复制 Prompt
+                {t('copyToAi')}
+              </button>
+              <button className="btn btn-primary" type="button" onClick={applyAiPlannerResult}>
+                {t('applyResult')}
               </button>
             </div>
           </div>
@@ -2750,81 +3727,189 @@ ${JSON.stringify(context, null, 2)}
           <div className="modal trip-editor-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
               <div>
-                <p className="eyebrow">Plan Setup</p>
-                <h2>编辑计划</h2>
+                <p className="eyebrow">{t('planSetup')}</p>
+                <h2>{editorPlanId ? (isCreatingPlan ? t('addPlan') : t('editSinglePlan')) : t('editPlan')}</h2>
               </div>
-              <button className="icon-btn" type="button" onClick={() => setEditorOpen(false)} aria-label="关闭编辑计划">
+              <button className="icon-btn" type="button" onClick={() => setEditorOpen(false)} aria-label={t('closeEditor')}>
                 ×
               </button>
             </div>
 
+            {editorPlanId ? (
+              <div className="plan-editor-detail">
+                <button className="btn btn-small btn-outline plan-back-btn" type="button" onClick={closePlanEditor}>
+                  {t('backToList')}
+                </button>
+
+                <div className="plan-editor-current">
+                  <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
+                  <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
+                  {!isCreatingPlan && editorPlan && (
+                    <>
+                      <p>{editorPlan.description}</p>
+                      {renderPlanStops(editorPlan)}
+                      {renderPlanBookings(editorPlan)}
+                      {renderPlanNotes(editorPlan)}
+                    </>
+                  )}
+                  {isCreatingPlan && (
+                    <p>{t('newPlanHelp')}</p>
+                  )}
+                </div>
+
+                <label>
+                  <span>{t('yourRequest')}</span>
+                  <textarea
+                    className="textarea plan-ai-question"
+                    value={planAiQuestion}
+                    onChange={(event) => setPlanAiQuestion(event.target.value)}
+                    placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
+                  />
+                </label>
+
+                <label>
+                  <span>{t('aiResult')}</span>
+                  <textarea
+                    className="textarea plan-ai-result"
+                    value={planAiResult}
+                    onChange={(event) => setPlanAiResult(event.target.value)}
+                    placeholder={t('planAiResultPlaceholder')}
+                  />
+                </label>
+
+                <div className="modal-actions">
+                  <button className="btn btn-outline" type="button" onClick={copyPlanAiPrompt}>
+                    {t('copyToAi')}
+                  </button>
+                  <button className="btn btn-primary" type="button" onClick={applyPlanAiResult}>
+                    {t('applyResult')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="trip-editor-grid">
-              <label>
-                <span>计划名称</span>
+              <label className="trip-name-field">
+                <span>{t('planName')}</span>
                 <input
                   className="input"
                   value={tripName}
                   onChange={(event) => setTripName(event.target.value)}
                 />
               </label>
-              <label>
-                <span>出发</span>
-                <input
-                  className="input"
-                  type="date"
-                  value={startDateStr}
-                  onChange={(event) => {
-                    setStartDateStr(event.target.value);
-                    setSelectedDateId(getSmartSelectedDate(event.target.value, tripDays));
-                  }}
-                />
-              </label>
-              <label>
-                <span>天数</span>
-                <input
-                  className="input"
-                  min="1"
-                  max="30"
-                  type="number"
-                  value={tripDays}
-                  onChange={(event) => {
-                    const nextTripDays = clampTripDays(event.target.value);
-                    setTripDays(nextTripDays);
-                    setSelectedDateId(getSmartSelectedDate(startDateStr, nextTripDays));
-                  }}
-                />
-              </label>
+              <div className="date-range-field">
+                <span>{t('dateRange')}</span>
+                <div className="date-range-inputs">
+                  <label>
+                    <em>{t('start')}</em>
+                    <input
+                      className="input"
+                      type="date"
+                      value={startDateStr}
+                      onChange={(event) => {
+                        const nextStartDate = event.target.value;
+                        if (!nextStartDate) return;
+                        setStartDateStr(nextStartDate);
+                        setSelectedDateId(getSmartSelectedDate(nextStartDate, tripDays));
+                      }}
+                    />
+                  </label>
+                  <label>
+                    <em>{t('end')}</em>
+                    <input
+                      className="input"
+                      type="date"
+                      min={startDateStr}
+                      max={addDays(startDateStr, 29)}
+                      value={endDateStr}
+                      onChange={(event) => {
+                        if (!event.target.value) return;
+                        const nextTripDays = getInclusiveDateSpan(startDateStr, event.target.value);
+                        setTripDays(nextTripDays);
+                        setSelectedDateId(getSmartSelectedDate(startDateStr, nextTripDays));
+                      }}
+                    />
+                  </label>
+                  <strong>{t('daysCount', { count: tripDays })}</strong>
+                </div>
+              </div>
             </div>
 
             <div className="editor-section">
               <div className="panel-header compact">
-                <h2>计划数据</h2>
-                <span className="small-stat">{normalizedPlans.length} 个计划</span>
+                <h2>{t('planData')}</h2>
+                <span className="small-stat">{t('plansCount', { count: normalizedPlans.length })}</span>
               </div>
               <div className="action-grid editor-action-grid">
-                {!hasInitializedPlans && (
-                  <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('initial')} title="AI 初始规划">
-                    AI
-                  </button>
-                )}
-                {hasInitializedPlans && (
-                  <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('extend')} title="AI 增量规划">
-                    AI
-                  </button>
-                )}
-                <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(true)} title="导入 JSON">
-                  导入
+                <button
+                  className={`btn ai-toggle-btn ${batchAiOpen ? 'is-open' : 'btn-primary'}`}
+                  type="button"
+                  aria-expanded={batchAiOpen}
+                  onClick={() => {
+                    setEditorPlanId(null);
+                    setAiPlannerMode('generate');
+                    setBatchAiOpen((current) => !current);
+                  }}
+                  title={t('aiPlanPoolTitle')}
+                >
+                  <span>{t('aiGenerate')}</span>
+                  <span className="toggle-chevron" aria-hidden="true" />
                 </button>
-                <button className="btn btn-outline" type="button" onClick={handleExportState} title="复制当前 JSON">
-                  导出
+                <button className="btn btn-outline" type="button" onClick={loadExampleTrip} title={t('loadFullExample')}>
+                  {t('viewExample')}
+                </button>
+                <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(true)} title={t('importJsonTitle')}>
+                  {t('import')}
+                </button>
+                <button className="btn btn-outline" type="button" onClick={handleExportState} title={t('copyCurrentJson')}>
+                  {t('export')}
                 </button>
               </div>
+              {batchAiOpen && (
+                <div className="editor-ai-panel">
+                  <div className="panel-header compact">
+                    <div>
+                      <h3>{t('aiPlanPoolTitle')}</h3>
+                      <p>{t('aiPlanPoolHelp')}</p>
+                    </div>
+                  </div>
+
+                  <label>
+                    <span>{t('yourRequest')}</span>
+                    <textarea
+                      className="textarea ai-question"
+                      value={aiPlannerQuestion}
+                      onChange={(event) => setAiPlannerQuestion(event.target.value)}
+                      placeholder={aiGenerateText.placeholder}
+                    />
+                  </label>
+
+                  <label>
+                    <span>{t('aiResult')}</span>
+                    <textarea
+                      className="textarea ai-result"
+                      value={aiPlannerResult}
+                      onChange={(event) => setAiPlannerResult(event.target.value)}
+                      placeholder={t('aiResultPlaceholder')}
+                    />
+                  </label>
+
+                  <div className="modal-actions">
+                    <button className="btn btn-outline" type="button" onClick={copyBatchAiPrompt}>
+                      {t('copyToAi')}
+                    </button>
+                    <button className="btn btn-primary" type="button" onClick={applyAiPlannerResult}>
+                      {t('applyResult')}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="editor-section">
               <div className="panel-header compact">
-                <h2>计划清单</h2>
-                <span className="small-stat">{normalizedPlans.length} 项</span>
+                <h2>{t('planList')}</h2>
+                <span className="small-stat">{t('itemsCount', { count: normalizedPlans.length })}</span>
               </div>
               <div className="plan-review-list">
                 {normalizedPlans.map((plan) => {
@@ -2834,48 +3919,65 @@ ${JSON.stringify(context, null, 2)}
                       <div>
                         <strong>{plan.name}</strong>
                         <span>
-                          {PRIORITY_META[plan.priority].label}
-                          {assignedDate ? ` · 已排 ${formatAssignedDate(assignedDate, tripDates)}` : ' · 未排'}
+                          {getPriorityLabel(plan.priority, language)}
+                          {assignedDate ? t('scheduledSuffix', { date: formatAssignedDate(assignedDate, tripDates) }) : t('unscheduledSuffix')}
                         </span>
                       </div>
-                      <button
-                        className="btn btn-small btn-outline"
-                        type="button"
-                        onClick={() => removePlan(plan.id)}
-                        aria-label={`删除 ${plan.name}`}
-                        title="删除计划"
-                      >
-                        删
-                      </button>
+                      <div className="plan-review-actions">
+                        <button
+                          className="icon-btn compact-icon-btn"
+                          type="button"
+                          onClick={() => openPlanEditor(plan.id)}
+                          aria-label={`${t('editPlan')} ${plan.name}`}
+                          title={t('editPlan')}
+                        >
+                          <span className="edit-icon" aria-hidden="true" />
+                        </button>
+                        <button
+                          className="icon-btn compact-icon-btn danger-icon-btn"
+                          type="button"
+                          onClick={() => removePlan(plan.id)}
+                          aria-label={`${t('delete')} ${plan.name}`}
+                          title={t('delete')}
+                        >
+                          <span className="trash-icon" aria-hidden="true" />
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
+                <button className="plan-add-row" type="button" onClick={() => openPlanEditor()}>
+                  <strong>{t('addPlan')}</strong>
+                  <span>{t('addPlanHelp')}</span>
+                </button>
               </div>
             </div>
 
             <div className="editor-section archive-section">
               <div className="trip-lifecycle-actions">
                 <button className="btn btn-outline" type="button" onClick={archiveCurrentTrip}>
-                  归档
+                  {t('archive')}
                 </button>
                 <button className="btn btn-danger" type="button" onClick={deleteCurrentTrip}>
-                  删除
+                  {t('delete')}
                 </button>
               </div>
               {archivedTrips.length > 0 && (
                 <div className="archived-trip-list">
-                  <strong>已归档</strong>
+                  <strong>{t('archived')}</strong>
                   {archivedTrips.map((trip) => (
                     <div className="archived-trip-row" key={trip.id}>
-                      <span>{trip.name} · {formatTripRange(trip.startDateStr, trip.tripDays)}</span>
+                      <span>{trip.name} · {formatTripRange(trip.startDateStr, trip.tripDays, language)}</span>
                       <button className="btn btn-small btn-outline" type="button" onClick={() => restoreArchivedTrip(trip.id)}>
-                        恢复
+                        {t('restore')}
                       </button>
                     </div>
                   ))}
                 </div>
               )}
             </div>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -2884,8 +3986,8 @@ ${JSON.stringify(context, null, 2)}
         <div className="modal-overlay" onClick={() => setImportModalOpen(false)}>
           <div className="modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
-              <h2>导入 JSON</h2>
-              <button className="icon-btn" type="button" onClick={() => setImportModalOpen(false)} aria-label="关闭">
+              <h2>{t('importJsonTitle')}</h2>
+              <button className="icon-btn" type="button" onClick={() => setImportModalOpen(false)} aria-label={t('close')}>
                 ×
               </button>
             </div>
@@ -2898,10 +4000,10 @@ ${JSON.stringify(context, null, 2)}
             />
             <div className="modal-actions">
               <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(false)}>
-                取消
+                {t('cancel')}
               </button>
               <button className="btn btn-primary" type="button" onClick={handleImport}>
-                导入
+                {t('import')}
               </button>
             </div>
           </div>
@@ -2912,25 +4014,25 @@ ${JSON.stringify(context, null, 2)}
         <div className="modal-overlay" onClick={() => setPendingAssignment(null)}>
           <div className="modal impact-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
-              <h2>调整影响预览</h2>
-              <button className="icon-btn" type="button" onClick={() => setPendingAssignment(null)} aria-label="关闭">
+              <h2>{t('impactPreview')}</h2>
+              <button className="icon-btn" type="button" onClick={() => setPendingAssignment(null)} aria-label={t('close')}>
                 ×
               </button>
             </div>
 
             <div className="impact-summary">
               <strong>{pendingAssignment.targetPlan.name}</strong>
-              <span>安排到 {pendingAssignment.dateId}</span>
+              <span>{t('assignToDate', { date: pendingAssignment.dateId })}</span>
             </div>
 
             {pendingAssignment.clears.length > 0 && (
               <div className="impact-section">
-                <h3>会清空这些日期</h3>
+                <h3>{t('datesToClear')}</h3>
                 {pendingAssignment.clears.map((item) => (
                   <div className="impact-row" key={`${item.dateId}-${item.plan.id}`}>
                     <span>{item.dateId}</span>
                     <strong>{item.plan.name}</strong>
-                    <em>{item.reason}</em>
+                    <em>{translateIssue(item.reason, language)}</em>
                   </div>
                 ))}
               </div>
@@ -2938,11 +4040,11 @@ ${JSON.stringify(context, null, 2)}
 
             {pendingAssignment.nextRisks.length > 0 && (
               <div className="impact-section">
-                <h3>继续后产生的风险</h3>
+                <h3>{t('nextRisks')}</h3>
                 {pendingAssignment.nextRisks.map((risk) => (
                   <div className={`risk-item ${risk.level}`} key={risk.plan.id}>
                     <strong>{risk.plan.name}</strong>
-                    <p>{risk.title}{risk.reasons.length ? `：${risk.reasons.join(' / ')}` : ''}</p>
+                    <p>{translateRiskTitle(risk.title, language)}{risk.reasons.length ? `${language === 'en' ? ': ' : '：'}${risk.reasons.map((reason) => translateIssue(reason, language)).join(' / ')}` : ''}</p>
                   </div>
                 ))}
               </div>
@@ -2950,14 +4052,14 @@ ${JSON.stringify(context, null, 2)}
 
             <div className="modal-actions">
               <button className="btn btn-outline" type="button" onClick={() => setPendingAssignment(null)}>
-                取消
+                {t('cancel')}
               </button>
               <button
                 className="btn btn-primary"
                 type="button"
                 onClick={confirmPendingAssignment}
               >
-                继续调整
+                {t('continueAdjust')}
               </button>
             </div>
           </div>
