@@ -30,11 +30,15 @@
 
 ### AI 工作流
 
-应用不会内嵌 AI 服务，也不会把数据自动发送到第三方。AI 相关功能采用「复制提示词 -> 外部 AI 生成 -> 粘贴 JSON」的方式：
+应用不直接接入通用 AI API，也不会把数据自动发送到第三方。旅行计划通常需要 AI 产品侧的一整套工具支持，例如地图、搜索和位置理解；如果只接入裸模型 API，效果反而容易变差。作为计划工具，行程扭蛋也没有必要内建一套复杂的 AI 周边体系。
+
+当前 AI 相关功能采用「复制提示词 -> 外部 AI 生成 -> 粘贴 JSON」的方式：
 
 - `AI 生成计划池`：适合从空计划开始生成完整计划，或给已有行程补充候选方案。
 - `AI 编辑单项`：适合新增或修改一个具体计划。
 - `AI 重排`：适合旅行途中根据剩余天数、天气和已去项目重新安排。
+
+未来更自然的方向，可能是把行程扭蛋作为服务能力提供给 AI 侧，让用户直接从 AI 产品中使用。
 
 ### 天气数据
 
@@ -88,11 +92,15 @@ Data is stored in browser `localStorage` by default. The current version is a fr
 
 ### AI Workflow
 
-The app does not embed an AI service and does not automatically send data to third parties. AI features use a copy-prompt, external-AI, paste-JSON workflow:
+The app does not directly call a general-purpose AI API, and it does not automatically send data to third parties. Travel planning usually depends on the broader tool stack inside AI products, such as maps, search and location understanding. Connecting only a bare model API can produce a weaker result, while rebuilding that surrounding system is unnecessary for a planning tool.
+
+Current AI features use a copy-prompt, external-AI, paste-JSON workflow:
 
 - `AI Generate Plan Pool`: create a full plan from an empty trip, or add candidates to an existing trip.
 - `AI Edit Single Plan`: add or modify one concrete plan.
 - `AI Replan`: rearrange the remaining trip based on remaining days, weather and completed plans.
+
+A more natural future direction may be to expose Plan Gacha as a service that users can access directly from AI products.
 
 ### Weather Data
 

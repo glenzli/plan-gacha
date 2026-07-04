@@ -146,7 +146,7 @@ h3 {
   color: var(--text);
 }
 
-.mobile-language-toggle {
+.icon-btn.mobile-language-toggle {
   display: none;
   font-size: 0.72rem;
 }
@@ -938,6 +938,37 @@ label {
   gap: 0.75rem;
 }
 
+.candidate-group-list {
+  display: grid;
+  gap: 1rem;
+}
+
+.candidate-group {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.candidate-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0 0.1rem;
+}
+
+.candidate-group-title h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.94rem;
+  font-weight: 900;
+}
+
+.candidate-group-title span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 850;
+}
+
 .plan-card {
   display: flex;
   flex-direction: column;
@@ -962,6 +993,10 @@ label {
   background: var(--surface-soft);
 }
 
+.plan-card.is-weather-risk {
+  border-color: #ffc9bd;
+}
+
 .plan-card.priority-must {
   border-left: 4px solid var(--coral);
 }
@@ -979,6 +1014,37 @@ label {
   margin-top: 0.25rem;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.candidate-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 2.6rem;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.candidate-actions .btn-card {
+  min-height: 2.6rem;
+}
+
+.candidate-actions .btn-card.is-risky {
+  border-color: var(--coral);
+  background: var(--coral);
+}
+
+.candidate-actions .btn-card.is-risky:hover:not(:disabled) {
+  background: var(--coral-strong);
+}
+
+.candidate-edit-btn {
+  width: 2.6rem;
+  min-width: 2.6rem;
+  height: 2.6rem;
+  color: var(--muted);
+}
+
+.candidate-edit-btn:hover {
+  color: var(--text);
 }
 
 .title-row {
@@ -2318,7 +2384,7 @@ label {
     padding: 0;
   }
 
-  .mobile-language-toggle {
+  .icon-btn.mobile-language-toggle {
     display: inline-grid;
   }
 
@@ -2703,7 +2769,7 @@ label {
   .mobile-workspace .plan-card.is-mobile-collapsed .booking-list,
   .mobile-workspace .plan-card.is-mobile-collapsed .plan-notes,
   .mobile-workspace .plan-card.is-mobile-collapsed .weather-line,
-  .mobile-workspace .plan-card.is-mobile-collapsed .btn-card {
+  .mobile-workspace .plan-card.is-mobile-collapsed .candidate-actions {
     display: none;
   }
 

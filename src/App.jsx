@@ -9,6 +9,7 @@ const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const WEATHER_FETCH_CONCURRENCY = 4;
 const WEATHER_ERRORS_KEY = Symbol('weatherErrors');
 const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
+const weatherTranslationCache = new Map();
 const NEW_PLAN_EDITOR_ID = '__new_plan__';
 const DEFAULT_LANGUAGE = 'zh';
 const SUPPORTED_LANGUAGES = ['zh', 'en'];
@@ -136,7 +137,7 @@ const UI_TEXT = {
     yourRequest: '你的需求',
     newPlanPlaceholder: '例如：新增一个雨天室内备用计划，下午半天，适合体力低的时候。',
     editPlanPlaceholder: '例如：把这个计划改成雨天可执行，减少户外路段，保留必去点。',
-    planAiResultPlaceholder: '粘贴 AI 输出的 JSON，例如 {"plans": [{"id": "..."}]}',
+    planAiResultPlaceholder: '粘贴 AI 输出的单个计划 JSON，例如 {"id": "...", "name": "..."}',
     planName: '计划名称',
     dateRange: '日期范围',
     start: '开始',
@@ -181,8 +182,9 @@ const UI_TEXT = {
     cancel: '取消',
     impactPreview: '调整影响预览',
     assignToDate: ({ date }) => `安排到 ${date}`,
+    datesToMove: '会移动原安排',
     datesToClear: '会清空这些日期',
-    nextRisks: '继续后产生的风险',
+    nextRisks: '继续后新增风险',
     continueAdjust: '继续调整',
     currentPlanLabel: '当前方案',
     unplannedToday: '当天未安排',
@@ -196,6 +198,9 @@ const UI_TEXT = {
     expand: '展开',
     switchableCount: ({ count }) => `${count} 个可切换`,
     candidates: '候选',
+    candidateReady: '可直接选择',
+    candidateScheduled: '已安排，可移动',
+    candidateUnavailable: '不可选',
     select: '选择',
     noWeatherForPlace: '尚未获取地点天气，先更新天气',
     reminders: '特别提醒',
@@ -337,7 +342,7 @@ const UI_TEXT = {
     yourRequest: 'Your request',
     newPlanPlaceholder: 'Example: add a rainy-day indoor backup for a low-energy afternoon.',
     editPlanPlaceholder: 'Example: make this plan workable in rain, reduce outdoor segments, keep the must-go stop.',
-    planAiResultPlaceholder: 'Paste AI JSON, for example {"plans": [{"id": "..."}]}',
+    planAiResultPlaceholder: 'Paste one plan JSON, for example {"id": "...", "name": "..."}',
     planName: 'Trip name',
     dateRange: 'Date range',
     start: 'Start',
@@ -382,8 +387,9 @@ const UI_TEXT = {
     cancel: 'Cancel',
     impactPreview: 'Impact preview',
     assignToDate: ({ date }) => `Assign to ${date}`,
+    datesToMove: 'Original assignment to move',
     datesToClear: 'Dates to clear',
-    nextRisks: 'Risks after continuing',
+    nextRisks: 'New risks after continuing',
     continueAdjust: 'Continue',
     currentPlanLabel: 'Current plan',
     unplannedToday: 'No plan today',
@@ -397,6 +403,9 @@ const UI_TEXT = {
     expand: 'Expand',
     switchableCount: ({ count }) => `${count} switchable`,
     candidates: 'Candidates',
+    candidateReady: 'Ready to select',
+    candidateScheduled: 'Scheduled elsewhere',
+    candidateUnavailable: 'Unavailable',
     select: 'Select',
     noWeatherForPlace: 'No location weather yet. Update weather first.',
     reminders: 'Reminders',
@@ -559,6 +568,14 @@ const LEGACY_INTENSITY_MAP = {
   normal: 'normal',
   full: 'hard',
 };
+const HARD_BLOCKED_WEATHER = ['storm'];
+const SEVERE_WEATHER = ['storm', 'heavy_rain'];
+const SOFT_RAIN_WEATHER = ['drizzle', 'rain'];
+const RAIN_PROBABILITY_NOTICE = 31;
+const RAIN_PROBABILITY_BLOCK = 51;
+const RAIN_PROBABILITY_HIGH = 70;
+const INDOOR_HINTS = ['室内', '馆内', '博物馆', '美术馆', '水族馆', '展馆', '商场', '购物', '咖啡', '餐厅', '避暑', '避雨', 'indoor', 'museum', 'aquarium', 'mall', 'shopping', 'cafe'];
+const OUTDOOR_HINTS = ['户外', '室外', '森林', '瀑布', '溪谷', '溪流', '徒步', '远足', '散步', '公园', '湖畔', '海边', '海岸', '山', '露天', 'outside', 'outdoor', 'forest', 'waterfall', 'hike', 'trail', 'park', 'walk', 'lake', 'beach', 'coast', 'mountain'];
 
 function normalizeLanguage(value) {
   return SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
@@ -771,6 +788,35 @@ const YANTAI_LOCATION = {
   weatherLabel: '烟台市',
   latitude: 37.4638,
   longitude: 121.4479,
+};
+
+const WEATHER_QUERY_CHAR_ALIASES = {
+  长: '長',
+  户: '戸',
+  广: '広',
+  岛: '島',
+  滨: '浜',
+  泽: '沢',
+  龟: '亀',
+  德: '徳',
+  黑: '黒',
+  乡: '郷',
+  館: '館',
+  阪: '阪',
+};
+
+const WEATHER_LOCATION_FALLBACKS = {
+  大和郡山市: { weatherLabel: '大和郡山市', latitude: 34.6498, longitude: 135.7826, timezone: 'Asia/Tokyo' },
+  箕面市: { weatherLabel: '箕面市', latitude: 34.8269, longitude: 135.4705, timezone: 'Asia/Tokyo' },
+  京都市: { weatherLabel: '京都市', latitude: 35.0116, longitude: 135.7681, timezone: 'Asia/Tokyo' },
+  京都市下京区: { weatherLabel: '京都市下京区', latitude: 34.9876, longitude: 135.7555, timezone: 'Asia/Tokyo' },
+  大阪市: { weatherLabel: '大阪市', latitude: 34.6937, longitude: 135.5023, timezone: 'Asia/Tokyo' },
+  大阪市北区: { weatherLabel: '大阪市北区', latitude: 34.7054, longitude: 135.4983, timezone: 'Asia/Tokyo' },
+  河内長野市: { weatherLabel: '河内長野市', latitude: 34.4587, longitude: 135.5642, timezone: 'Asia/Tokyo' },
+  草津市: { weatherLabel: '草津市', latitude: 35.0131, longitude: 135.9598, timezone: 'Asia/Tokyo' },
+  神戸市: { weatherLabel: '神戸市', latitude: 34.6901, longitude: 135.1955, timezone: 'Asia/Tokyo' },
+  神戸市中央区: { weatherLabel: '神戸市中央区', latitude: 34.6951, longitude: 135.1979, timezone: 'Asia/Tokyo' },
+  和歌山市: { weatherLabel: '和歌山市', latitude: 34.2305, longitude: 135.1708, timezone: 'Asia/Tokyo' },
 };
 
 function place(baseLocation, label, address = '') {
@@ -1181,6 +1227,52 @@ function getWeatherLocationLabel(location) {
   return location.weatherLabel || location.weather_label || location.city || location.district || location.area || location.query || location.label;
 }
 
+function normalizeWeatherSearchText(value) {
+  return String(value || '')
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/[，、,].*$/, '')
+    .replace(/[區]/g, '区')
+    .replace(/[県]/g, '県')
+    .replace(/[长户广岛滨泽龟德黑乡]/g, (char) => WEATHER_QUERY_CHAR_ALIASES[char] || char);
+}
+
+function getWeatherSearchTerms(location) {
+  const label = getWeatherLocationLabel(location);
+  const rawTerms = uniq([
+    location.query,
+    label,
+    location.query?.split(',')[0],
+  ]).filter(Boolean);
+
+  const terms = [];
+  rawTerms.forEach((term) => {
+    const normalized = normalizeWeatherSearchText(term);
+    terms.push(term, normalized);
+
+    const cityMatch = normalized.match(/^(.+?市).+区$/);
+    if (cityMatch) terms.push(cityMatch[1]);
+
+    if (normalized.endsWith('市')) terms.push(normalized.slice(0, -1));
+  });
+
+  return uniq(terms);
+}
+
+function getWeatherLocationFallback(location) {
+  const terms = getWeatherSearchTerms(location);
+  const matchedTerm = terms.find((term) => WEATHER_LOCATION_FALLBACKS[normalizeWeatherSearchText(term)]);
+  if (!matchedTerm) return null;
+
+  const fallback = WEATHER_LOCATION_FALLBACKS[normalizeWeatherSearchText(matchedTerm)];
+  return {
+    ...location,
+    ...fallback,
+    query: fallback.weatherLabel,
+    weatherLabel: getWeatherLocationLabel(location) || fallback.weatherLabel,
+  };
+}
+
 function hasOwnWeatherSource(location) {
   if (!location || typeof location !== 'object') return false;
 
@@ -1371,10 +1463,12 @@ function getPlanWeatherLocations(plan) {
 
 function normalizeWeatherRules(plan) {
   if (plan.weather_rules) {
+    const rawBest = toArray(plan.weather_rules.best);
+    const rawOk = toArray(plan.weather_rules.ok);
     return {
-      best: toArray(plan.weather_rules.best),
-      ok: toArray(plan.weather_rules.ok),
-      blocked: toArray(plan.weather_rules.blocked),
+      best: rawBest.filter((item) => !SEVERE_WEATHER.includes(item)),
+      ok: uniq([...rawOk, ...rawBest.filter((item) => item === 'heavy_rain')]).filter((item) => !HARD_BLOCKED_WEATHER.includes(item)),
+      blocked: uniq([...toArray(plan.weather_rules.blocked), ...HARD_BLOCKED_WEATHER]),
     };
   }
 
@@ -1619,13 +1713,16 @@ function classifyWeatherCode(code) {
 function buildWeatherSnapshot(day) {
   if (!day) return null;
 
+  const precipitationSum = Number.isFinite(day.precipitationSum) ? day.precipitationSum : 0;
+  const precipitationProbability = Number.isFinite(day.precipitationProbability) ? day.precipitationProbability : 0;
   const categories = new Set([classifyWeatherCode(day.weatherCode)]);
   if (day.tempMax >= 32 || day.apparentMax >= 34) categories.add('hot');
   if (day.tempMin <= 5 || day.apparentMin <= 3) categories.add('cold');
   if (day.windMax >= 35) categories.add('windy');
-  if (day.precipitationSum >= 12 || day.precipitationProbability >= 80) categories.add('heavy_rain');
-  if (day.precipitationSum > 0 && day.precipitationSum < 4 && day.precipitationProbability >= 35) categories.add('drizzle');
-  if (day.precipitationSum >= 4 && day.precipitationSum < 12) categories.add('rain');
+  if (precipitationSum >= 12) categories.add('heavy_rain');
+  if (precipitationSum > 0 && precipitationSum < 4 && precipitationProbability >= RAIN_PROBABILITY_NOTICE) categories.add('drizzle');
+  if (precipitationSum >= 4 && precipitationSum < 12) categories.add('rain');
+  if (precipitationProbability >= RAIN_PROBABILITY_HIGH && !categories.has('heavy_rain')) categories.add('rain');
 
   const primary = categories.has('storm')
     ? 'storm'
@@ -1642,9 +1739,9 @@ function buildWeatherSnapshot(day) {
     categories: Array.from(categories),
     tempMin: Math.round(day.tempMin),
     tempMax: Math.round(day.tempMax),
-    precipitationProbability: Math.round(day.precipitationProbability || 0),
+    precipitationProbability: Math.round(precipitationProbability),
     windMax: Math.round(day.windMax || 0),
-    summary: formatWeatherMetrics(primary, day.tempMin, day.tempMax, day.precipitationProbability, day.windMax),
+    summary: formatWeatherMetrics(primary, day.tempMin, day.tempMax, precipitationProbability, day.windMax),
     source: 'auto',
   };
 }
@@ -1695,14 +1792,101 @@ function getPlanWeatherSnapshot(plan, dateId, weatherData) {
   return buildAggregatedWeatherSnapshot(snapshots);
 }
 
+function getSnapshotPrecipitationProbability(snapshot) {
+  if (!snapshot) return 0;
+  if (snapshot.entries?.length) {
+    return Math.max(...snapshot.entries.map((entry) => getSnapshotPrecipitationProbability(entry.snapshot)));
+  }
+  return Number.isFinite(snapshot.precipitationProbability) ? snapshot.precipitationProbability : 0;
+}
+
+function getRainRisk(snapshot) {
+  const categories = snapshot?.categories || [];
+  const precipitationProbability = getSnapshotPrecipitationProbability(snapshot);
+  const hasSoftRain = categories.some((category) => SOFT_RAIN_WEATHER.includes(category));
+
+  if (categories.includes('storm') || categories.includes('heavy_rain')) return 'severe';
+  if (!hasSoftRain && precipitationProbability < RAIN_PROBABILITY_HIGH) return 'none';
+  if (precipitationProbability >= RAIN_PROBABILITY_BLOCK) return 'high';
+  if (precipitationProbability >= RAIN_PROBABILITY_NOTICE) return 'notice';
+  return hasSoftRain ? 'low' : 'none';
+}
+
+function includesAnyKeyword(text, keywords) {
+  const normalized = String(text || '').toLowerCase();
+  return keywords.some((keyword) => normalized.includes(keyword.toLowerCase()));
+}
+
+function getPlanWeatherExposure(plan) {
+  const headlineText = [plan.name, plan.description, ...plan.tags].join(' ');
+  const detailText = [...plan.tips, ...plan.stops.flatMap((stop) => [stop.title, stop.note, stop.location.label])].join(' ');
+  const stopTexts = plan.stops.map((stop) => [stop.title, stop.note, stop.location.label].join(' '));
+  const outdoorScore = (
+    (includesAnyKeyword(headlineText, OUTDOOR_HINTS) ? 3 : 0) +
+    stopTexts.filter((text) => includesAnyKeyword(text, OUTDOOR_HINTS)).length +
+    plan.stops.filter((stop) => stop.weatherRelevant).length
+  );
+  const indoorScore = (
+    (includesAnyKeyword(headlineText, INDOOR_HINTS) ? 2 : 0) +
+    (includesAnyKeyword(detailText, INDOOR_HINTS) ? 1 : 0) +
+    stopTexts.filter((text) => includesAnyKeyword(text, INDOOR_HINTS)).length
+  );
+
+  if (outdoorScore >= indoorScore + 1) return 'outdoor';
+  if (indoorScore >= outdoorScore + 2) return 'indoor';
+  return 'mixed';
+}
+
 function evaluateWeather(plan, dateId, weatherData, language = DEFAULT_LANGUAGE) {
   const snapshot = getPlanWeatherSnapshot(plan, dateId, weatherData);
   if (!snapshot) return { level: 'unknown', label: getWeatherStatusLabel('unknown', language), snapshot: null };
 
   const categories = snapshot.categories;
   const { best, ok, blocked } = plan.weather_rules;
+  const exposure = getPlanWeatherExposure(plan);
+  const rainRisk = getRainRisk(snapshot);
+  const hasHardWeather = categories.some((category) => HARD_BLOCKED_WEATHER.includes(category));
+  const hasSevereWeather = categories.some((category) => SEVERE_WEATHER.includes(category));
+  const hasSoftRainRuleBlock = categories.some((category) => SOFT_RAIN_WEATHER.includes(category) && blocked.includes(category));
+  const hasStrictRuleBlock = categories.some((category) => (
+    !SOFT_RAIN_WEATHER.includes(category) &&
+    !SEVERE_WEATHER.includes(category) &&
+    blocked.includes(category)
+  ));
 
-  if (categories.some((category) => blocked.includes(category))) {
+  if ((hasSevereWeather || rainRisk === 'severe') && exposure === 'outdoor') {
+    return { level: 'blocked', label: getWeatherStatusLabel('blocked', language), snapshot };
+  }
+
+  if ((hasSevereWeather || rainRisk === 'severe') && exposure === 'indoor') {
+    return { level: 'ok', label: getWeatherStatusLabel('ok', language), snapshot };
+  }
+
+  if ((hasHardWeather || hasSevereWeather || rainRisk === 'severe') && exposure === 'mixed') {
+    return { level: 'mismatch', label: getWeatherStatusLabel('mismatch', language), snapshot };
+  }
+
+  if (rainRisk === 'high' && exposure === 'outdoor') {
+    return { level: 'blocked', label: getWeatherStatusLabel('blocked', language), snapshot };
+  }
+
+  if (rainRisk === 'high' && exposure === 'mixed') {
+    return { level: 'mismatch', label: getWeatherStatusLabel('mismatch', language), snapshot };
+  }
+
+  if (rainRisk === 'notice' && exposure !== 'indoor') {
+    return { level: 'mismatch', label: getWeatherStatusLabel('mismatch', language), snapshot };
+  }
+
+  if (hasSoftRainRuleBlock && rainRisk === 'high' && exposure !== 'indoor') {
+    return { level: exposure === 'outdoor' ? 'blocked' : 'mismatch', label: getWeatherStatusLabel(exposure === 'outdoor' ? 'blocked' : 'mismatch', language), snapshot };
+  }
+
+  if ((hasStrictRuleBlock || hasSoftRainRuleBlock) && exposure === 'indoor') {
+    return { level: 'ok', label: getWeatherStatusLabel('ok', language), snapshot };
+  }
+
+  if (hasStrictRuleBlock && exposure !== 'indoor') {
     return { level: 'blocked', label: getWeatherStatusLabel('blocked', language), snapshot };
   }
 
@@ -2023,32 +2207,81 @@ async function fetchJson(url, errorPrefix) {
   }
 }
 
+async function translateWeatherSearchTerm(term) {
+  const normalizedTerm = normalizeWeatherSearchText(term);
+  if (!normalizedTerm || !Array.from(normalizedTerm).some((char) => char.charCodeAt(0) > 127)) return [];
+  if (weatherTranslationCache.has(normalizedTerm)) return weatherTranslationCache.get(normalizedTerm);
+
+  const translatedTerms = [];
+  const languagePairs = ['zh|en', 'ja|en'];
+
+  for (const langpair of languagePairs) {
+    try {
+      const translateUrl = new URL('https://api.mymemory.translated.net/get');
+      translateUrl.searchParams.set('q', normalizedTerm);
+      translateUrl.searchParams.set('langpair', langpair);
+      const data = await fetchJson(translateUrl, `地点翻译：${normalizedTerm}`);
+      const translated = data?.responseData?.translatedText?.trim();
+      if (translated && translated !== normalizedTerm && !translated.includes('MYMEMORY')) {
+        translatedTerms.push(translated);
+      }
+    } catch {
+      // Translation is only a fallback; keep the weather update path non-blocking.
+    }
+  }
+
+  const result = uniq(translatedTerms);
+  weatherTranslationCache.set(normalizedTerm, result);
+  return result;
+}
+
+async function geocodeWeatherSearchTerms(searchTerms, resolvedLabel) {
+  const languages = ['zh', 'ja', 'en'];
+
+  for (const term of searchTerms) {
+    for (const geoLanguage of languages) {
+      const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
+      geoUrl.searchParams.set('name', term);
+      geoUrl.searchParams.set('count', '1');
+      geoUrl.searchParams.set('language', geoLanguage);
+      geoUrl.searchParams.set('format', 'json');
+      const geoData = await fetchJson(geoUrl, `地点查询：${resolvedLabel}`);
+      const first = geoData.results?.[0] || null;
+      if (first) return first;
+    }
+  }
+
+  return null;
+}
+
 async function fetchWeatherForLocation(location, startDateStr, endDate) {
   let resolved = location;
   if (!hasCoordinates(resolved)) {
     const resolvedLabel = getWeatherLocationLabel(resolved);
-    const searchTerms = uniq([resolved.query, resolvedLabel, resolved.query?.split(',')[0]]).filter(Boolean);
-    let first = null;
+    const fallback = getWeatherLocationFallback(resolved);
+    if (fallback) {
+      resolved = fallback;
+    } else {
+      const searchTerms = getWeatherSearchTerms(resolved);
+      let first = await geocodeWeatherSearchTerms(searchTerms, resolvedLabel);
 
-    for (const term of searchTerms) {
-      const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
-      geoUrl.searchParams.set('name', term);
-      geoUrl.searchParams.set('count', '1');
-      geoUrl.searchParams.set('language', 'zh');
-      geoUrl.searchParams.set('format', 'json');
-      const geoData = await fetchJson(geoUrl, `地点查询：${resolvedLabel}`);
-      first = geoData.results?.[0] || null;
-      if (first) break;
+      if (!first) {
+        const translatedTerms = [];
+        for (const term of searchTerms.slice(0, 3)) {
+          translatedTerms.push(...await translateWeatherSearchTerm(term));
+        }
+        first = await geocodeWeatherSearchTerms(uniq(translatedTerms), resolvedLabel);
+      }
+
+      if (!first) throw new Error(`找不到地点：${resolvedLabel}`);
+      resolved = {
+        ...resolved,
+        weatherLabel: resolved.weatherLabel || `${first.name}${first.admin1 ? `, ${first.admin1}` : ''}`,
+        latitude: first.latitude,
+        longitude: first.longitude,
+        timezone: first.timezone,
+      };
     }
-
-    if (!first) throw new Error(`找不到地点：${resolvedLabel}`);
-    resolved = {
-      ...resolved,
-      weatherLabel: resolved.weatherLabel || `${first.name}${first.admin1 ? `, ${first.admin1}` : ''}`,
-      latitude: first.latitude,
-      longitude: first.longitude,
-      timezone: first.timezone,
-    };
   }
 
   const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
@@ -2195,12 +2428,12 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "name": "Short title",
       "description": "What to do and when this plan is suitable",
       "priority": "must | preferred | backup | optional",
-      "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": "City/district/coordinates for weather API, not necessarily displayed" },
+      "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": "English city name or coordinates preferred for weather API" },
       "stops": [
         {
           "time": "09:30",
           "title": "Stop title",
-          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": "Fill when crossing city/district, otherwise inherit plan location" },
+          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": "Fill only when crossing city/district; English city name or coordinates preferred" },
           "note": "What happens at this stop",
           "weather_relevant": true
         }
@@ -2211,9 +2444,9 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "duration": "half day",
       "intensity": "easy | normal | hard",
       "weather_rules": {
-        "best": ["sunny", "partly_cloudy", "cloudy", "drizzle", "rain", "heavy_rain", "hot", "cold", "windy"],
-        "ok": ["..."],
-        "blocked": ["..."]
+        "best": ["sunny", "partly_cloudy"],
+        "ok": ["cloudy", "drizzle"],
+        "blocked": ["heavy_rain", "storm"]
       },
       "conflicts": ["other_plan_id"],
       "bookings": [
@@ -2244,12 +2477,12 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "name": "短标题",
       "description": "当天做什么，适合什么情况",
       "priority": "must | preferred | backup | optional",
-      "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": "用于天气 API 的城市/区县/坐标，不一定展示" },
+      "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": "天气查询用，优先英文城市名或坐标" },
       "stops": [
         {
           "time": "09:30",
           "title": "节点标题",
-          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": "跨城或不同区县时填写，否则继承计划地点" },
+          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": "跨城或不同区县时填写；优先英文城市名或坐标" },
           "note": "这个节点做什么",
           "weather_relevant": true
         }
@@ -2260,9 +2493,9 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "duration": "半天",
       "intensity": "easy | normal | hard",
       "weather_rules": {
-        "best": ["sunny", "partly_cloudy", "cloudy", "drizzle", "rain", "heavy_rain", "hot", "cold", "windy"],
-        "ok": ["..."],
-        "blocked": ["..."]
+        "best": ["sunny", "partly_cloudy"],
+        "ok": ["cloudy", "drizzle"],
+        "blocked": ["heavy_rain", "storm"]
       },
       "conflicts": ["other_plan_id"],
       "bookings": [
@@ -2284,6 +2517,129 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
     }
   ]
 }`;
+}
+
+function getSinglePlanJsonSchema(language = DEFAULT_LANGUAGE) {
+  if (language === 'en') {
+    return `{
+  "id": "unique_plan_id",
+  "name": "Short title",
+  "description": "What to do",
+  "priority": "must | preferred | backup | optional",
+  "location": { "label": "Display place", "address": "", "weather_location": "English city name or coordinates preferred" },
+  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": "" }, "note": "", "weather_relevant": true }],
+  "available_dates": ["YYYY-MM-DD"],
+  "closed_dates": ["YYYY-MM-DD"],
+  "time_window": "10:00-16:00",
+  "duration": "half day",
+  "intensity": "easy | normal | hard",
+  "weather_rules": {
+    "best": ["sunny", "partly_cloudy"],
+    "ok": ["cloudy", "drizzle"],
+    "blocked": ["heavy_rain", "storm"]
+  },
+  "conflicts": ["other_plan_id"],
+  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
+  "reminders": [{ "time": "", "text": "" }],
+  "tips": [],
+  "tags": [],
+  "assigned_day": "YYYY-MM-DD"
+}`;
+  }
+
+  return `{
+  "id": "unique_plan_id",
+  "name": "短标题",
+  "description": "当天做什么",
+  "priority": "must | preferred | backup | optional",
+  "location": { "label": "地点展示名", "address": "", "weather_location": "优先英文城市名或坐标" },
+  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": "" }, "note": "", "weather_relevant": true }],
+  "available_dates": ["YYYY-MM-DD"],
+  "closed_dates": ["YYYY-MM-DD"],
+  "time_window": "10:00-16:00",
+  "duration": "半天",
+  "intensity": "easy | normal | hard",
+  "weather_rules": {
+    "best": ["sunny", "partly_cloudy"],
+    "ok": ["cloudy", "drizzle"],
+    "blocked": ["heavy_rain", "storm"]
+  },
+  "conflicts": ["other_plan_id"],
+  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
+  "reminders": [{ "time": "", "text": "" }],
+  "tips": [],
+  "tags": [],
+  "assigned_day": "YYYY-MM-DD"
+}`;
+}
+
+function pruneEmptyAiValue(value) {
+  if (Array.isArray(value)) {
+    const items = value
+      .map(pruneEmptyAiValue)
+      .filter((item) => item !== undefined);
+    return items.length ? items : undefined;
+  }
+
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value)
+      .map(([key, item]) => [key, pruneEmptyAiValue(item)])
+      .filter(([, item]) => item !== undefined);
+    return entries.length ? Object.fromEntries(entries) : undefined;
+  }
+
+  if (value === '' || value === null || value === undefined) return undefined;
+  return value;
+}
+
+function compactLocationForAi(location) {
+  if (!location) return undefined;
+
+  return pruneEmptyAiValue({
+    label: location.label,
+    address: location.address,
+    weather_location: getWeatherLocationLabel(location),
+  });
+}
+
+function compactPlanForAi(plan, assignedDay) {
+  if (!plan) return null;
+
+  return pruneEmptyAiValue({
+    id: plan.id,
+    name: plan.name,
+    description: plan.description,
+    priority: plan.priority,
+    location: compactLocationForAi(plan.location),
+    stops: plan.stops.map((stop) => ({
+      time: stop.time,
+      title: stop.title,
+      location: compactLocationForAi(stop.location),
+      note: stop.note,
+      weather_relevant: stop.weatherRelevant,
+    })),
+    available_dates: plan.available_dates,
+    closed_dates: plan.closed_dates,
+    time_window: plan.time_window,
+    duration: plan.duration,
+    intensity: plan.intensity,
+    weather_rules: plan.weather_rules,
+    conflicts: plan.conflicts,
+    bookings: plan.bookings.map((booking) => ({
+      id: booking.id,
+      type: booking.type,
+      title: booking.title,
+      status: booking.status,
+      address: booking.address,
+      url: booking.url,
+      cancel_url: booking.cancelUrl,
+      note: booking.note,
+    })),
+    reminders: plan.reminders.map((item) => ({ time: item.time, text: item.text })),
+    tips: plan.tips,
+    tags: plan.tags,
+    assigned_day: assignedDay,
+  });
 }
 
 function App() {
@@ -2315,8 +2671,6 @@ function App() {
   const [aiPlannerMode, setAiPlannerMode] = useState('replan');
   const [aiPlannerQuestion, setAiPlannerQuestion] = useState('');
   const [aiPlannerResult, setAiPlannerResult] = useState('');
-  const [planAiQuestion, setPlanAiQuestion] = useState('');
-  const [planAiResult, setPlanAiResult] = useState('');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState(null);
@@ -2326,6 +2680,8 @@ function App() {
   const toastTimerRef = useRef(null);
   const autoWeatherKeyRef = useRef('');
   const dayTileRefs = useRef(new Map());
+  const planAiQuestionRef = useRef(null);
+  const planAiResultRef = useRef(null);
   const t = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
   const aiReplanText = getAiModeText('replan', language);
   const aiGenerateText = getAiModeText('generate', language);
@@ -2419,7 +2775,6 @@ function App() {
 
         if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push(t('dateNotSuitable'));
         if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push(t('closedOrUnavailable'));
-        if (weather.level === 'blocked') hardReasons.push(weather.label);
         if (weather.level === 'unknown') notes.push(t('weatherUnknown'));
 
         const priorityScore = getPlanPriorityWeight(plan) * 3;
@@ -2436,6 +2791,7 @@ function App() {
           isCurrent,
           assignedDateId,
           weather,
+          weatherOverride: weather.level === 'blocked',
         };
       })
       .sort((a, b) => {
@@ -2459,7 +2815,15 @@ function App() {
 
   const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
   const switchCandidates = candidates.filter((candidate) => !candidate.isCurrent);
-  const availableCandidateCount = switchCandidates.filter((candidate) => candidate.canAssign).length;
+  const readyCandidates = switchCandidates.filter((candidate) => candidate.canAssign && !candidate.assignedDateId);
+  const scheduledCandidates = switchCandidates.filter((candidate) => candidate.canAssign && candidate.assignedDateId);
+  const unavailableCandidates = switchCandidates.filter((candidate) => !candidate.canAssign);
+  const candidateGroups = [
+    { key: 'ready', title: t('candidateReady'), items: readyCandidates },
+    { key: 'scheduled', title: t('candidateScheduled'), items: scheduledCandidates },
+    { key: 'unavailable', title: t('candidateUnavailable'), items: unavailableCandidates },
+  ].filter((group) => group.items.length > 0);
+  const availableCandidateCount = readyCandidates.length;
   const isCreatingPlan = editorPlanId === NEW_PLAN_EDITOR_ID;
   const editorPlan = editorPlanId && !isCreatingPlan ? plansById.get(editorPlanId) : null;
 
@@ -2647,16 +3011,22 @@ function App() {
     setAiPlannerOpen(true);
   };
 
+  const resetPlanAiFields = () => {
+    if (planAiQuestionRef.current) planAiQuestionRef.current.value = '';
+    if (planAiResultRef.current) planAiResultRef.current.value = '';
+  };
+
   const openPlanEditor = (planId = NEW_PLAN_EDITOR_ID) => {
     setEditorPlanId(planId);
-    setPlanAiQuestion('');
-    setPlanAiResult('');
+    setEditorOpen(true);
+    setBatchAiOpen(false);
+    setAiPlannerOpen(false);
+    resetPlanAiFields();
   };
 
   const closePlanEditor = () => {
     setEditorPlanId(null);
-    setPlanAiQuestion('');
-    setPlanAiResult('');
+    resetPlanAiFields();
   };
 
   const removePlan = (planId) => {
@@ -2730,9 +3100,11 @@ function App() {
     if (!targetPlan) return null;
 
     const { clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
+    const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
 
     const nextRisks = buildRiskItems(normalizedPlans, tripDates, nextSchedule, plansById, weatherData)
-      .filter((risk) => risk.level !== 'info');
+      .filter((risk) => risk.level !== 'info')
+      .filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
 
     return { clears, nextSchedule, nextRisks, targetPlan, dateId };
   };
@@ -3019,15 +3391,24 @@ function App() {
         level: group.level,
         items: group.items,
       })),
-      user_request: aiPlannerQuestion.trim(),
     };
 
     const planSchema = getPlanJsonSchema(language);
 
     if (mode === 'generate') {
       const unplannedDates = tripDates.filter((date) => !schedule[date.id]?.planId);
+      const generateRequest = aiPlannerQuestion.trim() || (hasInitializedPlans
+        ? (language === 'en'
+          ? 'Add candidate plans for backups or added days; include assigned_day when useful.'
+          : '请补充计划池、backup 或新增天数需要的候选计划；必要时给出 assigned_day。')
+        : (language === 'en'
+          ? 'Generate a travel plan pool and include an initial schedule when useful.'
+          : '请生成旅行计划池；如果适合，也给出初始日程。'));
       if (language === 'en') {
         return `You are a travel plan-pool assistant. Generate or extend travel plans based on the current state.
+
+User request, prioritize this:
+${generateRequest}
 
 Data:
 ${JSON.stringify({
@@ -3036,25 +3417,27 @@ ${JSON.stringify({
   keep_existing_schedule_by_default: hasInitializedPlans,
   unplanned_dates: unplannedDates.map(summarizeScheduleDate),
   existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
-  user_request: tripContext.user_request || (hasInitializedPlans
-    ? 'Add candidate plans for backups or added days; include assigned_day when useful.'
-    : 'Generate an n-day trip plus backup plans, and include an initial schedule.'),
 }, null, 2)}
 
-Requirements:
-1. A day may contain multiple places. Cross-city plans must state the cities clearly.
-2. The number of plans may exceed the number of trip days so they can be used as backups.
-3. Fill available_dates, closed_dates, weather_rules and conflicts carefully.
-4. Use city/district/coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
-5. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
-6. Add reminders and tips when useful; otherwise use empty arrays.
-7. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
+Output rules:
+1. Only output importable JSON, with no Markdown or explanation.
+2. Follow the JSON format below. Use empty arrays for optional list fields when absent.
+3. Fill available_dates, closed_dates, weather_rules and conflicts from the trip constraints and the user request.
+4. Prefer an English city name or coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
+5. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
+6. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
+7. Add reminders and tips only when useful; otherwise use empty arrays.
+8. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
+9. If a plan should be scheduled, write assigned_day on that plan.
 
-Only output importable JSON. If a plan should be scheduled, write assigned_day on that plan. Format:
+JSON format:
 ${planSchema}`;
       }
 
       return `你是旅行计划池生成助手。请根据当前状态生成或补充旅行计划。
+
+用户需求，请优先处理：
+${generateRequest}
 
 数据：
 ${JSON.stringify({
@@ -3063,34 +3446,38 @@ ${JSON.stringify({
   keep_existing_schedule_by_default: hasInitializedPlans,
   unplanned_dates: unplannedDates.map(summarizeScheduleDate),
   existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
-  user_request: tripContext.user_request || (hasInitializedPlans
-    ? '请补充计划池、backup 或新增天数需要的候选计划；必要时给出 assigned_day。'
-    : '请生成一个「n 天 + backup」的旅行计划池，并给出初始日程。'),
 }, null, 2)}
 
-要求：
-1. 每天可以包含多个地点，跨城计划要明确城市。
-2. 计划数量可以多于旅行天数，用于备选。
-3. 必须写清 available_dates、closed_dates、weather_rules、conflicts。
-4. location.weather_location 用城市/区县/坐标，不要用景点名做天气查询。
-5. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
-6. 有特别提醒和 tips 就写，没有就留空数组。
-7. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
+输出规范：
+1. 只输出可导入 JSON，不要 Markdown 或解释。
+2. 严格按下面格式补齐字段；可选数组没有内容时用空数组。
+3. 根据旅行限制和用户需求填写 available_dates、closed_dates、weather_rules、conflicts。
+4. location.weather_location 优先写英文城市名或坐标，不要用景点名做天气查询。
+5. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
+6. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
+7. 有特别提醒和 tips 就写，没有就留空数组。
+8. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
+9. 需要安排日期时，在对应 plan 上写 assigned_day。
 
-请只输出可导入 JSON；需要安排日期时在对应 plan 上写 assigned_day。格式如下：
+JSON 格式：
 ${planSchema}`;
     }
 
+    const replanRequest = aiPlannerQuestion.trim() || (language === 'en'
+      ? 'Replan the remaining dates based on current weather, date limits, must-go priority and itinerary intensity.'
+      : '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。');
     const context = {
       ...tripContext,
       fixed_dates_do_not_change: fixedDates.map(summarizeScheduleDate),
       adjustable_dates: adjustableDates.map(summarizeScheduleDate),
       remaining_or_adjustable_plans: remainingPlans.map(summarizePlan),
-      user_request: tripContext.user_request || (language === 'en' ? 'Replan the remaining dates based on current weather, date limits, must-go priority and itinerary intensity.' : '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。'),
     };
 
     if (language === 'en') {
       return `You are a travel itinerary replanning assistant. Only adjust the remaining itinerary based on the data below. Do not change dates listed in fixed_dates_do_not_change.
+
+User request, prioritize this:
+${replanRequest}
 
 You need to:
 1. Rearrange the dates in adjustable_dates.
@@ -3121,6 +3508,9 @@ Please answer in this structure:
     }
 
     return `你是旅行行程重排助手。请只基于下面的数据调整剩余行程，不要改动 fixed_dates_do_not_change 里的日期。
+
+用户需求，请优先处理：
+${replanRequest}
 
 你需要做：
 1. 重新安排 adjustable_dates 中的日期。
@@ -3242,48 +3632,46 @@ ${JSON.stringify(context, null, 2)}
   };
 
   const buildPlanAiPrompt = () => {
-    const schema = getPlanJsonSchema(language);
+    const schema = getSinglePlanJsonSchema(language);
     const currentPlan = editorPlan
-      ? {
-        ...editorPlan,
-        assigned_day: planAssignments.get(editorPlan.id) || null,
-      }
+      ? compactPlanForAi(editorPlan, planAssignments.get(editorPlan.id) || null)
       : null;
+    const planQuestion = planAiQuestionRef.current?.value || '';
+    const planUserRequest = planQuestion.trim() || (isCreatingPlan
+      ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
+      : (language === 'en' ? 'Improve the current plan.' : '请优化当前计划。'));
+    const planContext = isCreatingPlan
+      ? { existing_plan_ids: normalizedPlans.map((plan) => plan.id) }
+      : { current_plan: currentPlan };
 
     return `${language === 'en'
-    ? `You are a single travel-plan editing assistant. ${isCreatingPlan ? 'Add one plan' : 'Modify the current plan'} based on the user request. Only output importable JSON.`
-    : `你是旅行单个计划编辑助手。请根据用户需求${isCreatingPlan ? '新增一个计划' : '修改当前计划'}，只输出可导入 JSON。`}
+    ? `You are a single travel-plan editing assistant. ${isCreatingPlan ? 'Add one plan' : 'Modify the current plan'} based on the user request. Only output one plan JSON object.`
+    : `你是旅行单个计划编辑助手。请根据用户需求${isCreatingPlan ? '新增一个计划' : '修改当前计划'}，只输出单个计划 JSON 对象。`}
 
-${language === 'en' ? 'Trip context:' : '旅行上下文：'}
-${JSON.stringify({
-  trip: {
-    name: tripName || t('unnamedTrip'),
-    range: formatTripRange(startDateStr, tripDays, language),
-    dates: tripDates.map((date) => ({ date: date.id, day: `D${date.dayNumber}`, display: date.display })),
-  },
-  existing_plan_ids: normalizedPlans.map((plan) => plan.id),
-  current_plan: currentPlan,
-  user_request: planAiQuestion.trim() || (isCreatingPlan
-    ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
-    : (language === 'en' ? 'Improve the current plan.' : '请优化当前计划。')),
-}, null, 2)}
+${language === 'en' ? 'Context:' : '上下文：'}
+${JSON.stringify(planContext, null, 2)}
+
+${language === 'en' ? 'User request, prioritize this:' : '用户需求，请优先处理：'}
+${planUserRequest}
 
 ${language === 'en' ? `Requirements:
 1. ${isCreatingPlan ? 'The new plan id must not duplicate existing_plan_ids.' : 'Keep the current plan id unless the user explicitly asks to change it.'}
-2. Use city/district/coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
-3. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
-4. If the plan fits a specific day, include assigned_day.
-5. Output JSON only, with no explanation.
+2. Prefer an English city name or coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
+3. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
+4. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
+5. If the plan fits a specific day, include assigned_day.
+6. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
 
-JSON format:
+Single plan JSON format:
 ${schema}` : `要求：
 1. ${isCreatingPlan ? '新增计划 id 不要和 existing_plan_ids 重复。' : '除非用户明确要求，否则保留当前计划 id。'}
-2. location.weather_location 用城市/区县/坐标，不要用景点名做天气查询。
-3. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
-4. 如果计划适合安排到某一天，可以写 assigned_day。
-5. 只输出 JSON，不要解释。
+2. location.weather_location 优先写英文城市名或坐标，不要用景点名做天气查询。
+3. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
+4. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
+5. 如果计划适合安排到某一天，可以写 assigned_day。
+6. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
 
-JSON 格式：
+单个计划 JSON 格式：
 ${schema}`}
 `;
   };
@@ -3294,7 +3682,7 @@ ${schema}`}
 
   const applyPlanAiResult = () => {
     try {
-      const parsed = parseImportJson(planAiResult);
+      const parsed = parseImportJson(planAiResultRef.current?.value || '');
       const normalizedPayload = Array.isArray(parsed.plans)
         ? parsed
         : parsed.id || parsed.name
@@ -3460,6 +3848,77 @@ ${schema}`}
     );
   };
 
+  const renderCandidateActions = (plan, canAssign, weatherOverride = false) => (
+    <div className="candidate-actions">
+      <button
+        className={`btn btn-card ${weatherOverride && canAssign ? 'is-risky' : ''}`}
+        type="button"
+        disabled={!canAssign || !selectedDate}
+        onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
+      >
+        {t('select')}
+      </button>
+      <button
+        className="icon-btn compact-icon-btn candidate-edit-btn"
+        type="button"
+        onClick={() => openPlanEditor(plan.id)}
+        aria-label={t('editSinglePlan')}
+        title={t('editSinglePlan')}
+      >
+        <span className="edit-icon" aria-hidden="true" />
+      </button>
+    </div>
+  );
+
+  const renderCandidateCard = (candidate) => {
+    const { plan, canAssign, assignedDateId, weatherOverride } = candidate;
+
+    return (
+      <article
+        className={`plan-card ${!canAssign ? 'is-disabled is-mobile-collapsed' : ''} ${weatherOverride && canAssign ? 'is-weather-risk' : ''} priority-${plan.priority}`}
+        key={plan.id}
+      >
+        <div className="plan-card-header">
+          <div>
+            <div className="title-row">
+              <h3>{plan.name}</h3>
+              <span className={`priority-badge ${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>
+              {assignedDateId && (
+                <span className="assigned-badge">
+                  {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
+                </span>
+              )}
+            </div>
+            <p>{plan.description}</p>
+          </div>
+        </div>
+
+        {renderPlanStops(plan)}
+        {renderPlanBookings(plan)}
+        {renderPlanNotes(plan)}
+        {renderCandidateSignals(candidate)}
+
+        {renderCandidateActions(plan, canAssign, weatherOverride)}
+      </article>
+    );
+  };
+
+  const renderCandidateGroups = (gridClassName = 'plan-grid') => (
+    <div className="candidate-group-list">
+      {candidateGroups.map((group) => (
+        <section className={`candidate-group candidate-group-${group.key}`} key={group.key}>
+          <div className="candidate-group-title">
+            <h3>{group.title}</h3>
+            <span>{t('itemsCount', { count: group.items.length })}</span>
+          </div>
+          <div className={gridClassName}>
+            {group.items.map(renderCandidateCard)}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+
   const renderCurrentPlanBody = () => (
     <div>
       <p className="eyebrow">{t('currentPlanLabel')}</p>
@@ -3549,43 +4008,7 @@ ${schema}`}
         <span>{t('available', { count: availableCandidateCount })}</span>
       </div>
 
-      <div className="plan-grid mobile-plan-grid">
-        {switchCandidates.map(({ plan, canAssign, assignedDateId, ...candidate }) => (
-          <article
-            className={`plan-card ${!canAssign ? 'is-disabled is-mobile-collapsed' : ''} priority-${plan.priority}`}
-            key={plan.id}
-          >
-            <div className="plan-card-header">
-              <div>
-                <div className="title-row">
-                  <h3>{plan.name}</h3>
-                  <span className={`priority-badge ${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>
-                  {assignedDateId && (
-                    <span className="assigned-badge">
-                      {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
-                    </span>
-                  )}
-                </div>
-                <p>{plan.description}</p>
-              </div>
-            </div>
-
-            {renderPlanStops(plan)}
-            {renderPlanBookings(plan)}
-            {renderPlanNotes(plan)}
-            {renderCandidateSignals({ plan, canAssign, assignedDateId, ...candidate })}
-
-            <button
-              className="btn btn-card"
-              type="button"
-              disabled={!canAssign || !selectedDate}
-              onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
-            >
-              {t('select')}
-            </button>
-          </article>
-        ))}
-      </div>
+      {renderCandidateGroups('plan-grid mobile-plan-grid')}
     </div>
   );
 
@@ -3955,43 +4378,7 @@ ${schema}`}
             <span>{t('available', { count: availableCandidateCount })}</span>
           </div>
 
-          <div className="plan-grid">
-            {switchCandidates.map(({ plan, canAssign, assignedDateId, ...candidate }) => (
-              <article
-                className={`plan-card ${!canAssign ? 'is-disabled is-mobile-collapsed' : ''} priority-${plan.priority}`}
-                key={plan.id}
-              >
-                <div className="plan-card-header">
-                  <div>
-                    <div className="title-row">
-                      <h3>{plan.name}</h3>
-                      <span className={`priority-badge ${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>
-                      {assignedDateId && (
-                        <span className="assigned-badge">
-                          {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
-                        </span>
-                      )}
-                    </div>
-                    <p>{plan.description}</p>
-                  </div>
-                </div>
-
-                {renderPlanStops(plan)}
-                {renderPlanBookings(plan)}
-                {renderPlanNotes(plan)}
-                {renderCandidateSignals({ plan, canAssign, assignedDateId, ...candidate })}
-
-                <button
-                  className="btn btn-card"
-                  type="button"
-                  disabled={!canAssign || !selectedDate}
-                  onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
-                >
-                  {t('select')}
-                </button>
-              </article>
-            ))}
-          </div>
+          {renderCandidateGroups()}
         </section>
 
         <aside className="side-panel status-panel">
@@ -4138,8 +4525,7 @@ ${schema}`}
                   <span>{t('yourRequest')}</span>
                   <textarea
                     className="textarea plan-ai-question"
-                    value={planAiQuestion}
-                    onChange={(event) => setPlanAiQuestion(event.target.value)}
+                    ref={planAiQuestionRef}
                     placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
                   />
                 </label>
@@ -4148,8 +4534,7 @@ ${schema}`}
                   <span>{t('aiResult')}</span>
                   <textarea
                     className="textarea plan-ai-result"
-                    value={planAiResult}
-                    onChange={(event) => setPlanAiResult(event.target.value)}
+                    ref={planAiResultRef}
                     placeholder={t('planAiResultPlaceholder')}
                   />
                 </label>
@@ -4463,7 +4848,11 @@ ${schema}`}
         </div>
       )}
 
-      {pendingAssignment && (
+      {pendingAssignment && (() => {
+        const movedItems = pendingAssignment.clears.filter((item) => item.reason === '同一计划被移动');
+        const clearedItems = pendingAssignment.clears.filter((item) => item.reason !== '同一计划被移动');
+
+        return (
         <div className="modal-overlay" onClick={() => setPendingAssignment(null)}>
           <div className="modal impact-modal" onClick={(event) => event.stopPropagation()}>
             <div className="panel-header">
@@ -4478,10 +4867,23 @@ ${schema}`}
               <span>{t('assignToDate', { date: pendingAssignment.dateId })}</span>
             </div>
 
-            {pendingAssignment.clears.length > 0 && (
+            {movedItems.length > 0 && (
+              <div className="impact-section">
+                <h3>{t('datesToMove')}</h3>
+                {movedItems.map((item) => (
+                  <div className="impact-row is-move" key={`${item.dateId}-${item.plan.id}`}>
+                    <span>{item.dateId}</span>
+                    <strong>{item.plan.name}</strong>
+                    <em>{translateIssue(item.reason, language)}</em>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {clearedItems.length > 0 && (
               <div className="impact-section">
                 <h3>{t('datesToClear')}</h3>
-                {pendingAssignment.clears.map((item) => (
+                {clearedItems.map((item) => (
                   <div className="impact-row" key={`${item.dateId}-${item.plan.id}`}>
                     <span>{item.dateId}</span>
                     <strong>{item.plan.name}</strong>
@@ -4517,7 +4919,8 @@ ${schema}`}
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {toast && <div className="toast">{toast}</div>}
     </div>
