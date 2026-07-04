@@ -1681,6 +1681,15 @@ label {
   max-width: 41rem;
 }
 
+.checklist-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.checklist-actions .btn {
+  flex: 0 0 auto;
+}
+
 .checklist-overview {
   display: grid;
   gap: 0.48rem;

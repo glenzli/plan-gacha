@@ -174,6 +174,10 @@ const UI_TEXT = {
     checklistTextLabel: '清单原文',
     checklistSave: '保存清单',
     checklistSaved: '清单已更新',
+    checklistExport: '导出清单',
+    checklistExported: '清单 JSON 已复制',
+    checklistClearDone: '清空勾选',
+    checklistDoneCleared: '已清空勾选项',
     checklistNotNeeded: '不需要',
     checklistUndoSkip: '需要',
     checklistDone: '完成',
@@ -379,6 +383,10 @@ const UI_TEXT = {
     checklistTextLabel: 'Checklist source',
     checklistSave: 'Save checklist',
     checklistSaved: 'Checklist updated',
+    checklistExport: 'Export checklist',
+    checklistExported: 'Checklist JSON copied',
+    checklistClearDone: 'Clear checked',
+    checklistDoneCleared: 'Checked items cleared',
     checklistNotNeeded: 'Skip',
     checklistUndoSkip: 'Need',
     checklistDone: 'Done',
@@ -3189,6 +3197,13 @@ function App() {
     notify(t('checklistSaved'));
   };
 
+  const clearChecklistDone = () => {
+    setChecklistState((current) => Object.fromEntries(
+      Object.entries(current).filter(([, status]) => status !== CHECKLIST_STATUS.done),
+    ));
+    notify(t('checklistDoneCleared'));
+  };
+
   const selectNeighborDate = (step) => {
     if (selectedIndex < 0) return;
     const next = tripDates[selectedIndex + step];
@@ -3715,6 +3730,14 @@ ${schema}`}
   const handleExportState = () => {
     const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData, checklistText, checklistState };
     copyText(JSON.stringify(data, null, 2), t('jsonCopied'));
+  };
+
+  const handleExportChecklist = () => {
+    copyText(JSON.stringify({
+      schemaVersion: APP_SCHEMA_VERSION,
+      checklistText,
+      checklistState,
+    }, null, 2), t('checklistExported'));
   };
 
   const renderPlanStops = (plan) => {
@@ -4785,9 +4808,15 @@ ${schema}`}
             ) : (
               <>
                 {renderChecklistItems()}
-                <div className="modal-actions">
+                <div className="modal-actions checklist-actions">
                   <button className="btn btn-outline" type="button" onClick={() => setChecklistEditing(true)}>
                     {t('checklistEdit')}
+                  </button>
+                  <button className="btn btn-outline" type="button" onClick={handleExportChecklist}>
+                    {t('checklistExport')}
+                  </button>
+                  <button className="btn btn-outline" type="button" onClick={clearChecklistDone} disabled={checklistStats.done === 0}>
+                    {t('checklistClearDone')}
                   </button>
                 </div>
               </>
