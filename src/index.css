@@ -1230,10 +1230,44 @@ label {
   padding-top: 0.25rem;
 }
 
+.ai-workflow-panel {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.mobile-ai-entry {
+  display: none;
+}
+
 .action-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.action-grid .btn {
+  min-width: 0;
+  padding-right: 0.55rem;
+  padding-left: 0.55rem;
+}
+
+.action-grid .btn-danger {
+  width: auto;
+  margin-top: 0;
+}
+
+.editor-action-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.editor-action-grid .btn {
+  min-height: 2.15rem;
+  padding: 0.3rem 0.45rem;
+  font-size: 0.82rem;
 }
 
 .modal-overlay {
@@ -1265,6 +1299,114 @@ label {
 
 .trip-editor-modal {
   max-width: 42rem;
+}
+
+.ai-planner-modal {
+  max-width: 50rem;
+}
+
+.ai-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: 0.4rem;
+  padding: 0.25rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.ai-mode-tabs button {
+  min-height: 2.2rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.ai-mode-tabs button.is-selected {
+  background: var(--surface);
+  color: var(--accent-strong);
+  box-shadow: var(--shadow-sm);
+}
+
+.ai-planner-summary {
+  display: grid;
+  gap: 0.2rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.ai-planner-summary span {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.ai-question {
+  min-height: 9rem;
+}
+
+.ai-prompt-preview {
+  min-height: 13rem;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.plan-review-list,
+.archived-trip-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.plan-review-row,
+.archived-trip-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.plan-review-row div {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.plan-review-row strong,
+.archived-trip-list > strong {
+  font-size: 0.88rem;
+}
+
+.plan-review-row span,
+.archived-trip-row span {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archive-section {
+  border-top: 1px solid var(--border);
+  padding-top: 0.95rem;
+}
+
+.trip-lifecycle-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.trip-lifecycle-actions .btn-danger {
+  width: auto;
+  margin-top: 0;
 }
 
 .trip-editor-grid {
@@ -1442,6 +1584,45 @@ label {
     display: grid;
     gap: 0.55rem;
     margin: 0 0 0.75rem;
+  }
+
+  .mobile-ai-entry {
+    display: flex;
+    justify-content: flex-end;
+    margin: -0.15rem 0 0.75rem;
+  }
+
+  .mobile-ai-entry .btn {
+    min-height: 2.15rem;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.82rem;
+  }
+
+  .action-grid,
+  .trip-lifecycle-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal-overlay {
+    align-items: end;
+    padding: 0.65rem;
+  }
+
+  .ai-planner-modal {
+    max-height: calc(100vh - 1.3rem);
+  }
+
+  .ai-mode-tabs button {
+    min-height: 2rem;
+    font-size: 0.76rem;
+  }
+
+  .ai-question {
+    min-height: 7rem;
+  }
+
+  .ai-prompt-preview {
+    min-height: 10rem;
   }
 
   .mobile-risk-summary {
@@ -1638,6 +1819,16 @@ label {
   .action-grid,
   .trip-editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .editor-action-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .editor-action-grid .btn {
+    min-height: 2rem;
+    padding: 0.24rem 0.35rem;
+    font-size: 0.78rem;
   }
 
   .day-tile {

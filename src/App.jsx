@@ -43,6 +43,24 @@ const PRIORITY_META = {
   optional: { label: '可放弃', rank: 1 },
 };
 
+const AI_PLANNER_MODES = {
+  replan: {
+    label: '重排剩余',
+    helper: '适合天气、体力或必去计划冲突后，重排后面的日期。',
+    placeholder: '例如：明天大雨，我想减少户外，但海边日出和博物馆必须保留，帮我重排剩下几天。',
+  },
+  initial: {
+    label: '初始规划',
+    helper: '适合新建旅行计划时，让 AI 先产出计划池和日程草案。',
+    placeholder: '例如：7 月底去厦门 4 天，想轻松一点，海边、咖啡、博物馆优先，不想每天赶很多点。',
+  },
+  extend: {
+    label: '增量规划',
+    helper: '适合原本只排了几天，现在新增 1 天或几天，需要补计划。',
+    placeholder: '例如：现在多留一天，想新增一个轻松的雨天备用方案，并把最后两天重新衔接好。',
+  },
+};
+
 const LEGACY_INTENSITY_MAP = {
   relaxed: 'easy',
   normal: 'normal',
@@ -556,6 +574,20 @@ function createTripSnapshot(name = '青岛 5 日', startDate = getTodayId(), id 
     plans: createInitialPlans(startDate),
     schedule: createInitialSchedule(startDate),
     weatherData: {},
+    archived: false,
+  };
+}
+
+function createEmptyTripSnapshot(name = '新旅行计划', startDate = getTodayId(), id = createTripId()) {
+  return {
+    id,
+    name,
+    startDateStr: startDate,
+    tripDays: DEFAULT_TRIP_DAYS,
+    plans: [],
+    schedule: {},
+    weatherData: {},
+    archived: false,
   };
 }
 
@@ -572,6 +604,7 @@ function createDebugTrips(baseDate = getTodayId()) {
       plans: createHangzhouPlans(hangzhouStartDate),
       schedule: createHangzhouSchedule(hangzhouStartDate),
       weatherData: {},
+      archived: false,
     },
   ];
 }
@@ -588,6 +621,7 @@ function normalizeTripSnapshot(trip, index = 0) {
     plans: Array.isArray(trip.plans) ? trip.plans : createInitialPlans(startDate),
     schedule: normalizeSchedule(trip.schedule || createInitialSchedule(startDate)),
     weatherData: trip.weatherData || {},
+    archived: Boolean(trip.archived),
   };
 }
 
@@ -876,7 +910,8 @@ function loadInitialState() {
     : createDebugTrips();
 
   const activeTripId = localStorage.getItem(STORAGE_KEYS.currentTrip) || trips[0].id;
-  const activeTrip = trips.find((trip) => trip.id === activeTripId) || trips[0];
+  const visibleTrips = trips.filter((trip) => !trip.archived);
+  const activeTrip = visibleTrips.find((trip) => trip.id === activeTripId) || visibleTrips[0] || trips[0];
 
   return {
     trips,
@@ -1487,12 +1522,14 @@ function App() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importText, setImportText] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
+  const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
+  const [aiPlannerMode, setAiPlannerMode] = useState('replan');
+  const [aiPlannerQuestion, setAiPlannerQuestion] = useState('');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [pendingAssignment, setPendingAssignment] = useState(null);
   const [toast, setToast] = useState('');
 
-  const fileInputRef = useRef(null);
   const toastTimerRef = useRef(null);
   const autoWeatherKeyRef = useRef('');
   const dayTileRefs = useRef(new Map());
@@ -1506,6 +1543,7 @@ function App() {
     () => plans.map((plan, index) => normalizePlan(plan, index, tripDates)),
     [plans, tripDates],
   );
+  const hasInitializedPlans = normalizedPlans.length > 0;
 
   const plansById = useMemo(() => {
     return new Map(normalizedPlans.map((plan) => [plan.id, plan]));
@@ -1536,7 +1574,10 @@ function App() {
     [riskItems, tripDates],
   );
 
+  const visibleTrips = useMemo(() => trips.filter((trip) => !trip.archived), [trips]);
+  const archivedTrips = useMemo(() => trips.filter((trip) => trip.archived), [trips]);
   const activeTripOption = trips.find((trip) => trip.id === activeTripId);
+  const activeTripArchived = activeTripOption?.archived || false;
   const planAssignments = useMemo(() => {
     return new Map(
       Object.entries(schedule)
@@ -1612,6 +1653,7 @@ function App() {
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
       weatherData,
+      archived: activeTripArchived,
     };
     const persistedTrips = trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip));
 
@@ -1620,6 +1662,7 @@ function App() {
     localStorage.setItem(STORAGE_KEYS.currentTrip, activeTripId);
   }, [
     activeTripId,
+    activeTripArchived,
     normalizedPlans,
     schedule,
     startDateStr,
@@ -1649,6 +1692,7 @@ function App() {
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
     weatherData,
+    archived: activeTripArchived,
   });
 
   const applyTripSnapshot = (trip) => {
@@ -1672,7 +1716,7 @@ function App() {
   const switchTrip = (nextTripId) => {
     setTripMenuOpen(false);
     if (nextTripId === activeTripId) return;
-    const nextTrip = trips.find((trip) => trip.id === nextTripId);
+    const nextTrip = visibleTrips.find((trip) => trip.id === nextTripId);
     if (!nextTrip) return;
 
     setTrips(saveCurrentTripInto(trips));
@@ -1680,12 +1724,70 @@ function App() {
   };
 
   const createNewTrip = () => {
-    const nextTrip = createTripSnapshot(`旅行计划 ${trips.length + 1}`, getTodayId());
+    const nextTrip = createEmptyTripSnapshot(`旅行计划 ${trips.length + 1}`, getTodayId());
     setTripMenuOpen(false);
     setTrips([...saveCurrentTripInto(trips), nextTrip]);
     applyTripSnapshot(nextTrip);
     setEditorOpen(true);
     notify('新计划已创建');
+  };
+
+  const openAiPlanner = (mode = 'replan') => {
+    const nextMode = hasInitializedPlans
+      ? mode === 'initial'
+        ? 'extend'
+        : mode
+      : 'initial';
+    setAiPlannerMode(nextMode);
+    setEditorOpen(false);
+    setAiPlannerOpen(true);
+  };
+
+  const removePlan = (planId) => {
+    const plan = plansById.get(planId);
+    if (!plan || !window.confirm(`删除「${plan.name}」？已安排到日期上的引用也会移除。`)) return;
+
+    setPlans((current) => current.filter((item) => item.id !== planId));
+    setSchedule((current) => Object.fromEntries(
+      Object.entries(current).filter(([, entry]) => entry?.planId !== planId),
+    ));
+    notify('计划已删除');
+  };
+
+  const applyTripListAfterCurrentRemoved = (nextTrips, message) => {
+    const nextTrip = nextTrips.find((trip) => !trip.archived && trip.id !== activeTripId) || createEmptyTripSnapshot(`旅行计划 ${nextTrips.length + 1}`, getTodayId());
+    const finalTrips = nextTrips.some((trip) => trip.id === nextTrip.id) ? nextTrips : [...nextTrips, nextTrip];
+
+    setTrips(finalTrips);
+    applyTripSnapshot(nextTrip);
+    setEditorOpen(false);
+    notify(message);
+  };
+
+  const archiveCurrentTrip = () => {
+    if (!window.confirm(`归档「${tripName || '当前旅行'}」？归档后会从顶部切换列表隐藏，可在编辑计划里恢复。`)) return;
+
+    const archivedTrip = { ...getCurrentTripSnapshot(), archived: true };
+    const updatedTrips = trips.map((trip) => (trip.id === activeTripId ? archivedTrip : trip));
+    applyTripListAfterCurrentRemoved(updatedTrips, '当前旅行已归档');
+  };
+
+  const deleteCurrentTrip = () => {
+    if (!window.confirm(`永久删除「${tripName || '当前旅行'}」？这个操作不会进入归档。`)) return;
+
+    const updatedTrips = trips.filter((trip) => trip.id !== activeTripId);
+    applyTripListAfterCurrentRemoved(updatedTrips, '当前旅行已删除');
+  };
+
+  const restoreArchivedTrip = (tripId) => {
+    const restoredTrips = trips.map((trip) => (trip.id === tripId ? { ...trip, archived: false } : trip));
+    const restoredTrip = restoredTrips.find((trip) => trip.id === tripId);
+    if (!restoredTrip) return;
+
+    setTrips(saveCurrentTripInto(restoredTrips));
+    applyTripSnapshot(restoredTrip);
+    setEditorOpen(false);
+    notify('已恢复归档旅行');
   };
 
   const buildAssignmentImpact = (dateId, planId) => {
@@ -1846,10 +1948,87 @@ function App() {
     };
   }, [normalizedPlans, startDateStr, tripDates, weatherData]);
 
-  const copySystemPrompt = () => {
-    const prompt = `你是旅行动态规划助手。请只输出 JSON，不要输出解释文字。
-JSON 格式如下：
-{
+  const buildAiPlanningPrompt = () => {
+    const planningStartDate = selectedDate || tripDates[0];
+    const fixedDates = planningStartDate
+      ? tripDates.filter((date) => date.id < planningStartDate.id)
+      : [];
+    const adjustableDates = planningStartDate
+      ? tripDates.filter((date) => date.id >= planningStartDate.id)
+      : tripDates;
+    const completedPlanIds = new Set(
+      fixedDates
+        .map((date) => schedule[date.id]?.planId)
+        .filter(Boolean),
+    );
+    const remainingPlans = normalizedPlans.filter((plan) => !completedPlanIds.has(plan.id));
+
+    const summarizeScheduleDate = (date) => {
+      const plan = schedule[date.id]?.planId ? plansById.get(schedule[date.id].planId) : null;
+      const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData);
+      return {
+        date: date.id,
+        day: `D${date.dayNumber}`,
+        display: date.display,
+        plan_id: plan?.id || null,
+        plan_name: plan?.name || null,
+        status: insight.label || '普通',
+        weather: insight.weatherText || '',
+        note: insight.riskText || '',
+      };
+    };
+
+    const summarizePlan = (plan) => ({
+      plan_id: plan.id,
+      name: plan.name,
+      priority: PRIORITY_META[plan.priority]?.label || plan.priority,
+      description: plan.description,
+      current_assigned_date: planAssignments.get(plan.id) || null,
+      available_dates: plan.available_dates,
+      closed_dates: plan.closed_dates,
+      weather_rules: plan.weather_rules,
+      location: {
+        label: plan.location.label,
+        weather_location: getWeatherLocationLabel(plan.location),
+      },
+      time_window: plan.time_window,
+      stops: plan.stops.map((stop) => ({
+        time: stop.time,
+        title: stop.title,
+        location: stop.location.label,
+        note: stop.note,
+      })),
+      reminders: plan.reminders.map((item) => `${item.time ? `${item.time} ` : ''}${item.text}`),
+      tips: plan.tips,
+      conflicts: plan.conflicts,
+      weather_by_adjustable_date: adjustableDates.map((date) => {
+        const weather = evaluateWeather(plan, date.id, weatherData);
+        return {
+          date: date.id,
+          status: weather.label,
+          summary: weather.snapshot?.summary || '天气未知',
+        };
+      }),
+    });
+
+    const tripContext = {
+      trip: {
+        name: tripName || '未命名旅行',
+        range: formatTripRange(startDateStr, tripDays),
+        days: tripDays,
+        planning_from: planningStartDate?.id || null,
+      },
+      existing_schedule: tripDates.map(summarizeScheduleDate),
+      existing_plans: normalizedPlans.map(summarizePlan),
+      current_warnings: riskGroups.map((group) => ({
+        title: group.title,
+        level: group.level,
+        items: group.items,
+      })),
+      user_request: aiPlannerQuestion.trim(),
+    };
+
+    const planSchema = `{
   "plans": [
     {
       "id": "unique_plan_id",
@@ -1884,38 +2063,89 @@ JSON 格式如下：
     }
   ]
 }`;
-    copyText(prompt, 'AI 规则已复制');
+
+    if (aiPlannerMode === 'initial') {
+      return `你是旅行初始规划助手。请根据我的补充要求，生成一个「n 天 + backup」的旅行计划池，并给出初始日程。
+
+当前旅行壳：
+${JSON.stringify({
+  trip: tripContext.trip,
+  user_request: tripContext.user_request || '请先根据目的地、日期、天气敏感度和体力节奏，生成一版可动态调整的旅行计划。',
+}, null, 2)}
+
+要求：
+1. 每天可以包含多个地点，跨城计划要明确城市。
+2. 计划数量可以多于旅行天数，用于备选。
+3. 必须写清 available_dates、closed_dates、weather_rules、conflicts。
+4. location.weather_location 用城市/区县/坐标，不要用景点名做天气查询。
+5. 有特别提醒和 tips 就写，没有就留空数组。
+
+请只输出可导入 JSON，格式如下：
+${planSchema}`;
+    }
+
+    if (aiPlannerMode === 'extend') {
+      const unplannedDates = tripDates.filter((date) => !schedule[date.id]?.planId);
+      return `你是旅行增量规划助手。请保留已有安排，在新增或未安排日期上补充计划；如果必须调整相邻日期，请说明原因。
+
+数据：
+${JSON.stringify({
+  ...tripContext,
+  keep_existing_schedule_by_default: true,
+  unplanned_dates: unplannedDates.map(summarizeScheduleDate),
+  existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
+  user_request: tripContext.user_request || '请为未安排日期补充计划；如果现有计划池不够，请新增 backup 计划并给出可导入 JSON。',
+}, null, 2)}
+
+请输出：
+1. 增量安排建议
+2. 是否需要新增计划及原因
+3. 对已有日期的影响
+4. JSON，包含新增/更新的 plans；需要安排日期时在对应 plan 上写 assigned_day
+
+JSON 格式：
+${planSchema}`;
+    }
+
+    const context = {
+      ...tripContext,
+      fixed_dates_do_not_change: fixedDates.map(summarizeScheduleDate),
+      adjustable_dates: adjustableDates.map(summarizeScheduleDate),
+      remaining_or_adjustable_plans: remainingPlans.map(summarizePlan),
+      user_request: tripContext.user_request || '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。',
+    };
+
+    return `你是旅行行程重排助手。请只基于下面的数据调整剩余行程，不要改动 fixed_dates_do_not_change 里的日期。
+
+你需要做：
+1. 重新安排 adjustable_dates 中的日期。
+2. 优先保留必去计划，尽量减少天气不合适和日期不合适。
+3. 如果必须放弃计划，请说明原因。
+4. 如果某个调整会带来风险，请明确列出需要我确认的事项。
+5. 最后输出一个 JSON，方便我手动导入或对照修改。
+
+数据：
+${JSON.stringify(context, null, 2)}
+
+请按这个格式回答：
+1. 推荐的新日程
+2. 调整原因
+3. 未安排计划及原因
+4. 需要确认的风险
+5. JSON：
+{
+  "schedule": [
+    { "date": "YYYY-MM-DD", "plan_id": "plan_id", "reason": "为什么这样排" }
+  ],
+  "unassigned": [
+    { "plan_id": "plan_id", "reason": "为什么没排进去" }
+  ],
+  "warnings": ["需要用户确认的事项"]
+}`;
   };
 
-  const copyDayPrompt = () => {
-    if (!selectedDate) return;
-    const availablePlans = switchCandidates
-      .filter((candidate) => candidate.canAssign)
-      .map(({ plan, score, notes, weather, assignedDateId }) => ({
-        ...plan,
-        assigned_day: assignedDateId || null,
-        fit_score: score,
-        notes,
-        weather_status: weather.label,
-      }));
-
-    const prompt = `我正在旅行中调整 ${selectedDate.display} (${selectedDate.id}) 的安排。
-当天状态：
-- 已安排计划：${selectedPlan?.name || '无'}
-
-当前可选计划：
-${JSON.stringify(availablePlans, null, 2)}
-
-当前风险：
-${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
-  plan: risk.plan.name,
-  priority: risk.plan.priority,
-  reasons: risk.reasons,
-})), null, 2)}
-
-请返回可直接导入的 JSON。如果建议安排某个计划，请在该 plan 上写 assigned_day: "${selectedDate.id}"。`;
-
-    copyText(prompt, '当天上下文已复制');
+  const copyAiPlanningPrompt = () => {
+    copyText(buildAiPlanningPrompt(), `${AI_PLANNER_MODES[aiPlannerMode].label} Prompt 已复制`);
   };
 
   const handleImport = () => {
@@ -1948,6 +2178,19 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
         }
       }
 
+      if (Array.isArray(parsed.schedule)) {
+        const importedSchedule = parsed.schedule.reduce((accumulator, item) => {
+          const dateId = item.date || item.dateId || item.day;
+          const planId = item.plan_id || item.planId || item.id;
+          if (dateId && planId) accumulator[dateId] = { planId };
+          return accumulator;
+        }, {});
+
+        if (Object.keys(importedSchedule).length) {
+          setSchedule((current) => ({ ...current, ...importedSchedule }));
+        }
+      }
+
       setImportModalOpen(false);
       setImportText('');
       notify('JSON 已导入');
@@ -1958,50 +2201,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
 
   const handleExportState = () => {
     const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `travel-gacha-${getTodayId()}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    notify('备份已下载');
-  };
-
-  const handleFileImport = (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (readerEvent) => {
-      try {
-        const data = JSON.parse(readerEvent.target.result);
-        if (data.startDateStr) setStartDateStr(data.startDateStr);
-        if (data.tripDays) setTripDays(clampTripDays(data.tripDays));
-        if (Array.isArray(data.plans)) setPlans(data.plans);
-        if (data.schedule) setSchedule(normalizeSchedule(data.schedule));
-        if (data.weatherData) setWeatherData(data.weatherData);
-        notify('备份已恢复');
-      } catch (error) {
-        notify(`恢复失败：${error.message}`);
-      }
-    };
-    reader.readAsText(file);
-    event.target.value = '';
-  };
-
-  const handleClearData = () => {
-    if (!window.confirm('把当前旅行计划重置为默认青岛样例？')) return;
-
-    const nextStartDate = getTodayId();
-    setTripName('青岛 5 日');
-    setStartDateStr(nextStartDate);
-    setTripDays(DEFAULT_TRIP_DAYS);
-    setPlans(createInitialPlans(nextStartDate));
-    setSchedule(createInitialSchedule(nextStartDate));
-    setWeatherData({});
-    setSelectedDateId(nextStartDate);
-    notify('数据已重置');
+    copyText(JSON.stringify(data, null, 2), 'JSON 已复制');
   };
 
   const renderPlanStops = (plan) => {
@@ -2102,20 +2302,17 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
     </div>
   );
 
-  const renderCurrentPlanActions = () => (
-    <div className="current-actions">
-      {selectedDate && (
-        <button className="btn btn-outline" type="button" onClick={copyDayPrompt}>
-          问 AI
-        </button>
-      )}
-      {selectedDate && selectedPlan && (
+  const renderCurrentPlanActions = () => {
+    if (!selectedDate || !selectedPlan) return null;
+
+    return (
+      <div className="current-actions">
         <button className="btn btn-ghost" type="button" onClick={() => clearDay(selectedDate.id)}>
           清空
         </button>
-      )}
-    </div>
-  );
+      </div>
+    );
+  };
 
   const renderRiskGroup = (group) => (
     <div className={`risk-item risk-group ${group.level}`} key={group.title}>
@@ -2240,7 +2437,7 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
             </button>
             {tripMenuOpen && (
               <div className="trip-menu-popover" role="listbox" aria-label="旅行计划">
-                {trips.map((trip) => {
+                {visibleTrips.map((trip) => {
                   const isCurrentTrip = trip.id === activeTripId;
                   const displayName = isCurrentTrip ? tripName : trip.name;
                   const displayRange = isCurrentTrip
@@ -2311,6 +2508,12 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
           </div>
 
           {renderMobileRiskPanel()}
+
+          <div className="mobile-ai-entry">
+            <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('replan')}>
+              AI 规划
+            </button>
+          </div>
 
           <div className="day-list" aria-label="日期列表">
             {tripDates.map((date) => {
@@ -2443,6 +2646,20 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
             {riskGroups.slice(0, 8).map(renderRiskGroup)}
           </div>
 
+          <div className="workflow-panel ai-workflow-panel">
+            <div className="panel-header compact">
+              <h2>AI 规划</h2>
+              <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('replan')}>
+                打开
+              </button>
+            </div>
+            <p className="helper-text">
+              {hasInitializedPlans
+                ? '用于大改剩余行程：整理未完成计划、当前安排、天气和预警，再复制给你常用的 AI。'
+                : '用于从空计划开始生成计划池、备选方案和初始日程。'}
+            </p>
+          </div>
+
           <div className="workflow-panel">
             <div className="panel-header compact">
               <h2>天气</h2>
@@ -2464,6 +2681,69 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
 
         </aside>
       </main>
+
+      {aiPlannerOpen && (
+        <div className="modal-overlay" onClick={() => setAiPlannerOpen(false)}>
+          <div className="modal ai-planner-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">AI Planning</p>
+                <h2>AI 规划 · {AI_PLANNER_MODES[aiPlannerMode].label}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setAiPlannerOpen(false)} aria-label="关闭 AI 规划">
+                ×
+              </button>
+            </div>
+
+            <div className="ai-mode-tabs" role="tablist" aria-label="AI 规划类型">
+              {Object.entries(AI_PLANNER_MODES)
+                .filter(([mode]) => (hasInitializedPlans ? mode !== 'initial' : mode === 'initial'))
+                .map(([mode, meta]) => (
+                  <button
+                    className={aiPlannerMode === mode ? 'is-selected' : ''}
+                    key={mode}
+                    type="button"
+                    onClick={() => setAiPlannerMode(mode)}
+                  >
+                    {meta.label}
+                  </button>
+                ))}
+            </div>
+            <p className="ai-planner-summary">
+              我们会整理当前行程、天气、限制和预警；你补充临时需求后，复制 Prompt 给常用 AI。
+              <span>{AI_PLANNER_MODES[aiPlannerMode].helper}</span>
+            </p>
+
+            <label>
+              <span>你的补充问题</span>
+              <textarea
+                className="textarea ai-question"
+                value={aiPlannerQuestion}
+                onChange={(event) => setAiPlannerQuestion(event.target.value)}
+                placeholder={AI_PLANNER_MODES[aiPlannerMode].placeholder}
+              />
+            </label>
+
+            <label>
+              <span>将复制给 AI 的内容</span>
+              <textarea
+                className="textarea ai-prompt-preview"
+                readOnly
+                value={buildAiPlanningPrompt()}
+              />
+            </label>
+
+            <div className="modal-actions">
+              <button className="btn btn-outline" type="button" onClick={() => setAiPlannerOpen(false)}>
+                关闭
+              </button>
+              <button className="btn btn-primary" type="button" onClick={copyAiPlanningPrompt}>
+                复制 Prompt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editorOpen && (
         <div className="modal-overlay" onClick={() => setEditorOpen(false)}>
@@ -2521,30 +2801,80 @@ ${JSON.stringify(riskItems.slice(0, 6).map((risk) => ({
                 <h2>计划数据</h2>
                 <span className="small-stat">{normalizedPlans.length} 个计划</span>
               </div>
-              <div className="action-grid">
-                <button className="btn btn-outline" type="button" onClick={copySystemPrompt}>
-                  复制规则
+              <div className="action-grid editor-action-grid">
+                {!hasInitializedPlans && (
+                  <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('initial')} title="AI 初始规划">
+                    AI
+                  </button>
+                )}
+                {hasInitializedPlans && (
+                  <button className="btn btn-primary" type="button" onClick={() => openAiPlanner('extend')} title="AI 增量规划">
+                    AI
+                  </button>
+                )}
+                <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(true)} title="导入 JSON">
+                  导入
                 </button>
-                <button className="btn btn-primary" type="button" onClick={() => setImportModalOpen(true)}>
-                  导入 JSON
-                </button>
-                <button className="btn btn-outline" type="button" onClick={handleExportState}>
-                  下载备份
-                </button>
-                <button className="btn btn-outline" type="button" onClick={() => fileInputRef.current?.click()}>
-                  恢复备份
+                <button className="btn btn-outline" type="button" onClick={handleExportState} title="复制当前 JSON">
+                  导出
                 </button>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".json,application/json"
-                hidden
-                onChange={handleFileImport}
-              />
-              <button className="btn btn-danger" type="button" onClick={handleClearData}>
-                重置当前计划
-              </button>
+            </div>
+
+            <div className="editor-section">
+              <div className="panel-header compact">
+                <h2>计划清单</h2>
+                <span className="small-stat">{normalizedPlans.length} 项</span>
+              </div>
+              <div className="plan-review-list">
+                {normalizedPlans.map((plan) => {
+                  const assignedDate = planAssignments.get(plan.id);
+                  return (
+                    <div className="plan-review-row" key={plan.id}>
+                      <div>
+                        <strong>{plan.name}</strong>
+                        <span>
+                          {PRIORITY_META[plan.priority].label}
+                          {assignedDate ? ` · 已排 ${formatAssignedDate(assignedDate, tripDates)}` : ' · 未排'}
+                        </span>
+                      </div>
+                      <button
+                        className="btn btn-small btn-outline"
+                        type="button"
+                        onClick={() => removePlan(plan.id)}
+                        aria-label={`删除 ${plan.name}`}
+                        title="删除计划"
+                      >
+                        删
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="editor-section archive-section">
+              <div className="trip-lifecycle-actions">
+                <button className="btn btn-outline" type="button" onClick={archiveCurrentTrip}>
+                  归档
+                </button>
+                <button className="btn btn-danger" type="button" onClick={deleteCurrentTrip}>
+                  删除
+                </button>
+              </div>
+              {archivedTrips.length > 0 && (
+                <div className="archived-trip-list">
+                  <strong>已归档</strong>
+                  {archivedTrips.map((trip) => (
+                    <div className="archived-trip-row" key={trip.id}>
+                      <span>{trip.name} · {formatTripRange(trip.startDateStr, trip.tripDays)}</span>
+                      <button className="btn btn-small btn-outline" type="button" onClick={() => restoreArchivedTrip(trip.id)}>
+                        恢复
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
