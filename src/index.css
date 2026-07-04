@@ -1591,6 +1591,95 @@ label {
   max-width: 50rem;
 }
 
+.archived-view-modal {
+  width: min(56rem, 100%);
+  max-width: 56rem;
+}
+
+.archived-view-meta {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.archived-view-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.readonly-badge {
+  display: inline-flex;
+  min-height: 1.8rem;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.archived-view-body {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.archived-day-card {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.archived-day-card.priority-must {
+  border-left-color: var(--coral);
+}
+
+.archived-day-card.priority-preferred {
+  border-left-color: var(--accent);
+}
+
+.archived-day-card.priority-backup {
+  border-left-color: var(--amber);
+}
+
+.archived-day-card.priority-optional,
+.archived-day-card.is-empty {
+  border-left-color: var(--border-strong);
+}
+
+.archived-day-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.archived-day-head h3,
+.archived-plan-summary h2,
+.archived-plan-summary p {
+  margin: 0;
+}
+
+.archived-plan-summary {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.archived-plan-summary p {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .ai-mode-tabs {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
@@ -1721,6 +1810,12 @@ label {
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.archived-trip-actions {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 0.35rem;
 }
 
 .plan-add-row {
@@ -2046,6 +2141,23 @@ label {
   .action-grid,
   .trip-lifecycle-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .archived-trip-row {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+
+  .archived-trip-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .archived-view-modal {
+    max-height: calc(100vh - 1.3rem);
+  }
+
+  .archived-view-actions {
+    gap: 0.35rem;
   }
 
   .modal-overlay {

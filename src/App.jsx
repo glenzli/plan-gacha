@@ -134,6 +134,10 @@ const UI_TEXT = {
     archive: '归档',
     delete: '删除',
     archived: '已归档',
+    view: '查看',
+    archivedView: '归档行程',
+    readOnly: '只读',
+    noPlanForDay: '当天没有安排',
     restore: '恢复',
     cancel: '取消',
     impactPreview: '调整影响预览',
@@ -316,6 +320,10 @@ const UI_TEXT = {
     archive: 'Archive',
     delete: 'Delete',
     archived: 'Archived',
+    view: 'View',
+    archivedView: 'Archived trip',
+    readOnly: 'Read-only',
+    noPlanForDay: 'No plan for this day',
     restore: 'Restore',
     cancel: 'Cancel',
     impactPreview: 'Impact preview',
@@ -2161,6 +2169,7 @@ function App() {
   const [planAiResult, setPlanAiResult] = useState('');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
+  const [archivedViewTripId, setArchivedViewTripId] = useState(null);
   const [pendingAssignment, setPendingAssignment] = useState(null);
   const [toast, setToast] = useState('');
 
@@ -2220,6 +2229,10 @@ function App() {
     [activeTripId, trips],
   );
   const archivedTrips = useMemo(() => trips.filter((trip) => trip.archived), [trips]);
+  const archivedViewTrip = useMemo(
+    () => archivedTrips.find((trip) => trip.id === archivedViewTripId) || null,
+    [archivedTrips, archivedViewTripId],
+  );
   const activeTripOption = trips.find((trip) => trip.id === activeTripId);
   const activeTripArchived = activeTripOption?.archived || false;
   const planAssignments = useMemo(() => {
@@ -2536,6 +2549,7 @@ function App() {
     setTrips(saveCurrentTripInto(restoredTrips));
     applyTripSnapshot(restoredTrip);
     setEditorOpen(false);
+    setArchivedViewTripId(null);
     notify(t('archivedRestored'));
   };
 
@@ -3105,8 +3119,9 @@ ${schema}`}
     );
   };
 
-  const renderPlanBookings = (plan) => {
+  const renderPlanBookings = (plan, options = {}) => {
     if (!plan?.bookings.length) return null;
+    const { readOnly = false } = options;
 
     return (
       <div className="booking-list" aria-label={t('bookingAria', { name: plan.name })}>
@@ -3135,7 +3150,7 @@ ${schema}`}
                     {linkLabel}
                   </a>
                 )}
-                {!isNone && (
+                {!readOnly && !isNone && (
                   <button
                     className="booking-toggle"
                     type="button"
@@ -3342,6 +3357,84 @@ ${schema}`}
     </div>
   );
 
+  const renderArchivedTripRows = () => {
+    if (!archivedTrips.length) return null;
+
+    return (
+      <div className="archived-trip-list">
+        <strong>{t('archived')}</strong>
+        {archivedTrips.map((trip) => (
+          <div className="archived-trip-row" key={trip.id}>
+            <span>{trip.name} · {formatTripRange(trip.startDateStr, trip.tripDays, language)}</span>
+            <div className="archived-trip-actions">
+              <button className="btn btn-small btn-outline" type="button" onClick={() => setArchivedViewTripId(trip.id)}>
+                {t('view')}
+              </button>
+              <button className="btn btn-small btn-outline" type="button" onClick={() => restoreArchivedTrip(trip.id)}>
+                {t('restore')}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const renderArchivedTripView = (trip) => {
+    if (!trip) return null;
+
+    const archiveDates = createTripDates(trip.startDateStr, trip.tripDays, language);
+    const archivePlans = (trip.plans || []).map((plan, index) => normalizePlan(plan, index, archiveDates));
+    const archivePlansById = new Map(archivePlans.map((plan) => [plan.id, plan]));
+    const archiveSchedule = normalizeSchedule(trip.schedule);
+    const archiveWeatherData = trip.weatherData || {};
+
+    return (
+      <div className="archived-view-body">
+        {archiveDates.map((date) => {
+          const plan = archivePlansById.get(archiveSchedule[date.id]?.planId);
+          const weather = plan ? evaluateWeather(plan, date.id, archiveWeatherData, language) : null;
+
+          return (
+            <article className={`archived-day-card ${plan ? `priority-${plan.priority}` : 'is-empty'}`} key={date.id}>
+              <div className="archived-day-head">
+                <div>
+                  <p className="eyebrow">D{date.dayNumber}</p>
+                  <h3>{date.display}</h3>
+                </div>
+                {plan && (
+                  <span className={`priority-badge ${plan.priority}`}>
+                    {getPriorityLabel(plan.priority, language)}
+                  </span>
+                )}
+              </div>
+
+              {plan ? (
+                <>
+                  <div className="archived-plan-summary">
+                    <h2>{plan.name}</h2>
+                    <p>{plan.description}</p>
+                  </div>
+                  {renderPlanStops(plan)}
+                  {renderPlanBookings(plan, { readOnly: true })}
+                  {renderPlanNotes(plan)}
+                  {weather && (
+                    <div className={`weather-line ${weather.level}`}>
+                      <strong>{weather.label}</strong>
+                      <span>{weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('noWeatherForPlace')}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="empty-state">{t('noPlanForDay')}</div>
+              )}
+            </article>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderEmptyPlanState = () => (
     <main className="empty-plan-layout">
       <section className="empty-plan-panel">
@@ -3361,6 +3454,7 @@ ${schema}`}
             {t('import')}
           </button>
         </div>
+        {renderArchivedTripRows()}
       </section>
     </main>
   );
@@ -3964,22 +4058,34 @@ ${schema}`}
                   {t('delete')}
                 </button>
               </div>
-              {archivedTrips.length > 0 && (
-                <div className="archived-trip-list">
-                  <strong>{t('archived')}</strong>
-                  {archivedTrips.map((trip) => (
-                    <div className="archived-trip-row" key={trip.id}>
-                      <span>{trip.name} · {formatTripRange(trip.startDateStr, trip.tripDays, language)}</span>
-                      <button className="btn btn-small btn-outline" type="button" onClick={() => restoreArchivedTrip(trip.id)}>
-                        {t('restore')}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
+              {renderArchivedTripRows()}
             </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {archivedViewTrip && (
+        <div className="modal-overlay" onClick={() => setArchivedViewTripId(null)}>
+          <div className="modal archived-view-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">{t('archivedView')}</p>
+                <h2>{archivedViewTrip.name}</h2>
+                <span className="archived-view-meta">
+                  {formatTripRange(archivedViewTrip.startDateStr, archivedViewTrip.tripDays, language)} · {t('daysCount', { count: archivedViewTrip.tripDays })}
+                </span>
+              </div>
+              <div className="archived-view-actions">
+                <span className="readonly-badge">{t('readOnly')}</span>
+                <button className="icon-btn" type="button" onClick={() => setArchivedViewTripId(null)} aria-label={t('close')}>
+                  ×
+                </button>
+              </div>
+            </div>
+
+            {renderArchivedTripView(archivedViewTrip)}
           </div>
         </div>
       )}
