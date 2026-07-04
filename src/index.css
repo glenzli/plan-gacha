@@ -1681,6 +1681,10 @@ label {
   max-width: 41rem;
 }
 
+.checklist-import-modal {
+  max-width: 42rem;
+}
+
 .checklist-actions {
   justify-content: flex-start;
   flex-wrap: wrap;
@@ -1883,6 +1887,59 @@ label {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   font-size: 0.86rem;
   line-height: 1.55;
+}
+
+.checklist-conflicts {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.75rem;
+  border: 1px solid #f8dfa1;
+  border-radius: var(--radius);
+  background: var(--amber-soft);
+}
+
+.checklist-conflicts strong {
+  color: var(--amber);
+  font-size: 0.9rem;
+}
+
+.checklist-conflicts p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.checklist-conflict-list {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.checklist-conflict-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.15rem 0.55rem;
+  align-items: baseline;
+  padding-top: 0.42rem;
+  border-top: 1px solid rgba(216, 137, 0, 0.18);
+}
+
+.checklist-conflict-row span {
+  color: var(--amber);
+  font-size: 0.72rem;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.checklist-conflict-row strong {
+  overflow-wrap: anywhere;
+  color: var(--text);
+}
+
+.checklist-conflict-row em {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-style: normal;
 }
 
 .archived-view-modal {

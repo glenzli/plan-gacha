@@ -19,14 +19,32 @@
 
 ### 核心能力
 
-- 多旅行计划管理：可以新建、删除、导入、导出，也可以从示例快速体验完整能力。
+- 多旅行计划管理：可以新建、删除、归档、恢复、导入、下载 JSON，也可以从示例快速体验完整能力。
 - 每日行程视图：移动端提供日期导航，桌面端提供左侧日期列表和中间详情。
 - 候选计划池：每个计划可以包含多个地点、多个时间点、跨城市安排、提醒、tips 和预约订票信息。
 - 天气联动：按计划中的城市、区县或坐标自动查询 Open-Meteo 天气，并基于计划规则判断是否适合。
 - 约束判断：支持可去日期、不可用日期、天气黑名单、推荐天气、必去标记和已安排日期。
 - 冲突提示：选择某个计划前会评估它是否会影响后续安排，并把需要调整的天数留给用户重新决定。
 - 预约订票：可以记录预约/门票状态、地址、链接和退改链接，状态由用户手动更新。
+- 旅行清单：作为独立的长期清单维护，支持用 `# 分类` + 一行一个事项编辑，勾选完成、本次不需要、导入/导出清单和一键重置本次状态。
+- 归档只读：已归档旅行可以在编辑界面查看，不参与顶部计划切换，适合保留历史行程。
 - 多语言：支持中文和英文，可通过 `?lang=zh` 或 `?lang=en` 切换。
+
+### 使用方式
+
+1. 新建旅行计划，设置出发日期和天数。
+2. 从 `AI 生成计划池`、导入 JSON 或完整示例开始建立候选计划。
+3. 出发前把必去、备用、雨天、跨城、预约订票、提醒和 tips 都放进计划池。
+4. 旅行中打开当天页面，按天气、日期限制和已安排状态选择方案。
+5. 如果选择会移动或清空已有安排，应用会先展示影响预览，再由用户确认。
+
+候选计划会分成三组：
+
+- `可直接选择`：当前日期可用，且还没有安排在别天。
+- `已安排，可移动`：已经排在其他日期，可以主动移动过来。
+- `不可选`：日期不适合或当天不可用/闭馆等硬限制。
+
+天气不合适不再阻止选择。对于临场判断可接受的情况，按钮会用风险颜色提示，但用户仍然可以强制选择；日期限制和闭馆仍然是硬限制。
 
 ### AI 工作流
 
@@ -38,6 +56,12 @@
 - `AI 编辑单项`：适合新增或修改一个具体计划。
 - `AI 重排`：适合旅行途中根据剩余天数、天气和已去项目重新安排。
 
+提示词会尽量只提供 AI 真正需要的信息：
+
+- 初始/增量规划：提供计划池 JSON 结构、已有计划 ID 和用户补充需求。
+- 单项编辑：只提供当前单个计划或已有计划 ID，要求 AI 输出单个计划 JSON 对象。
+- 重排行程：提供固定日期、可调整日期、剩余计划、天气和预警，让 AI 输出可导入结果。
+
 未来更自然的方向，可能是把行程扭蛋作为服务能力提供给 AI 侧，让用户直接从 AI 产品中使用。
 
 ### 天气数据
@@ -45,6 +69,24 @@
 天气查询使用免费的 [Open-Meteo](https://open-meteo.com/) 接口。应用会按地点和日期做本地缓存，避免短时间内重复请求同一个城市/区县的天气。
 
 为了提升成功率，计划里的地点建议包含城市、区县或坐标；展示时可以只显示具体地点，但天气查询会优先使用更稳定的查询位置。
+
+天气判断会结合天气类型、降水概率和计划的室内/室外属性：
+
+- `31-50%` 降水概率：室外计划通常标为天气一般。
+- `51%+` 降水概率：主打室外的计划标为天气不合适。
+- `70%+` 降水概率：即使天气代码不明确，也会补进雨天风险判断。
+- 大雨、雷雨：室外计划直接视为高风险；室内计划通常不受影响。
+
+天气查询会优先使用 `location.weather_location`、城市、区县或坐标；如果只有景点名，查询可能失败或不稳定。
+
+### 数据与导入导出
+
+- 数据默认保存在浏览器 `localStorage`，没有账号系统或云同步。
+- `127.0.0.1:5173` 和 `localhost:5173` 是不同浏览器 origin，数据不会互通。
+- 旅行计划导出会直接下载 JSON，包含计划池、日程和天气缓存，不包含旅行清单。
+- 旅行清单是全局独立数据，可以单独下载 JSON，之后可选择替换或合并导入。
+- 合并清单时，同分类同文本视为同一项；同文本不同分类会迁移可确定的状态，并提示冲突。
+- 同文本多次出现或状态不一致时，不会自动覆盖当前清单，会提示用户整理后再导入。
 
 ### 本地开发
 
@@ -81,14 +123,32 @@ Data is stored in browser `localStorage` by default. The current version is a fr
 
 ### Core Features
 
-- Multi-trip management: create, delete, import and export trips, or load an example to explore the full feature set.
+- Multi-trip management: create, delete, archive, restore, import and download JSON exports, or load an example to explore the full feature set.
 - Daily itinerary view: mobile has compact date navigation; desktop has a left date list and central detail view.
 - Candidate plan pool: each plan can include multiple places, timed stops, cross-city routes, reminders, tips, reservations and tickets.
 - Weather linkage: automatically checks Open-Meteo weather by city, district or coordinates, then evaluates plan suitability.
 - Constraint checks: supports allowed dates, unavailable dates, weather blocks, preferred weather, must-go flags and assigned dates.
 - Conflict preview: before selecting a plan, the app checks whether it affects later days and leaves impacted dates for the user to replan.
 - Booking and tickets: record status, address, links and cancellation/change links; status updates remain manual.
+- Trip checklist: maintain a standalone long-term checklist with `# Category` plus one item per line, mark items done, skip items for the current departure, import/export the checklist and reset the current checklist status.
+- Read-only archive: archived trips can be viewed from the editor, stay out of the top trip switcher and work well for keeping travel history.
 - Multilingual UI: supports Chinese and English through `?lang=zh` or `?lang=en`.
+
+### How To Use
+
+1. Create a trip and set the start date and number of days.
+2. Build the candidate pool from `AI Generate Plan Pool`, imported JSON or the full example.
+3. Before departure, add must-go plans, backups, rainy-day options, cross-city routes, bookings, reminders and tips.
+4. During the trip, open the current day and choose a plan based on weather, date limits and assigned status.
+5. If a choice moves or clears existing assignments, the app shows an impact preview before applying it.
+
+Candidates are grouped into three sections:
+
+- `Ready to select`: available for the current date and not assigned elsewhere.
+- `Scheduled elsewhere`: already assigned to another date, but can be moved here.
+- `Unavailable`: blocked by hard limits such as date restrictions or closures.
+
+Weather-unsuitable plans are still selectable. The app uses a risk-colored button so users can make a local judgment, while hard date limits and closures remain disabled.
 
 ### AI Workflow
 
@@ -100,6 +160,12 @@ Current AI features use a copy-prompt, external-AI, paste-JSON workflow:
 - `AI Edit Single Plan`: add or modify one concrete plan.
 - `AI Replan`: rearrange the remaining trip based on remaining days, weather and completed plans.
 
+Prompts are scoped to the task:
+
+- Initial/incremental planning: includes the plan-pool JSON structure, existing plan IDs and the user's extra request.
+- Single-plan editing: includes only the current plan or existing plan IDs, and asks AI to output one plan JSON object.
+- Replanning: includes fixed dates, adjustable dates, remaining plans, weather and warnings, then asks AI for an importable result.
+
 A more natural future direction may be to expose Plan Gacha as a service that users can access directly from AI products.
 
 ### Weather Data
@@ -107,6 +173,24 @@ A more natural future direction may be to expose Plan Gacha as a service that us
 Weather lookup uses the free [Open-Meteo](https://open-meteo.com/) API. The app caches weather locally by location and date range to avoid repeated short-interval requests for the same city or district.
 
 For better lookup reliability, each plan should include a city, district or coordinates. The UI can still display the specific place, while weather lookup uses the more stable location metadata.
+
+Weather evaluation combines weather type, precipitation probability and whether a plan is mainly indoor or outdoor:
+
+- `31-50%` precipitation probability: outdoor plans are usually marked as weather-is-okay / not ideal.
+- `51%+` precipitation probability: primarily outdoor plans are marked weather-unsuitable.
+- `70%+` precipitation probability: rain risk is considered even when the weather code is ambiguous.
+- Heavy rain or storms: outdoor plans are high risk; indoor plans are usually unaffected.
+
+Weather lookup prioritizes `location.weather_location`, city, district or coordinates. Scenic spot names can fail or be unstable.
+
+### Data And Import/Export
+
+- Data is stored in browser `localStorage`; there is no account system or cloud sync.
+- `127.0.0.1:5173` and `localhost:5173` are different browser origins, so their local data is separate.
+- Trip export downloads a JSON file containing the plan pool, schedule and weather cache. It does not include the trip checklist.
+- The checklist is global standalone data. It can be downloaded separately as JSON, then imported by replacing or merging.
+- During checklist merge, same category plus same text is treated as the same item. Same text in a different category migrates clear status matches and reports a conflict.
+- Repeated same-text items or status disagreements do not overwrite the current checklist automatically; the app reports them for cleanup before re-importing.
 
 ### Local Development
 

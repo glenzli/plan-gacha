@@ -91,7 +91,7 @@ const UI_TEXT = {
     aiGenerateShort: 'AI',
     viewExample: '看示例',
     import: '导入',
-    export: '导出',
+    export: '导出旅行',
     editPlan: '编辑计划',
     noEditablePlan: '暂无可编辑计划',
     createOrImportFirst: '先新建或导入计划',
@@ -176,10 +176,24 @@ const UI_TEXT = {
     checklistTextLabel: '清单原文',
     checklistSave: '保存清单',
     checklistSaved: '清单已更新',
+    checklistImport: '导入清单',
+    checklistImportTitle: '导入旅行清单',
+    checklistImportHelp: '粘贴清单 JSON，或直接粘贴 # 分类 + 一行一个事项。替换会覆盖当前清单；合并会保留当前清单并追加新事项。',
+    checklistImportPlaceholder: '# 证件\n身份证/护照\n驾照/学生证',
+    checklistReplace: '替换',
+    checklistMerge: '合并',
+    checklistImported: '清单已导入',
+    checklistMerged: '清单已合并',
+    checklistImportEmpty: '没有找到清单内容',
+    checklistMergeConflicts: ({ count }) => `已合并，${count} 项需要确认`,
+    checklistMergeConflictHelp: '已保留当前清单，能确定的状态已迁移。分类或状态冲突建议交给 AI 整理后再导入。',
+    checklistConflictCategory: '分类不一致',
+    checklistConflictStatus: '状态不一致',
+    checklistConflictDuplicate: '重复项有歧义',
     checklistExport: '导出清单',
     checklistExported: '清单 JSON 已下载',
-    checklistClearDone: '清空勾选',
-    checklistDoneCleared: '已清空勾选项',
+    checklistResetState: '重置状态',
+    checklistStateReset: '清单状态已重置',
     checklistNotNeeded: '不需要',
     checklistUndoSkip: '需要',
     checklistDone: '完成',
@@ -302,7 +316,7 @@ const UI_TEXT = {
     aiGenerateShort: 'AI',
     viewExample: 'Example',
     import: 'Import',
-    export: 'Export',
+    export: 'Export trip',
     editPlan: 'Edit trip',
     noEditablePlan: 'No trip to edit',
     createOrImportFirst: 'Create or import a trip first',
@@ -387,10 +401,24 @@ const UI_TEXT = {
     checklistTextLabel: 'Checklist source',
     checklistSave: 'Save checklist',
     checklistSaved: 'Checklist updated',
+    checklistImport: 'Import checklist',
+    checklistImportTitle: 'Import trip checklist',
+    checklistImportHelp: 'Paste checklist JSON, or paste # Category plus one item per line. Replace overwrites the current checklist; merge keeps current items and adds new ones.',
+    checklistImportPlaceholder: '# Documents\nPassport / ID\nDriver license / student ID',
+    checklistReplace: 'Replace',
+    checklistMerge: 'Merge',
+    checklistImported: 'Checklist imported',
+    checklistMerged: 'Checklist merged',
+    checklistImportEmpty: 'No checklist content found',
+    checklistMergeConflicts: ({ count }) => `Merged, ${count} items need review`,
+    checklistMergeConflictHelp: 'The current checklist was kept, and clear status matches were migrated. Category or status conflicts should be cleaned up with AI and imported again.',
+    checklistConflictCategory: 'Category differs',
+    checklistConflictStatus: 'Status differs',
+    checklistConflictDuplicate: 'Duplicate item is ambiguous',
     checklistExport: 'Export checklist',
     checklistExported: 'Checklist JSON downloaded',
-    checklistClearDone: 'Clear checked',
-    checklistDoneCleared: 'Checked items cleared',
+    checklistResetState: 'Reset status',
+    checklistStateReset: 'Checklist status reset',
     checklistNotNeeded: 'Skip',
     checklistUndoSkip: 'Need',
     checklistDone: 'Done',
@@ -560,6 +588,8 @@ const STORAGE_KEYS = {
   schemaVersion: 'pg_schemaVersion',
   trips: 'pg_trips',
   currentTrip: 'pg_currentTripId',
+  checklistText: 'pg_checklistText',
+  checklistState: 'pg_checklistState',
 };
 
 const INTENSITY_META = {
@@ -1120,8 +1150,6 @@ function createExampleTripSnapshot(name = '青岛 5 日示例', startDate = getT
     plans: createExamplePlans(startDate),
     schedule: createExampleSchedule(startDate),
     weatherData: {},
-    checklistText: DEFAULT_CHECKLIST_TEXT,
-    checklistState: {},
     archived: false,
   };
 }
@@ -1135,8 +1163,6 @@ function createEmptyTripSnapshot(name = '新旅行计划', startDate = getTodayI
     plans: [],
     schedule: {},
     weatherData: {},
-    checklistText: DEFAULT_CHECKLIST_TEXT,
-    checklistState: {},
     archived: false,
   };
 }
@@ -1629,12 +1655,188 @@ function getChecklistStats(groups, state) {
   };
 }
 
+function reconcileChecklistStateForGroups(state, groups) {
+  const validItemIds = new Set(groups.flatMap((group) => group.items.map((item) => item.id)));
+  return Object.fromEntries(
+    Object.entries(normalizeChecklistState(state))
+      .filter(([itemId]) => validItemIds.has(itemId)),
+  );
+}
+
+function serializeChecklistGroups(groups) {
+  return groups
+    .map((group) => [
+      `# ${group.title}`,
+      ...group.items.map((item) => item.text),
+    ].join('\n'))
+    .join('\n\n')
+    .trim();
+}
+
+function countChecklistTexts(groups) {
+  const counts = new Map();
+  groups.forEach((group) => {
+    group.items.forEach((item) => {
+      counts.set(item.text, (counts.get(item.text) || 0) + 1);
+    });
+  });
+  return counts;
+}
+
+function parseChecklistImportPayload(input, language = DEFAULT_LANGUAGE) {
+  let parsed;
+
+  try {
+    parsed = parseImportJson(input);
+  } catch {
+    parsed = { checklistText: input };
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    parsed = { checklistText: String(parsed || '') };
+  }
+
+  const checklistSource = Object.hasOwn(parsed, 'checklistText')
+    ? parsed.checklistText
+    : parsed.checklist || parsed.packingList || parsed.text || '';
+  const checklistText = normalizeChecklistText(checklistSource, '');
+  if (!checklistText) throw new Error(translate('checklistImportEmpty', language));
+
+  const groups = parseChecklistText(checklistText, language);
+  return {
+    checklistText,
+    checklistState: reconcileChecklistStateForGroups(parsed.checklistState || parsed.checklistStatus || {}, groups),
+    groups,
+  };
+}
+
+function mergeChecklistPayload(currentText, currentState, incomingText, incomingState, language = DEFAULT_LANGUAGE) {
+  const currentGroups = parseChecklistText(currentText, language);
+  const incomingGroups = parseChecklistText(incomingText, language);
+  const incomingCounts = countChecklistTexts(incomingGroups);
+  const resultGroups = currentGroups.map((group) => ({
+    ...group,
+    items: group.items.map((item) => ({ ...item })),
+  }));
+  const resultState = reconcileChecklistStateForGroups(currentState, resultGroups);
+  const conflicts = [];
+
+  const groupById = new Map(resultGroups.map((group) => [group.id, group]));
+  const itemById = new Map();
+  const itemsByText = new Map();
+
+  const indexResultItem = (group, item) => {
+    itemById.set(item.id, { group, item });
+    const items = itemsByText.get(item.text) || [];
+    items.push({ group, item });
+    itemsByText.set(item.text, items);
+  };
+
+  resultGroups.forEach((group) => {
+    group.items.forEach((item) => indexResultItem(group, item));
+  });
+
+  const ensureGroup = (incomingGroup) => {
+    const existing = groupById.get(incomingGroup.id);
+    if (existing) return existing;
+
+    const nextGroup = { id: incomingGroup.id, title: incomingGroup.title, items: [] };
+    resultGroups.push(nextGroup);
+    groupById.set(nextGroup.id, nextGroup);
+    return nextGroup;
+  };
+
+  const applyIncomingStatus = (target, incomingStatus, incomingGroup) => {
+    if (!incomingStatus) return;
+
+    const currentStatus = resultState[target.item.id];
+    if (currentStatus && currentStatus !== incomingStatus) {
+      conflicts.push({
+        type: 'status',
+        text: target.item.text,
+        currentGroup: target.group.title,
+        incomingGroup: incomingGroup.title,
+        currentStatus,
+        incomingStatus,
+      });
+      return;
+    }
+
+    resultState[target.item.id] = incomingStatus;
+  };
+
+  incomingGroups.forEach((incomingGroup) => {
+    incomingGroup.items.forEach((incomingItem) => {
+      const incomingStatus = incomingState[incomingItem.id];
+      const exactTarget = itemById.get(incomingItem.id);
+      if (exactTarget) {
+        applyIncomingStatus(exactTarget, incomingStatus, incomingGroup);
+        return;
+      }
+
+      const sameTextTargets = itemsByText.get(incomingItem.text) || [];
+      if (sameTextTargets.length === 1 && incomingCounts.get(incomingItem.text) === 1) {
+        const target = sameTextTargets[0];
+        if (target.group.id !== incomingGroup.id) {
+          conflicts.push({
+            type: 'category',
+            text: incomingItem.text,
+            currentGroup: target.group.title,
+            incomingGroup: incomingGroup.title,
+          });
+        }
+        applyIncomingStatus(target, incomingStatus, incomingGroup);
+        return;
+      }
+
+      if (sameTextTargets.length > 1 || incomingCounts.get(incomingItem.text) > 1) {
+        conflicts.push({
+          type: 'duplicate',
+          text: incomingItem.text,
+          currentGroup: sameTextTargets.map((target) => target.group.title).join(' / '),
+          incomingGroup: incomingGroup.title,
+        });
+        return;
+      }
+
+      const targetGroup = ensureGroup(incomingGroup);
+      const occurrence = targetGroup.items.filter((item) => item.text === incomingItem.text).length;
+      const nextItem = {
+        id: getChecklistId(targetGroup.id, incomingItem.text, occurrence),
+        text: incomingItem.text,
+      };
+      targetGroup.items.push(nextItem);
+      indexResultItem(targetGroup, nextItem);
+      if (incomingStatus) resultState[nextItem.id] = incomingStatus;
+    });
+  });
+
+  return {
+    checklistText: serializeChecklistGroups(resultGroups),
+    checklistState: reconcileChecklistStateForGroups(resultState, resultGroups),
+    conflicts,
+  };
+}
+
 function isEmptyTripDraft(trip) {
   return !Array.isArray(trip?.plans) || trip.plans.length === 0;
 }
 
 function pruneEmptyTripDrafts(tripList, activeTripId) {
   return tripList.filter((trip) => !isEmptyTripDraft(trip) || trip.id === activeTripId);
+}
+
+function stripChecklistFromTripSnapshot(trip) {
+  const {
+    checklistText,
+    checklistState,
+    checklist,
+    checklistStatus,
+    packingList,
+    ...rest
+  } = trip;
+
+  return rest;
 }
 
 function getPendingBookings(plan) {
@@ -1662,6 +1864,14 @@ function loadInitialState() {
   const trips = pruneEmptyTripDrafts(loadedTrips, loadedActiveTrip.id);
   const visibleTrips = trips.filter((trip) => !trip.archived);
   const activeTrip = visibleTrips.find((trip) => trip.id === loadedActiveTrip.id) || visibleTrips[0] || trips[0];
+  const storedChecklistText = localStorage.getItem(STORAGE_KEYS.checklistText);
+  const storedChecklistState = safeJsonRead(STORAGE_KEYS.checklistState, null);
+  const nextChecklistText = normalizeChecklistText(storedChecklistText ?? activeTrip.checklistText);
+  const nextChecklistGroups = parseChecklistText(nextChecklistText, DEFAULT_LANGUAGE);
+  const nextChecklistState = reconcileChecklistStateForGroups(
+    storedChecklistState ?? activeTrip.checklistState,
+    nextChecklistGroups,
+  );
 
   return {
     trips,
@@ -1673,8 +1883,8 @@ function loadInitialState() {
     schedule: activeTrip.schedule,
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
     weatherData: activeTrip.weatherData,
-    checklistText: activeTrip.checklistText,
-    checklistState: activeTrip.checklistState,
+    checklistText: nextChecklistText,
+    checklistState: nextChecklistState,
   };
 }
 
@@ -2683,6 +2893,9 @@ function App() {
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistEditing, setChecklistEditing] = useState(false);
   const [checklistDraft, setChecklistDraft] = useState(initial.checklistText);
+  const [checklistImportOpen, setChecklistImportOpen] = useState(false);
+  const [checklistImportText, setChecklistImportText] = useState('');
+  const [checklistImportConflicts, setChecklistImportConflicts] = useState([]);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState('');
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -2891,14 +3104,12 @@ function App() {
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
       weatherData,
-      checklistText,
-      checklistState,
       archived: activeTripArchived,
     };
     const persistedTrips = pruneEmptyTripDrafts(
       trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip)),
       activeTripId,
-    );
+    ).map(stripChecklistFromTripSnapshot);
 
     localStorage.setItem(STORAGE_KEYS.schemaVersion, APP_SCHEMA_VERSION);
     localStorage.setItem(STORAGE_KEYS.trips, JSON.stringify(persistedTrips));
@@ -2906,8 +3117,6 @@ function App() {
   }, [
     activeTripId,
     activeTripArchived,
-    checklistState,
-    checklistText,
     t,
     normalizedPlans,
     schedule,
@@ -2917,6 +3126,11 @@ function App() {
     trips,
     weatherData,
   ]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.checklistText, checklistText);
+    localStorage.setItem(STORAGE_KEYS.checklistState, JSON.stringify(checklistState));
+  }, [checklistState, checklistText]);
 
   useEffect(() => {
     return () => {
@@ -2938,8 +3152,6 @@ function App() {
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
     weatherData,
-    checklistText,
-    checklistState,
     archived: activeTripArchived,
   });
 
@@ -2952,17 +3164,15 @@ function App() {
     setPlans(normalizedTrip.plans);
     setSchedule(normalizedTrip.schedule);
     setWeatherData(normalizedTrip.weatherData);
-    setChecklistText(normalizedTrip.checklistText);
-    setChecklistState(normalizedTrip.checklistState);
-    setChecklistDraft(normalizedTrip.checklistText);
-    setChecklistEditing(false);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     setWeatherError('');
   };
 
   const saveCurrentTripInto = (tripList) => {
     const currentTrip = getCurrentTripSnapshot();
-    return tripList.map((trip) => (trip.id === activeTripId ? currentTrip : trip));
+    return tripList
+      .map((trip) => (trip.id === activeTripId ? currentTrip : trip))
+      .map(stripChecklistFromTripSnapshot);
   };
 
   const switchTrip = (nextTripId) => {
@@ -3003,10 +3213,6 @@ function App() {
     setPlans(exampleTrip.plans);
     setSchedule(exampleTrip.schedule);
     setWeatherData({});
-    setChecklistText(exampleTrip.checklistText);
-    setChecklistState(exampleTrip.checklistState);
-    setChecklistDraft(exampleTrip.checklistText);
-    setChecklistEditing(false);
     setSelectedDateId(exampleTrip.startDateStr);
     closePlanEditor();
     setBatchAiOpen(false);
@@ -3201,22 +3407,86 @@ function App() {
   const saveChecklistText = () => {
     const nextChecklistText = normalizeChecklistText(checklistDraft);
     const nextGroups = parseChecklistText(nextChecklistText, language);
-    const validItemIds = new Set(nextGroups.flatMap((group) => group.items.map((item) => item.id)));
 
     setChecklistText(nextChecklistText);
-    setChecklistState((current) => Object.fromEntries(
-      Object.entries(current).filter(([itemId]) => validItemIds.has(itemId)),
-    ));
+    setChecklistState((current) => reconcileChecklistStateForGroups(current, nextGroups));
     setChecklistDraft(nextChecklistText);
     setChecklistEditing(false);
     notify(t('checklistSaved'));
   };
 
-  const clearChecklistDone = () => {
-    setChecklistState((current) => Object.fromEntries(
-      Object.entries(current).filter(([, status]) => status !== CHECKLIST_STATUS.done),
-    ));
-    notify(t('checklistDoneCleared'));
+  const resetChecklistState = () => {
+    setChecklistState({});
+    notify(t('checklistStateReset'));
+  };
+
+  const openChecklistImport = () => {
+    setChecklistImportText('');
+    setChecklistImportConflicts([]);
+    setChecklistImportOpen(true);
+  };
+
+  const closeChecklistImport = () => {
+    setChecklistImportOpen(false);
+    setChecklistImportConflicts([]);
+  };
+
+  const getChecklistImportPayload = () => parseChecklistImportPayload(checklistImportText, language);
+
+  const replaceChecklistFromImport = () => {
+    try {
+      const payload = getChecklistImportPayload();
+      setChecklistText(payload.checklistText);
+      setChecklistDraft(payload.checklistText);
+      setChecklistState(payload.checklistState);
+      setChecklistEditing(false);
+      setChecklistImportText('');
+      closeChecklistImport();
+      notify(t('checklistImported'));
+    } catch (error) {
+      notify(t('importFailed', { message: error.message }));
+    }
+  };
+
+  const mergeChecklistFromImport = () => {
+    try {
+      const payload = getChecklistImportPayload();
+      const merged = mergeChecklistPayload(
+        checklistText,
+        checklistState,
+        payload.checklistText,
+        payload.checklistState,
+        language,
+      );
+
+      setChecklistText(merged.checklistText);
+      setChecklistDraft(merged.checklistText);
+      setChecklistState(merged.checklistState);
+      setChecklistEditing(false);
+      setChecklistImportConflicts(merged.conflicts);
+
+      if (merged.conflicts.length) {
+        notify(t('checklistMergeConflicts', { count: merged.conflicts.length }));
+      } else {
+        setChecklistImportText('');
+        closeChecklistImport();
+        notify(t('checklistMerged'));
+      }
+    } catch (error) {
+      notify(t('importFailed', { message: error.message }));
+    }
+  };
+
+  const getChecklistStatusLabel = (status) => {
+    if (status === CHECKLIST_STATUS.done) return t('checklistDone');
+    if (status === CHECKLIST_STATUS.skipped) return t('checklistNotNeeded');
+    return t('checklistTodo');
+  };
+
+  const getChecklistConflictLabel = (type) => {
+    if (type === 'category') return t('checklistConflictCategory');
+    if (type === 'status') return t('checklistConflictStatus');
+    return t('checklistConflictDuplicate');
   };
 
   const selectNeighborDate = (step) => {
@@ -3602,18 +3872,6 @@ ${JSON.stringify(context, null, 2)}
     if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
     if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
     if (parsed.weatherData) setWeatherData(parsed.weatherData);
-    if (Object.hasOwn(parsed, 'checklistText') || parsed.checklist || parsed.packingList) {
-      const nextChecklistText = normalizeChecklistText(
-        Object.hasOwn(parsed, 'checklistText') ? parsed.checklistText : parsed.checklist || parsed.packingList,
-      );
-      setChecklistText(nextChecklistText);
-      setChecklistDraft(nextChecklistText);
-      touched = true;
-    }
-    if (parsed.checklistState || parsed.checklistStatus) {
-      setChecklistState(normalizeChecklistState(parsed.checklistState || parsed.checklistStatus));
-      touched = true;
-    }
 
     if (Array.isArray(parsed.plans)) {
       touched = true;
@@ -3761,7 +4019,7 @@ ${schema}`}
   };
 
   const handleExportState = () => {
-    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData, checklistText, checklistState };
+    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
     const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
     downloadJson(data, fileName, t('jsonDownloaded'));
   };
@@ -4848,11 +5106,19 @@ ${schema}`}
                   <button className="btn btn-outline" type="button" onClick={() => setChecklistEditing(true)}>
                     {t('checklistEdit')}
                   </button>
+                  <button className="btn btn-outline" type="button" onClick={openChecklistImport}>
+                    {t('checklistImport')}
+                  </button>
                   <button className="btn btn-outline" type="button" onClick={handleExportChecklist}>
                     {t('checklistExport')}
                   </button>
-                  <button className="btn btn-outline" type="button" onClick={clearChecklistDone} disabled={checklistStats.done === 0}>
-                    {t('checklistClearDone')}
+                  <button
+                    className="btn btn-outline"
+                    type="button"
+                    onClick={resetChecklistState}
+                    disabled={checklistStats.done === 0 && checklistStats.skipped === 0}
+                  >
+                    {t('checklistResetState')}
                   </button>
                 </div>
               </>
@@ -4881,6 +5147,66 @@ ${schema}`}
             </div>
 
             {renderArchivedTripView(archivedViewTrip)}
+          </div>
+        </div>
+      )}
+
+      {checklistImportOpen && (
+        <div className="modal-overlay" onClick={closeChecklistImport}>
+          <div className="modal checklist-import-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">{t('checklist')}</p>
+                <h2>{t('checklistImportTitle')}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={closeChecklistImport} aria-label={t('close')}>
+                ×
+              </button>
+            </div>
+
+            <p className="helper-text">{t('checklistImportHelp')}</p>
+            <textarea
+              className="textarea checklist-textarea"
+              value={checklistImportText}
+              onChange={(event) => {
+                setChecklistImportText(event.target.value);
+                setChecklistImportConflicts([]);
+              }}
+              placeholder={t('checklistImportPlaceholder')}
+            />
+
+            {checklistImportConflicts.length > 0 && (
+              <div className="checklist-conflicts">
+                <strong>{t('checklistMergeConflicts', { count: checklistImportConflicts.length })}</strong>
+                <p>{t('checklistMergeConflictHelp')}</p>
+                <div className="checklist-conflict-list">
+                  {checklistImportConflicts.slice(0, 8).map((conflict, index) => (
+                    <div className="checklist-conflict-row" key={`${conflict.type}-${conflict.text}-${index}`}>
+                      <span>{getChecklistConflictLabel(conflict.type)}</span>
+                      <strong>{conflict.text}</strong>
+                      <em>
+                        {conflict.currentGroup || '-'} → {conflict.incomingGroup || '-'}
+                        {conflict.currentStatus || conflict.incomingStatus
+                          ? ` · ${getChecklistStatusLabel(conflict.currentStatus)} / ${getChecklistStatusLabel(conflict.incomingStatus)}`
+                          : ''}
+                      </em>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="modal-actions">
+              <button className="btn btn-outline" type="button" onClick={closeChecklistImport}>
+                {t('cancel')}
+              </button>
+              <button className="btn btn-outline" type="button" onClick={mergeChecklistFromImport}>
+                {t('checklistMerge')}
+              </button>
+              <button className="btn btn-primary" type="button" onClick={replaceChecklistFromImport}>
+                {t('checklistReplace')}
+              </button>
+            </div>
           </div>
         </div>
       )}
