@@ -61,6 +61,7 @@ const UI_TEXT = {
     emptyTitle: '还没有计划',
     emptyDescription: '先建立计划池，再按每天的天气、日期限制、预约订票和冲突关系动态切换。',
     aiGenerate: 'AI 生成',
+    aiGenerateShort: 'AI',
     viewExample: '看示例',
     import: '导入',
     export: '导出',
@@ -242,6 +243,7 @@ const UI_TEXT = {
     emptyTitle: 'No plans yet',
     emptyDescription: 'Create a plan pool first, then switch day by day based on weather, date limits, bookings and conflicts.',
     aiGenerate: 'AI Generate',
+    aiGenerateShort: 'AI',
     viewExample: 'Example',
     import: 'Import',
     export: 'Export',
@@ -3350,7 +3352,7 @@ ${schema}`}
         </p>
         <div className="empty-plan-actions">
           <button className="btn btn-primary" type="button" onClick={openBatchAiGenerator}>
-            {t('aiGenerate')}
+            {t('aiGenerateShort')}
           </button>
           <button className="btn btn-outline" type="button" onClick={loadExampleTrip}>
             {t('viewExample')}
@@ -3492,7 +3494,7 @@ ${schema}`}
               type="button"
               onClick={() => openAiPlanner(hasInitializedPlans ? 'replan' : 'generate')}
             >
-              {hasInitializedPlans ? t('aiReplan') : t('aiGenerate')}
+              {hasInitializedPlans ? t('aiReplan') : t('aiGenerateShort')}
             </button>
           </div>
 
@@ -3852,7 +3854,7 @@ ${schema}`}
                   }}
                   title={t('aiPlanPoolTitle')}
                 >
-                  <span>{t('aiGenerate')}</span>
+                  <span>{t('aiGenerateShort')}</span>
                   <span className="toggle-chevron" aria-hidden="true" />
                 </button>
                 <button className="btn btn-outline" type="button" onClick={loadExampleTrip} title={t('loadFullExample')}>
