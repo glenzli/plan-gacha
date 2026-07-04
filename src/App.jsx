@@ -12,6 +12,30 @@ const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
 const NEW_PLAN_EDITOR_ID = '__new_plan__';
 const DEFAULT_LANGUAGE = 'zh';
 const SUPPORTED_LANGUAGES = ['zh', 'en'];
+const CHECKLIST_STATUS = {
+  todo: 'todo',
+  done: 'done',
+  skipped: 'skipped',
+};
+const DEFAULT_CHECKLIST_TEXT = `# 证件
+身份证/护照
+驾照/学生证
+银行卡和少量现金
+
+# 电子设备
+手机充电器
+充电宝
+相机/耳机
+
+# 衣物
+换洗衣物
+舒适鞋
+雨具/防晒
+
+# 出发前
+确认交通票
+确认酒店入住信息
+检查预约和门票`;
 
 const UI_TEXT = {
   zh: {
@@ -138,6 +162,21 @@ const UI_TEXT = {
     archivedView: '归档行程',
     readOnly: '只读',
     noPlanForDay: '当天没有安排',
+    checklist: '清单',
+    checklistTitle: '旅行清单',
+    checklistProgress: ({ done, total }) => `${done}/${total} 完成`,
+    checklistSkipped: ({ count }) => `${count} 本次不需要`,
+    checklistEmpty: '还没有清单项',
+    checklistUncategorized: '其他',
+    checklistEdit: '编辑清单',
+    checklistFormatHint: '用 # 分类，一行一个事项。保存后会自动按分类展示。',
+    checklistTextLabel: '清单原文',
+    checklistSave: '保存清单',
+    checklistSaved: '清单已更新',
+    checklistNotNeeded: '不需要',
+    checklistUndoSkip: '需要',
+    checklistDone: '完成',
+    checklistTodo: '未完成',
     restore: '恢复',
     cancel: '取消',
     impactPreview: '调整影响预览',
@@ -324,6 +363,21 @@ const UI_TEXT = {
     archivedView: 'Archived trip',
     readOnly: 'Read-only',
     noPlanForDay: 'No plan for this day',
+    checklist: 'Checklist',
+    checklistTitle: 'Trip checklist',
+    checklistProgress: ({ done, total }) => `${done}/${total} done`,
+    checklistSkipped: ({ count }) => `${count} skipped`,
+    checklistEmpty: 'No checklist items yet',
+    checklistUncategorized: 'Other',
+    checklistEdit: 'Edit checklist',
+    checklistFormatHint: 'Use # Category, then one item per line. It will be grouped automatically after saving.',
+    checklistTextLabel: 'Checklist source',
+    checklistSave: 'Save checklist',
+    checklistSaved: 'Checklist updated',
+    checklistNotNeeded: 'Skip',
+    checklistUndoSkip: 'Need',
+    checklistDone: 'Done',
+    checklistTodo: 'Todo',
     restore: 'Restore',
     cancel: 'Cancel',
     impactPreview: 'Impact preview',
@@ -1008,6 +1062,8 @@ function createExampleTripSnapshot(name = '青岛 5 日示例', startDate = getT
     plans: createExamplePlans(startDate),
     schedule: createExampleSchedule(startDate),
     weatherData: {},
+    checklistText: DEFAULT_CHECKLIST_TEXT,
+    checklistState: {},
     archived: false,
   };
 }
@@ -1021,6 +1077,8 @@ function createEmptyTripSnapshot(name = '新旅行计划', startDate = getTodayI
     plans: [],
     schedule: {},
     weatherData: {},
+    checklistText: DEFAULT_CHECKLIST_TEXT,
+    checklistState: {},
     archived: false,
   };
 }
@@ -1037,6 +1095,10 @@ function normalizeTripSnapshot(trip, index = 0) {
     plans: Array.isArray(trip.plans) ? trip.plans : [],
     schedule: normalizeSchedule(trip.schedule || {}),
     weatherData: trip.weatherData || {},
+    checklistText: normalizeChecklistText(
+      Object.hasOwn(trip, 'checklistText') ? trip.checklistText : trip.checklist || trip.packingList,
+    ),
+    checklistState: normalizeChecklistState(trip.checklistState || trip.checklistStatus),
     archived: Boolean(trip.archived),
   };
 }
@@ -1380,6 +1442,87 @@ function normalizeSchedule(schedule) {
   );
 }
 
+function normalizeChecklistText(text, fallback = DEFAULT_CHECKLIST_TEXT) {
+  if (typeof text === 'string') return text.trim();
+  return fallback;
+}
+
+function normalizeChecklistState(state) {
+  return Object.fromEntries(
+    Object.entries(state || {})
+      .filter(([, value]) => Object.values(CHECKLIST_STATUS).includes(value)),
+  );
+}
+
+function cleanupChecklistLine(line) {
+  return line
+    .replace(/^\s*[-*]\s*\[[ xX]\]\s*/, '')
+    .replace(/^\s*[-*]\s*/, '')
+    .trim();
+}
+
+function getChecklistId(groupTitle, itemText, occurrence) {
+  const suffix = occurrence > 0 ? `::${occurrence + 1}` : '';
+  return `${groupTitle.trim()}::${itemText.trim()}${suffix}`;
+}
+
+function parseChecklistText(text, language = DEFAULT_LANGUAGE) {
+  const groups = [];
+  const seenItems = new Map();
+  let currentGroup = null;
+
+  const ensureGroup = (title) => {
+    const isFallbackGroup = !title?.trim();
+    const groupTitle = isFallbackGroup ? translate('checklistUncategorized', language) : title.trim();
+    const groupId = isFallbackGroup ? '__uncategorized__' : groupTitle;
+    const existingGroup = groups.find((group) => group.id === groupId);
+    if (existingGroup) return existingGroup;
+
+    const nextGroup = { id: groupId, title: groupTitle, items: [] };
+    groups.push(nextGroup);
+    return nextGroup;
+  };
+
+  normalizeChecklistText(text, '').split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line) return;
+
+    const heading = line.match(/^#+\s*(.+)$/);
+    if (heading) {
+      currentGroup = ensureGroup(heading[1]);
+      return;
+    }
+
+    const itemText = cleanupChecklistLine(line);
+    if (!itemText) return;
+    if (!currentGroup) currentGroup = ensureGroup();
+
+    const baseKey = `${currentGroup.id}::${itemText}`;
+    const occurrence = seenItems.get(baseKey) || 0;
+    seenItems.set(baseKey, occurrence + 1);
+    currentGroup.items.push({
+      id: getChecklistId(currentGroup.id, itemText, occurrence),
+      text: itemText,
+    });
+  });
+
+  return groups.filter((group) => group.items.length > 0);
+}
+
+function getChecklistStats(groups, state) {
+  const items = groups.flatMap((group) => group.items);
+  const skipped = items.filter((item) => state[item.id] === CHECKLIST_STATUS.skipped).length;
+  const actionable = items.filter((item) => state[item.id] !== CHECKLIST_STATUS.skipped);
+  const done = actionable.filter((item) => state[item.id] === CHECKLIST_STATUS.done).length;
+
+  return {
+    total: actionable.length,
+    done,
+    skipped,
+    all: items.length,
+  };
+}
+
 function isEmptyTripDraft(trip) {
   return !Array.isArray(trip?.plans) || trip.plans.length === 0;
 }
@@ -1424,6 +1567,8 @@ function loadInitialState() {
     schedule: activeTrip.schedule,
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
     weatherData: activeTrip.weatherData,
+    checklistText: activeTrip.checklistText,
+    checklistState: activeTrip.checklistState,
   };
 }
 
@@ -2154,6 +2299,11 @@ function App() {
   const [schedule, setSchedule] = useState(initial.schedule);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
   const [weatherData, setWeatherData] = useState(initial.weatherData);
+  const [checklistText, setChecklistText] = useState(initial.checklistText);
+  const [checklistState, setChecklistState] = useState(initial.checklistState);
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklistEditing, setChecklistEditing] = useState(false);
+  const [checklistDraft, setChecklistDraft] = useState(initial.checklistText);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState('');
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -2187,6 +2337,14 @@ function App() {
   const endDateStr = useMemo(
     () => addDays(startDateStr, Math.max(tripDays - 1, 0)),
     [startDateStr, tripDays],
+  );
+  const checklistGroups = useMemo(
+    () => parseChecklistText(checklistText, language),
+    [checklistText, language],
+  );
+  const checklistStats = useMemo(
+    () => getChecklistStats(checklistGroups, checklistState),
+    [checklistGroups, checklistState],
   );
 
   const normalizedPlans = useMemo(
@@ -2346,6 +2504,8 @@ function App() {
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
       weatherData,
+      checklistText,
+      checklistState,
       archived: activeTripArchived,
     };
     const persistedTrips = pruneEmptyTripDrafts(
@@ -2359,6 +2519,8 @@ function App() {
   }, [
     activeTripId,
     activeTripArchived,
+    checklistState,
+    checklistText,
     t,
     normalizedPlans,
     schedule,
@@ -2389,6 +2551,8 @@ function App() {
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
     weatherData,
+    checklistText,
+    checklistState,
     archived: activeTripArchived,
   });
 
@@ -2401,6 +2565,10 @@ function App() {
     setPlans(normalizedTrip.plans);
     setSchedule(normalizedTrip.schedule);
     setWeatherData(normalizedTrip.weatherData);
+    setChecklistText(normalizedTrip.checklistText);
+    setChecklistState(normalizedTrip.checklistState);
+    setChecklistDraft(normalizedTrip.checklistText);
+    setChecklistEditing(false);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     setWeatherError('');
   };
@@ -2448,6 +2616,10 @@ function App() {
     setPlans(exampleTrip.plans);
     setSchedule(exampleTrip.schedule);
     setWeatherData({});
+    setChecklistText(exampleTrip.checklistText);
+    setChecklistState(exampleTrip.checklistState);
+    setChecklistDraft(exampleTrip.checklistText);
+    setChecklistEditing(false);
     setSelectedDateId(exampleTrip.startDateStr);
     closePlanEditor();
     setBatchAiOpen(false);
@@ -2595,6 +2767,54 @@ function App() {
       return next;
     });
     notify(t('dayCleared'));
+  };
+
+  const openChecklist = () => {
+    setChecklistDraft(checklistText);
+    setChecklistEditing(false);
+    setChecklistOpen(true);
+  };
+
+  const updateChecklistItemStatus = (itemId, nextStatus) => {
+    setChecklistState((current) => {
+      const next = { ...current };
+      if (nextStatus === CHECKLIST_STATUS.todo) {
+        delete next[itemId];
+      } else {
+        next[itemId] = nextStatus;
+      }
+      return next;
+    });
+  };
+
+  const toggleChecklistDone = (itemId) => {
+    const currentStatus = checklistState[itemId] || CHECKLIST_STATUS.todo;
+    updateChecklistItemStatus(
+      itemId,
+      currentStatus === CHECKLIST_STATUS.done ? CHECKLIST_STATUS.todo : CHECKLIST_STATUS.done,
+    );
+  };
+
+  const toggleChecklistSkipped = (itemId) => {
+    const currentStatus = checklistState[itemId] || CHECKLIST_STATUS.todo;
+    updateChecklistItemStatus(
+      itemId,
+      currentStatus === CHECKLIST_STATUS.skipped ? CHECKLIST_STATUS.todo : CHECKLIST_STATUS.skipped,
+    );
+  };
+
+  const saveChecklistText = () => {
+    const nextChecklistText = normalizeChecklistText(checklistDraft);
+    const nextGroups = parseChecklistText(nextChecklistText, language);
+    const validItemIds = new Set(nextGroups.flatMap((group) => group.items.map((item) => item.id)));
+
+    setChecklistText(nextChecklistText);
+    setChecklistState((current) => Object.fromEntries(
+      Object.entries(current).filter(([itemId]) => validItemIds.has(itemId)),
+    ));
+    setChecklistDraft(nextChecklistText);
+    setChecklistEditing(false);
+    notify(t('checklistSaved'));
   };
 
   const selectNeighborDate = (step) => {
@@ -2944,6 +3164,18 @@ ${JSON.stringify(context, null, 2)}
     if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
     if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
     if (parsed.weatherData) setWeatherData(parsed.weatherData);
+    if (Object.hasOwn(parsed, 'checklistText') || parsed.checklist || parsed.packingList) {
+      const nextChecklistText = normalizeChecklistText(
+        Object.hasOwn(parsed, 'checklistText') ? parsed.checklistText : parsed.checklist || parsed.packingList,
+      );
+      setChecklistText(nextChecklistText);
+      setChecklistDraft(nextChecklistText);
+      touched = true;
+    }
+    if (parsed.checklistState || parsed.checklistStatus) {
+      setChecklistState(normalizeChecklistState(parsed.checklistState || parsed.checklistStatus));
+      touched = true;
+    }
 
     if (Array.isArray(parsed.plans)) {
       touched = true;
@@ -3093,7 +3325,7 @@ ${schema}`}
   };
 
   const handleExportState = () => {
-    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
+    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData, checklistText, checklistState };
     copyText(JSON.stringify(data, null, 2), t('jsonCopied'));
   };
 
@@ -3435,6 +3667,52 @@ ${schema}`}
     );
   };
 
+  const renderChecklistItems = () => {
+    if (!checklistGroups.length) return <div className="empty-state">{t('checklistEmpty')}</div>;
+
+    return (
+      <div className="checklist-groups">
+        {checklistGroups.map((group) => {
+          const groupStats = getChecklistStats([group], checklistState);
+
+          return (
+            <section className="checklist-group" key={group.id}>
+              <div className="checklist-group-head">
+                <h3>{group.title}</h3>
+                <span>{t('checklistProgress', { done: groupStats.done, total: groupStats.total })}</span>
+              </div>
+
+              <div className="checklist-items">
+                {group.items.map((item) => {
+                  const status = checklistState[item.id] || CHECKLIST_STATUS.todo;
+                  const isDone = status === CHECKLIST_STATUS.done;
+                  const isSkipped = status === CHECKLIST_STATUS.skipped;
+
+                  return (
+                    <div className={`checklist-item status-${status}`} key={item.id}>
+                      <button
+                        className="checklist-check"
+                        type="button"
+                        onClick={() => toggleChecklistDone(item.id)}
+                        aria-label={isDone ? t('checklistTodo') : t('checklistDone')}
+                      >
+                        {isDone && <span className="check-icon" aria-hidden="true" />}
+                      </button>
+                      <span>{item.text}</span>
+                      <button className="checklist-skip" type="button" onClick={() => toggleChecklistSkipped(item.id)}>
+                        {isSkipped ? t('checklistUndoSkip') : t('checklistNotNeeded')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderEmptyPlanState = () => (
     <main className="empty-plan-layout">
       <section className="empty-plan-panel">
@@ -3530,6 +3808,9 @@ ${schema}`}
               </div>
             )}
           </div>
+          <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
+            <span className="check-icon" aria-hidden="true" />
+          </button>
           <button
             className="icon-btn trip-edit-btn"
             type="button"
@@ -4060,6 +4341,64 @@ ${schema}`}
               </div>
               {renderArchivedTripRows()}
             </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {checklistOpen && (
+        <div className="modal-overlay" onClick={() => setChecklistOpen(false)}>
+          <div className="modal checklist-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">{t('checklist')}</p>
+                <h2>{t('checklistTitle')}</h2>
+                <span className="checklist-meta">
+                  {t('checklistProgress', { done: checklistStats.done, total: checklistStats.total })}
+                  {checklistStats.skipped > 0 && ` · ${t('checklistSkipped', { count: checklistStats.skipped })}`}
+                </span>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setChecklistOpen(false)} aria-label={t('close')}>
+                ×
+              </button>
+            </div>
+
+            {checklistEditing ? (
+              <div className="checklist-editor">
+                <p className="helper-text">{t('checklistFormatHint')}</p>
+                <label>
+                  <span>{t('checklistTextLabel')}</span>
+                  <textarea
+                    className="textarea checklist-textarea"
+                    value={checklistDraft}
+                    onChange={(event) => setChecklistDraft(event.target.value)}
+                  />
+                </label>
+                <div className="modal-actions">
+                  <button
+                    className="btn btn-outline"
+                    type="button"
+                    onClick={() => {
+                      setChecklistDraft(checklistText);
+                      setChecklistEditing(false);
+                    }}
+                  >
+                    {t('cancel')}
+                  </button>
+                  <button className="btn btn-primary" type="button" onClick={saveChecklistText}>
+                    {t('checklistSave')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {renderChecklistItems()}
+                <div className="modal-actions">
+                  <button className="btn btn-outline" type="button" onClick={() => setChecklistEditing(true)}>
+                    {t('checklistEdit')}
+                  </button>
+                </div>
               </>
             )}
           </div>
