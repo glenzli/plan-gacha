@@ -4364,6 +4364,16 @@ ${schema}`}
               </button>
             </div>
 
+            <div className="checklist-overview">
+              <div>
+                <strong>{t('checklistProgress', { done: checklistStats.done, total: checklistStats.total })}</strong>
+                {checklistStats.skipped > 0 && <span>{t('checklistSkipped', { count: checklistStats.skipped })}</span>}
+              </div>
+              <div className="checklist-progress" aria-hidden="true">
+                <span style={{ width: `${checklistStats.total ? Math.round((checklistStats.done / checklistStats.total) * 100) : 0}%` }} />
+              </div>
+            </div>
+
             {checklistEditing ? (
               <div className="checklist-editor">
                 <p className="helper-text">{t('checklistFormatHint')}</p>
