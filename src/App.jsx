@@ -79,6 +79,8 @@ const UI_TEXT = {
     importDone: 'JSON 已导入',
     importFailed: ({ message }) => `导入失败：${message}`,
     jsonCopied: 'JSON 已复制',
+    jsonDownloaded: 'JSON 已下载',
+    downloadFailed: '下载失败',
     aiPromptCopied: ({ label }) => `${label} Prompt 已复制`,
     addPlanPromptCopied: '新增计划 Prompt 已复制',
     editPlanPromptCopied: '编辑计划 Prompt 已复制',
@@ -147,7 +149,7 @@ const UI_TEXT = {
     plansCount: ({ count }) => `${count} 个计划`,
     loadFullExample: '载入完整示例',
     importJsonTitle: '导入 JSON',
-    copyCurrentJson: '复制当前 JSON',
+    copyCurrentJson: '下载当前 JSON',
     aiPlanPoolTitle: 'AI 生成计划池',
     aiPlanPoolHelp: '适合初始规划、批量补 backup、增加天数或补充候选计划。',
     planList: '计划清单',
@@ -175,7 +177,7 @@ const UI_TEXT = {
     checklistSave: '保存清单',
     checklistSaved: '清单已更新',
     checklistExport: '导出清单',
-    checklistExported: '清单 JSON 已复制',
+    checklistExported: '清单 JSON 已下载',
     checklistClearDone: '清空勾选',
     checklistDoneCleared: '已清空勾选项',
     checklistNotNeeded: '不需要',
@@ -288,6 +290,8 @@ const UI_TEXT = {
     importDone: 'JSON imported',
     importFailed: ({ message }) => `Import failed: ${message}`,
     jsonCopied: 'JSON copied',
+    jsonDownloaded: 'JSON downloaded',
+    downloadFailed: 'Download failed',
     aiPromptCopied: ({ label }) => `${label} prompt copied`,
     addPlanPromptCopied: 'New plan prompt copied',
     editPlanPromptCopied: 'Edit plan prompt copied',
@@ -356,7 +360,7 @@ const UI_TEXT = {
     plansCount: ({ count }) => `${count} plans`,
     loadFullExample: 'Load full example',
     importJsonTitle: 'Import JSON',
-    copyCurrentJson: 'Copy current JSON',
+    copyCurrentJson: 'Download current JSON',
     aiPlanPoolTitle: 'AI plan pool',
     aiPlanPoolHelp: 'For initial planning, batch backups, added days or more candidate plans.',
     planList: 'Plan list',
@@ -384,7 +388,7 @@ const UI_TEXT = {
     checklistSave: 'Save checklist',
     checklistSaved: 'Checklist updated',
     checklistExport: 'Export checklist',
-    checklistExported: 'Checklist JSON copied',
+    checklistExported: 'Checklist JSON downloaded',
     checklistClearDone: 'Clear checked',
     checklistDoneCleared: 'Checked items cleared',
     checklistNotNeeded: 'Skip',
@@ -2650,6 +2654,17 @@ function compactPlanForAi(plan, assignedDay) {
   });
 }
 
+function sanitizeFileNamePart(value, fallback = 'plan-gacha') {
+  const normalized = String(value || fallback)
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 80);
+
+  return normalized || fallback;
+}
+
 function App() {
   const { i18n } = useTranslation();
   const [language, setLanguage] = useState(() => normalizeLanguage(i18n.language || getInitialLanguage()));
@@ -3237,6 +3252,24 @@ function App() {
     }
   };
 
+  const downloadJson = (data, fileName, message) => {
+    try {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      notify(message);
+    } catch {
+      notify(t('downloadFailed'));
+    }
+  };
+
   const refreshWeather = async () => {
     if (!tripDates.length) return;
     setWeatherLoading(true);
@@ -3729,15 +3762,18 @@ ${schema}`}
 
   const handleExportState = () => {
     const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData, checklistText, checklistState };
-    copyText(JSON.stringify(data, null, 2), t('jsonCopied'));
+    const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
+    downloadJson(data, fileName, t('jsonDownloaded'));
   };
 
   const handleExportChecklist = () => {
-    copyText(JSON.stringify({
+    const data = {
       schemaVersion: APP_SCHEMA_VERSION,
       checklistText,
       checklistState,
-    }, null, 2), t('checklistExported'));
+    };
+    const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-checklist-${startDateStr || 'trip'}.json`;
+    downloadJson(data, fileName, t('checklistExported'));
   };
 
   const renderPlanStops = (plan) => {
