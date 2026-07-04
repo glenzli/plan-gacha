@@ -26,7 +26,7 @@
 - 约束判断：支持可去日期、不可用日期、天气黑名单、推荐天气、必去标记和已安排日期。
 - 冲突提示：选择某个计划前会评估它是否会影响后续安排，并把需要调整的天数留给用户重新决定。
 - 预约订票：可以记录预约/门票状态、地址、链接和退改链接，状态由用户手动更新。
-- 旅行清单：作为独立的长期清单维护，支持用 `# 分类` + 一行一个事项编辑，勾选完成、本次不需要、导入/导出清单和一键重置本次状态。
+- 旅行清单：作为独立的长期清单维护，默认空白，可手动编辑、填入示例或导入 JSON，支持勾选完成、本次不需要和一键重置本次状态。
 - 归档只读：已归档旅行可以在编辑界面查看，不参与顶部计划切换，适合保留历史行程。
 - 多语言：支持中文和英文，可通过 `?lang=zh` 或 `?lang=en` 切换。
 
@@ -130,7 +130,7 @@ Data is stored in browser `localStorage` by default. The current version is a fr
 - Constraint checks: supports allowed dates, unavailable dates, weather blocks, preferred weather, must-go flags and assigned dates.
 - Conflict preview: before selecting a plan, the app checks whether it affects later days and leaves impacted dates for the user to replan.
 - Booking and tickets: record status, address, links and cancellation/change links; status updates remain manual.
-- Trip checklist: maintain a standalone long-term checklist with `# Category` plus one item per line, mark items done, skip items for the current departure, import/export the checklist and reset the current checklist status.
+- Trip checklist: maintain a standalone long-term checklist. It starts empty, can be edited manually, filled from an example or imported from JSON, and supports done/skipped status plus one-click status reset.
 - Read-only archive: archived trips can be viewed from the editor, stay out of the top trip switcher and work well for keeping travel history.
 - Multilingual UI: supports Chinese and English through `?lang=zh` or `?lang=en`.
 

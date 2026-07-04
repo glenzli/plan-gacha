@@ -18,7 +18,8 @@ const CHECKLIST_STATUS = {
   done: 'done',
   skipped: 'skipped',
 };
-const DEFAULT_CHECKLIST_TEXT = `# 证件
+const DEFAULT_CHECKLIST_TEXT = '';
+const EXAMPLE_CHECKLIST_TEXT = `# 证件
 身份证/护照
 驾照/学生证
 银行卡和少量现金
@@ -176,6 +177,8 @@ const UI_TEXT = {
     checklistTextLabel: '清单原文',
     checklistSave: '保存清单',
     checklistSaved: '清单已更新',
+    checklistUseExample: '填入示例',
+    checklistExampleLoaded: '清单示例已填入',
     checklistImport: '导入清单',
     checklistImportTitle: '导入旅行清单',
     checklistImportHelp: '粘贴清单 JSON，或直接粘贴 # 分类 + 一行一个事项。替换会覆盖当前清单；合并会保留当前清单并追加新事项。',
@@ -401,6 +404,8 @@ const UI_TEXT = {
     checklistTextLabel: 'Checklist source',
     checklistSave: 'Save checklist',
     checklistSaved: 'Checklist updated',
+    checklistUseExample: 'Use example',
+    checklistExampleLoaded: 'Checklist example loaded',
     checklistImport: 'Import checklist',
     checklistImportTitle: 'Import trip checklist',
     checklistImportHelp: 'Paste checklist JSON, or paste # Category plus one item per line. Replace overwrites the current checklist; merge keeps current items and adds new ones.',
@@ -1586,6 +1591,12 @@ function normalizeChecklistState(state) {
   );
 }
 
+function isUntouchedExampleChecklist(text, state) {
+  const normalizedText = normalizeChecklistText(text, '');
+  const normalizedExample = normalizeChecklistText(EXAMPLE_CHECKLIST_TEXT, '');
+  return normalizedText === normalizedExample && Object.keys(normalizeChecklistState(state)).length === 0;
+}
+
 function cleanupChecklistLine(line) {
   return line
     .replace(/^\s*[-*]\s*\[[ xX]\]\s*/, '')
@@ -1866,10 +1877,14 @@ function loadInitialState() {
   const activeTrip = visibleTrips.find((trip) => trip.id === loadedActiveTrip.id) || visibleTrips[0] || trips[0];
   const storedChecklistText = localStorage.getItem(STORAGE_KEYS.checklistText);
   const storedChecklistState = safeJsonRead(STORAGE_KEYS.checklistState, null);
-  const nextChecklistText = normalizeChecklistText(storedChecklistText ?? activeTrip.checklistText);
+  const loadedChecklistText = storedChecklistText ?? activeTrip.checklistText;
+  const loadedChecklistState = storedChecklistState ?? activeTrip.checklistState;
+  const nextChecklistText = isUntouchedExampleChecklist(loadedChecklistText, loadedChecklistState)
+    ? ''
+    : normalizeChecklistText(loadedChecklistText);
   const nextChecklistGroups = parseChecklistText(nextChecklistText, DEFAULT_LANGUAGE);
   const nextChecklistState = reconcileChecklistStateForGroups(
-    storedChecklistState ?? activeTrip.checklistState,
+    loadedChecklistState,
     nextChecklistGroups,
   );
 
@@ -3413,6 +3428,15 @@ function App() {
     setChecklistDraft(nextChecklistText);
     setChecklistEditing(false);
     notify(t('checklistSaved'));
+  };
+
+  const loadChecklistExample = () => {
+    const nextChecklistText = normalizeChecklistText(EXAMPLE_CHECKLIST_TEXT);
+    setChecklistText(nextChecklistText);
+    setChecklistDraft(nextChecklistText);
+    setChecklistState({});
+    setChecklistEditing(false);
+    notify(t('checklistExampleLoaded'));
   };
 
   const resetChecklistState = () => {
@@ -5103,6 +5127,11 @@ ${schema}`}
               <>
                 {renderChecklistItems()}
                 <div className="modal-actions checklist-actions">
+                  {checklistStats.total === 0 && (
+                    <button className="btn btn-outline" type="button" onClick={loadChecklistExample}>
+                      {t('checklistUseExample')}
+                    </button>
+                  )}
                   <button className="btn btn-outline" type="button" onClick={() => setChecklistEditing(true)}>
                     {t('checklistEdit')}
                   </button>
