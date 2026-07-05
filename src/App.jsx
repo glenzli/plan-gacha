@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { createPlanGachaDriveStorage } from './driveStorageAdapter.js';
 
 const APP_SCHEMA_VERSION = '13';
 const DEFAULT_TRIP_DAYS = 5;
@@ -7,6 +8,10 @@ const WEATHER_FETCH_TIMEOUT_MS = 20000;
 const WEATHER_BATCH_TIMEOUT_MS = 60000;
 const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const WEATHER_FETCH_CONCURRENCY = 4;
+const DRIVE_AUTO_SYNC_MS = 5 * 60 * 1000;
+const DRIVE_STORAGE_EXPOSURE = normalizeDriveStorageExposure(
+  import.meta.env.VITE_DRIVE_STORAGE_EXPOSURE || import.meta.env.VITE_DRIVE_STORAGE || 'url',
+);
 const WEATHER_ERRORS_KEY = Symbol('weatherErrors');
 const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
 const weatherTranslationCache = new Map();
@@ -79,9 +84,33 @@ const UI_TEXT = {
     planUpdated: '计划已更新',
     importDone: 'JSON 已导入',
     importFailed: ({ message }) => `导入失败：${message}`,
+    importFile: '导入文件',
+    importFileLoaded: ({ name }) => `已读取 ${name}`,
+    importFileReadFailed: '文件读取失败',
     jsonCopied: 'JSON 已复制',
     jsonDownloaded: 'JSON 已下载',
     downloadFailed: '下载失败',
+    driveSync: '网盘同步',
+    driveSyncHelp: '把本地工作区同步到宿主提供的网盘存储；未连接时会先连接，未创建文件时会自动创建。',
+    driveUnavailable: '当前环境没有可用的网盘同步服务，仍会继续保存在本地浏览器。',
+    driveNotConfigured: '网盘同步能力已加载，但宿主侧尚未完成配置。',
+    driveNotConnected: '未连接网盘同步',
+    driveNoFile: '已连接，还没有同步文件',
+    driveConnectedFile: ({ name }) => `同步文件：${name}`,
+    driveUpdatedAt: ({ time }) => `远端更新：${time}`,
+    driveSyncNow: '同步',
+    driveConnectAndSync: '连接并同步',
+    driveAutoSync: '自动同步',
+    driveAutoSyncHelp: '连接并创建同步文件后，每 5 分钟自动保存一次。',
+    driveBusy: '同步中...',
+    driveLoaded: '已从网盘拉取',
+    driveSynced: '已同步到网盘',
+    driveActionFailed: ({ message }) => `网盘同步失败：${message}`,
+    driveConflictTitle: '远端文件已变化',
+    driveConflictHelp: '远端文件在上次读取后被其他设备修改了。请选择拉取远端覆盖本地，或用当前本地状态覆盖远端。',
+    drivePullRemote: '拉取远端',
+    driveOverwriteRemote: '覆盖远端',
+    driveInvalidSnapshot: '远端文件不是可用的行程扭蛋数据',
     aiPromptCopied: ({ label }) => `${label} Prompt 已复制`,
     addPlanPromptCopied: '新增计划 Prompt 已复制',
     editPlanPromptCopied: '编辑计划 Prompt 已复制',
@@ -306,9 +335,33 @@ const UI_TEXT = {
     planUpdated: 'Plan updated',
     importDone: 'JSON imported',
     importFailed: ({ message }) => `Import failed: ${message}`,
+    importFile: 'Import file',
+    importFileLoaded: ({ name }) => `${name} loaded`,
+    importFileReadFailed: 'Failed to read file',
     jsonCopied: 'JSON copied',
     jsonDownloaded: 'JSON downloaded',
     downloadFailed: 'Download failed',
+    driveSync: 'Cloud sync',
+    driveSyncHelp: 'Sync the local workspace with host-provided cloud storage. It connects first, then creates a sync file when needed.',
+    driveUnavailable: 'Cloud sync is unavailable in this environment. Local browser storage still works.',
+    driveNotConfigured: 'Cloud sync is loaded, but the host integration is not configured.',
+    driveNotConnected: 'Cloud sync not connected',
+    driveNoFile: 'Connected, no sync file yet',
+    driveConnectedFile: ({ name }) => `Sync file: ${name}`,
+    driveUpdatedAt: ({ time }) => `Remote updated: ${time}`,
+    driveSyncNow: 'Sync',
+    driveConnectAndSync: 'Connect & sync',
+    driveAutoSync: 'Auto sync',
+    driveAutoSyncHelp: 'After connecting and creating a sync file, save automatically every 5 minutes.',
+    driveBusy: 'Syncing...',
+    driveLoaded: 'Pulled from cloud storage',
+    driveSynced: 'Synced to cloud storage',
+    driveActionFailed: ({ message }) => `Cloud sync failed: ${message}`,
+    driveConflictTitle: 'Remote file changed',
+    driveConflictHelp: 'The remote file changed on another device after the last load. Pull remote to replace local state, or overwrite remote with the current local state.',
+    drivePullRemote: 'Pull remote',
+    driveOverwriteRemote: 'Overwrite remote',
+    driveInvalidSnapshot: 'The remote file is not valid Plan Gacha data',
     aiPromptCopied: ({ label }) => `${label} prompt copied`,
     addPlanPromptCopied: 'New plan prompt copied',
     editPlanPromptCopied: 'Edit plan prompt copied',
@@ -595,6 +648,7 @@ const STORAGE_KEYS = {
   currentTrip: 'pg_currentTripId',
   checklistText: 'pg_checklistText',
   checklistState: 'pg_checklistState',
+  driveAutoSync: 'pg_driveAutoSync',
 };
 
 const INTENSITY_META = {
@@ -628,6 +682,14 @@ function normalizeLanguage(value) {
   return SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
 }
 
+function normalizeDriveStorageExposure(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['auto', 'url', 'off'].includes(normalized)) return normalized;
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return 'auto';
+  if (['0', 'false', 'no', 'none'].includes(normalized)) return 'off';
+  return 'url';
+}
+
 function getInitialLanguage() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -635,6 +697,28 @@ function getInitialLanguage() {
   } catch {
     return DEFAULT_LANGUAGE;
   }
+}
+
+function isEnabledUrlFlag(params, key) {
+  if (!params.has(key)) return false;
+  const value = params.get(key);
+  if (!value) return true;
+  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
+}
+
+function getDriveStorageEnabledFromUrl() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return isEnabledUrlFlag(params, 'drive') || isEnabledUrlFlag(params, 'driveStorage');
+  } catch {
+    return false;
+  }
+}
+
+function getDriveStorageFeatureEnabled() {
+  if (DRIVE_STORAGE_EXPOSURE === 'auto') return true;
+  if (DRIVE_STORAGE_EXPOSURE === 'off') return false;
+  return getDriveStorageEnabledFromUrl();
 }
 
 function getLocale(language) {
@@ -1838,16 +1922,13 @@ function pruneEmptyTripDrafts(tripList, activeTripId) {
 }
 
 function stripChecklistFromTripSnapshot(trip) {
-  const {
-    checklistText,
-    checklistState,
-    checklist,
-    checklistStatus,
-    packingList,
-    ...rest
-  } = trip;
-
-  return rest;
+  const nextTrip = { ...trip };
+  delete nextTrip.checklistText;
+  delete nextTrip.checklistState;
+  delete nextTrip.checklist;
+  delete nextTrip.checklistStatus;
+  delete nextTrip.packingList;
+  return nextTrip;
 }
 
 function getPendingBookings(plan) {
@@ -1907,6 +1988,11 @@ function parseImportJson(text) {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   return JSON.parse(fenced ? fenced[1].trim() : trimmed);
+}
+
+async function readImportFileText(file) {
+  if (!file) return '';
+  return file.text();
 }
 
 function formatWeatherMetrics(primary, tempMin, tempMax, precipitationProbability, windMax, language = DEFAULT_LANGUAGE) {
@@ -2926,6 +3012,13 @@ function App() {
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState(null);
   const [pendingAssignment, setPendingAssignment] = useState(null);
+  const [driveFeatureEnabled, setDriveFeatureEnabled] = useState(getDriveStorageFeatureEnabled);
+  const [driveStorage, setDriveStorage] = useState(null);
+  const [driveStatus, setDriveStatus] = useState(null);
+  const [driveBusy, setDriveBusy] = useState('');
+  const [driveConflict, setDriveConflict] = useState(false);
+  const [drivePanelOpen, setDrivePanelOpen] = useState(false);
+  const [driveAutoSync, setDriveAutoSync] = useState(() => localStorage.getItem(STORAGE_KEYS.driveAutoSync) === 'true');
   const [toast, setToast] = useState('');
 
   const toastTimerRef = useRef(null);
@@ -2933,6 +3026,10 @@ function App() {
   const dayTileRefs = useRef(new Map());
   const planAiQuestionRef = useRef(null);
   const planAiResultRef = useRef(null);
+  const latestAppSnapshotRef = useRef(null);
+  const driveBusyRef = useRef('');
+  const driveConflictRef = useRef(false);
+  const notifyRef = useRef(null);
   const t = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
   const aiReplanText = getAiModeText('replan', language);
   const aiGenerateText = getAiModeText('generate', language);
@@ -3101,7 +3198,10 @@ function App() {
   useEffect(() => {
     const syncLanguageFromUrl = () => {
       const nextLanguage = getInitialLanguage();
+      const nextDriveFeatureEnabled = getDriveStorageFeatureEnabled();
       setLanguage(nextLanguage);
+      setDriveFeatureEnabled(nextDriveFeatureEnabled);
+      if (!nextDriveFeatureEnabled) setDrivePanelOpen(false);
       document.documentElement.lang = nextLanguage;
       if (i18n.language !== nextLanguage) i18n.changeLanguage(nextLanguage);
     };
@@ -3109,6 +3209,22 @@ function App() {
     window.addEventListener('popstate', syncLanguageFromUrl);
     return () => window.removeEventListener('popstate', syncLanguageFromUrl);
   }, [i18n]);
+
+  useEffect(() => {
+    if (!driveFeatureEnabled) return undefined;
+
+    let cancelled = false;
+
+    createPlanGachaDriveStorage().then((storage) => {
+      if (cancelled) return;
+      setDriveStorage(storage);
+      setDriveStatus(storage?.status() || null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [driveFeatureEnabled]);
 
   useEffect(() => {
     const currentTrip = {
@@ -3146,6 +3262,10 @@ function App() {
     localStorage.setItem(STORAGE_KEYS.checklistText, checklistText);
     localStorage.setItem(STORAGE_KEYS.checklistState, JSON.stringify(checklistState));
   }, [checklistState, checklistText]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.driveAutoSync, driveAutoSync ? 'true' : 'false');
+  }, [driveAutoSync]);
 
   useEffect(() => {
     return () => {
@@ -3189,6 +3309,151 @@ function App() {
       .map((trip) => (trip.id === activeTripId ? currentTrip : trip))
       .map(stripChecklistFromTripSnapshot);
   };
+
+  const exportAppSnapshot = () => ({
+    appSchemaVersion: APP_SCHEMA_VERSION,
+    snapshotVersion: 1,
+    activeTripId,
+    trips: pruneEmptyTripDrafts(saveCurrentTripInto(trips), activeTripId).map(stripChecklistFromTripSnapshot),
+    checklistText,
+    checklistState: reconcileChecklistStateForGroups(checklistState, checklistGroups),
+    updatedAt: new Date().toISOString(),
+  });
+
+  useEffect(() => {
+    driveBusyRef.current = driveBusy;
+    driveConflictRef.current = driveConflict;
+    latestAppSnapshotRef.current = exportAppSnapshot;
+    notifyRef.current = notify;
+  });
+
+  const importAppSnapshot = (payload) => {
+    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.trips)) {
+      throw new Error(t('driveInvalidSnapshot'));
+    }
+
+    const importedTrips = payload.trips
+      .map(normalizeTripSnapshot)
+      .map(stripChecklistFromTripSnapshot);
+    if (!importedTrips.length) throw new Error(t('driveInvalidSnapshot'));
+
+    const preferredTripId = payload.activeTripId || importedTrips[0].id;
+    const visibleImportedTrips = importedTrips.filter((trip) => !trip.archived);
+    const activeTrip = visibleImportedTrips.find((trip) => trip.id === preferredTripId)
+      || visibleImportedTrips[0]
+      || importedTrips.find((trip) => trip.id === preferredTripId)
+      || importedTrips[0];
+    const nextTrips = pruneEmptyTripDrafts(importedTrips, activeTrip.id).map(stripChecklistFromTripSnapshot);
+    const nextActiveTrip = nextTrips.find((trip) => trip.id === activeTrip.id) || nextTrips[0];
+
+    const nextChecklistText = normalizeChecklistText(payload.checklistText ?? payload.checklist ?? payload.packingList, '');
+    const nextChecklistGroups = parseChecklistText(nextChecklistText, language);
+
+    setTrips(nextTrips);
+    applyTripSnapshot(nextActiveTrip);
+    setChecklistText(nextChecklistText);
+    setChecklistDraft(nextChecklistText);
+    setChecklistState(reconcileChecklistStateForGroups(payload.checklistState || payload.checklistStatus || {}, nextChecklistGroups));
+    setChecklistEditing(false);
+    setChecklistImportOpen(false);
+    setChecklistImportConflicts([]);
+    setImportModalOpen(false);
+    setPendingAssignment(null);
+    setArchivedViewTripId(null);
+    setBatchAiOpen(false);
+    setAiPlannerOpen(false);
+    setAiPlannerResult('');
+  };
+
+  const refreshDriveStatus = () => {
+    setDriveStatus(driveStorage?.status() || null);
+  };
+
+  const ensureDriveConnected = async () => {
+    if (!driveStorage?.status()?.connected) {
+      await driveStorage.connect({ prompt: 'consent' });
+    }
+  };
+
+  const runDriveAction = async (busyKey, action) => {
+    if (!driveStorage) {
+      notify(t('driveActionFailed', { message: t('driveUnavailable') }));
+      return;
+    }
+
+    setDriveBusy(busyKey);
+    try {
+      await action();
+      refreshDriveStatus();
+    } catch (error) {
+      if (error?.name === 'DriveStorageConflictError') {
+        setDriveConflict(true);
+        notify(t('driveConflictTitle'));
+        refreshDriveStatus();
+        return;
+      }
+
+      notify(t('driveActionFailed', { message: error?.message || String(error) }));
+      refreshDriveStatus();
+    } finally {
+      setDriveBusy('');
+    }
+  };
+
+  const syncDrive = () => runDriveAction('sync', async () => {
+    await ensureDriveConnected();
+    if (driveStorage.status()?.file?.id) {
+      await driveStorage.save(exportAppSnapshot());
+    } else {
+      await driveStorage.create(exportAppSnapshot());
+    }
+    setDriveConflict(false);
+    notify(t('driveSynced'));
+  });
+
+  const loadDriveFile = () => runDriveAction('load', async () => {
+    const remote = await driveStorage.load();
+    importAppSnapshot(remote);
+    setDriveConflict(false);
+    notify(t('driveLoaded'));
+  });
+
+  const overwriteDriveFile = () => runDriveAction('overwrite', async () => {
+    await ensureDriveConnected();
+    await driveStorage.save(exportAppSnapshot(), { force: true });
+    setDriveConflict(false);
+    notify(t('driveSynced'));
+  });
+
+  useEffect(() => {
+    const fileId = driveStatus?.file?.id;
+    if (!driveFeatureEnabled || !driveAutoSync || !driveStorage || driveStorage.available === false || !driveStatus?.connected || !fileId || driveConflict) {
+      return undefined;
+    }
+
+    const timer = window.setInterval(async () => {
+      if (driveBusyRef.current || driveConflictRef.current) return;
+
+      setDriveBusy('auto');
+      try {
+        const snapshot = latestAppSnapshotRef.current?.();
+        if (snapshot) await driveStorage.save(snapshot);
+        setDriveStatus(driveStorage.status());
+      } catch (error) {
+        if (error?.name === 'DriveStorageConflictError') {
+          setDriveConflict(true);
+          notifyRef.current?.(t('driveConflictTitle'));
+        } else {
+          notifyRef.current?.(t('driveActionFailed', { message: error?.message || String(error) }));
+        }
+        setDriveStatus(driveStorage.status());
+      } finally {
+        setDriveBusy('');
+      }
+    }, DRIVE_AUTO_SYNC_MS);
+
+    return () => window.clearInterval(timer);
+  }, [driveAutoSync, driveConflict, driveFeatureEnabled, driveStatus?.connected, driveStatus?.file?.id, driveStorage, t]);
 
   const switchTrip = (nextTripId) => {
     setTripMenuOpen(false);
@@ -4042,6 +4307,28 @@ ${schema}`}
     }
   };
 
+  const handleImportFile = async (event, onLoaded) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const text = await readImportFileText(file);
+      onLoaded(text);
+      notify(t('importFileLoaded', { name: file.name }));
+    } catch {
+      notify(t('importFileReadFailed'));
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleTripImportFile = (event) => handleImportFile(event, setImportText);
+
+  const handleChecklistImportFile = (event) => handleImportFile(event, (text) => {
+    setChecklistImportText(text);
+    setChecklistImportConflicts([]);
+  });
+
   const handleExportState = () => {
     const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
     const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
@@ -4056,6 +4343,85 @@ ${schema}`}
     };
     const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-checklist-${startDateStr || 'trip'}.json`;
     downloadJson(data, fileName, t('checklistExported'));
+  };
+
+  const renderDriveSyncPanel = () => {
+    if (!driveStorage) return null;
+
+    const file = driveStatus?.file;
+    const hasFile = Boolean(file?.id);
+    const isConnected = Boolean(driveStatus?.connected);
+    const isAvailable = driveStorage.available !== false;
+    const isBusy = Boolean(driveBusy);
+    const disabled = !isAvailable || isBusy;
+    const canAutoSync = isAvailable && isConnected && hasFile;
+    const modifiedAt = file?.modifiedTime ? new Date(file.modifiedTime) : null;
+    const modifiedLabel = modifiedAt && !Number.isNaN(modifiedAt.getTime())
+      ? t('driveUpdatedAt', {
+        time: modifiedAt.toLocaleString(language === 'en' ? 'en-US' : 'zh-CN', {
+          month: 'numeric',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      })
+      : '';
+    const statusLabel = !isAvailable
+      ? t(driveStatus?.configured === false ? 'driveNotConfigured' : 'driveUnavailable')
+      : hasFile
+      ? t('driveConnectedFile', { name: file.name || 'plan-gacha.state.json' })
+      : isConnected
+        ? t('driveNoFile')
+        : t('driveNotConnected');
+
+    return (
+      <div className={`drive-sync-panel ${isAvailable ? '' : 'is-unavailable'}`}>
+        <div className="drive-sync-head">
+          <div>
+            <strong>{t('driveSync')}</strong>
+            <span>{t('driveSyncHelp')}</span>
+          </div>
+          {isBusy && <em>{t('driveBusy')}</em>}
+        </div>
+        <div className="drive-sync-status">
+          <span>{statusLabel}</span>
+          {modifiedLabel && <span>{modifiedLabel}</span>}
+        </div>
+        {isAvailable && (
+          <label className={`drive-auto-sync ${canAutoSync ? '' : 'is-disabled'}`}>
+            <input
+              type="checkbox"
+              checked={driveAutoSync}
+              disabled={!canAutoSync || isBusy}
+              onChange={(event) => setDriveAutoSync(event.target.checked)}
+            />
+            <span>
+              <strong>{t('driveAutoSync')}</strong>
+              <em>{t('driveAutoSyncHelp')}</em>
+            </span>
+          </label>
+        )}
+        {driveConflict && (
+          <div className="drive-conflict">
+            <strong>{t('driveConflictTitle')}</strong>
+            <p>{t('driveConflictHelp')}</p>
+            <div>
+              <button className="btn btn-outline" type="button" onClick={loadDriveFile} disabled={disabled || !hasFile}>
+                {t('drivePullRemote')}
+              </button>
+              <button className="btn btn-primary" type="button" onClick={overwriteDriveFile} disabled={disabled}>
+                {t('driveOverwriteRemote')}
+              </button>
+            </div>
+          </div>
+        )}
+        <div className="drive-sync-actions">
+          <button className="btn btn-primary drive-sync-main" type="button" onClick={syncDrive} disabled={disabled}>
+            {isConnected ? t('driveSyncNow') : t('driveConnectAndSync')}
+          </button>
+        </div>
+      </div>
+    );
   };
 
   const renderPlanStops = (plan) => {
@@ -4572,25 +4938,36 @@ ${schema}`}
               </div>
             )}
           </div>
-          <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
-            <span className="check-icon" aria-hidden="true" />
-          </button>
-          <button
-            className="icon-btn trip-edit-btn"
-            type="button"
-            disabled={activeTripDisplay.isEmpty}
-            onClick={() => { setTripMenuOpen(false); setEditorOpen(true); }}
-            aria-label={activeTripDisplay.isEmpty ? t('noEditablePlan') : t('editPlan')}
-            title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('editPlan')}
-          >
-            <span className="edit-icon" aria-hidden="true" />
-          </button>
-          <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')}>
-            +
-          </button>
-          <button className="icon-btn mobile-language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')} aria-label={t('langSwitchTitle')}>
-            {t('langSwitch')}
-          </button>
+          <div className="trip-actions">
+            <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
+              <span className="check-icon" aria-hidden="true" />
+            </button>
+            {driveFeatureEnabled && driveStorage && (
+              <button className="icon-btn drive-sync-btn" type="button" onClick={() => setDrivePanelOpen(true)} aria-label={t('driveSync')} title={t('driveSync')}>
+                <span className="sync-icon" aria-hidden="true" />
+              </button>
+            )}
+            <button
+              className="icon-btn trip-edit-btn"
+              type="button"
+              disabled={activeTripDisplay.isEmpty}
+              onClick={() => {
+                setTripMenuOpen(false);
+                setEditorPlanId(null);
+                setEditorOpen(true);
+              }}
+              aria-label={activeTripDisplay.isEmpty ? t('noEditablePlan') : t('editPlan')}
+              title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('editPlan')}
+            >
+              <span className="edit-icon" aria-hidden="true" />
+            </button>
+            <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')}>
+              +
+            </button>
+            <button className="icon-btn mobile-language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')} aria-label={t('langSwitchTitle')}>
+              {t('langSwitch')}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -5073,6 +5450,23 @@ ${schema}`}
         </div>
       )}
 
+      {driveFeatureEnabled && drivePanelOpen && driveStorage && (
+        <div className="modal-overlay" onClick={() => setDrivePanelOpen(false)}>
+          <div className="modal drive-sync-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">{t('driveSync')}</p>
+                <h2>{t('driveSync')}</h2>
+              </div>
+              <button className="icon-btn" type="button" onClick={() => setDrivePanelOpen(false)} aria-label={t('close')}>
+                ×
+              </button>
+            </div>
+            {renderDriveSyncPanel()}
+          </div>
+        </div>
+      )}
+
       {checklistOpen && (
         <div className="modal-overlay" onClick={() => setChecklistOpen(false)}>
           <div className="modal checklist-modal" onClick={(event) => event.stopPropagation()}>
@@ -5194,6 +5588,12 @@ ${schema}`}
             </div>
 
             <p className="helper-text">{t('checklistImportHelp')}</p>
+            <div className="import-file-row">
+              <label className="btn btn-outline file-import-btn">
+                {t('importFile')}
+                <input type="file" accept=".json,application/json,text/plain" onChange={handleChecklistImportFile} />
+              </label>
+            </div>
             <textarea
               className="textarea checklist-textarea"
               value={checklistImportText}
@@ -5248,6 +5648,12 @@ ${schema}`}
               <button className="icon-btn" type="button" onClick={() => setImportModalOpen(false)} aria-label={t('close')}>
                 ×
               </button>
+            </div>
+            <div className="import-file-row">
+              <label className="btn btn-outline file-import-btn">
+                {t('importFile')}
+                <input type="file" accept=".json,application/json" onChange={handleTripImportFile} />
+              </label>
             </div>
             <textarea
               className="textarea"

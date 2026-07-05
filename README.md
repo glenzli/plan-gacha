@@ -83,10 +83,41 @@
 
 - 数据默认保存在浏览器 `localStorage`，没有账号系统或云同步。
 - `127.0.0.1:5173` 和 `localhost:5173` 是不同浏览器 origin，数据不会互通。
-- 旅行计划导出会直接下载 JSON，包含计划池、日程和天气缓存，不包含旅行清单。
-- 旅行清单是全局独立数据，可以单独下载 JSON，之后可选择替换或合并导入。
+- 旅行计划导出会直接下载 JSON，包含计划池、日程和天气缓存，不包含旅行清单；导入支持粘贴 JSON 或选择本地 JSON 文件。
+- 旅行清单是全局独立数据，可以单独下载 JSON，之后可通过粘贴或选择文件导入，并选择替换或合并。
 - 合并清单时，同分类同文本视为同一项；同文本不同分类会迁移可确定的状态，并提示冲突。
 - 同文本多次出现或状态不一致时，不会自动覆盖当前清单，会提示用户整理后再导入。
+
+### 可选网盘同步适配
+
+应用本身不绑定具体网盘服务。部署环境可以注入一个最小 `driveStorage` 适配器，让应用把完整工作区快照同步到宿主提供的远端文件。
+
+默认构建只在 URL 带 `?drive=1` 或 `?driveStorage=1` 时启用同步入口。部署时可通过环境变量调整：
+
+```bash
+VITE_DRIVE_STORAGE_EXPOSURE=url   # 默认：仅 URL 参数启用
+VITE_DRIVE_STORAGE_EXPOSURE=auto  # 检测到 driveStorage 时自动启用
+VITE_DRIVE_STORAGE_EXPOSURE=off   # 完全禁用
+```
+
+宿主需要提供 `window.driveStorage`，或让 `/drive-storage/driveStorage.js` 加载后提供它。最小接口如下：
+
+```ts
+type DriveStorageApi = {
+  forApp(config: { appId: string; fileName: string; schemaVersion: number }): DriveStorage;
+};
+
+type DriveStorage = {
+  available?: boolean;
+  status(): { connected?: boolean; configured?: boolean; file?: { id?: string; name?: string; modifiedTime?: string } };
+  connect(options?: { prompt?: string }): Promise<void>;
+  create(data: unknown): Promise<void>;
+  load(): Promise<unknown>;
+  save(data: unknown, options?: { force?: boolean }): Promise<void>;
+};
+```
+
+如果远端文件已被其他设备修改，`save()` 可以抛出 `name === 'DriveStorageConflictError'` 的错误，应用会进入冲突处理流程。
 
 ### 本地开发
 
@@ -187,10 +218,41 @@ Weather lookup prioritizes `location.weather_location`, city, district or coordi
 
 - Data is stored in browser `localStorage`; there is no account system or cloud sync.
 - `127.0.0.1:5173` and `localhost:5173` are different browser origins, so their local data is separate.
-- Trip export downloads a JSON file containing the plan pool, schedule and weather cache. It does not include the trip checklist.
-- The checklist is global standalone data. It can be downloaded separately as JSON, then imported by replacing or merging.
+- Trip export downloads a JSON file containing the plan pool, schedule and weather cache. It does not include the trip checklist; import supports pasted JSON or a local JSON file.
+- The checklist is global standalone data. It can be downloaded separately as JSON, then imported by pasting or choosing a file, with replace or merge behavior.
 - During checklist merge, same category plus same text is treated as the same item. Same text in a different category migrates clear status matches and reports a conflict.
 - Repeated same-text items or status disagreements do not overwrite the current checklist automatically; the app reports them for cleanup before re-importing.
+
+### Optional Cloud Storage Adapter
+
+The app does not bind to a specific cloud storage provider. A host can inject a minimal `driveStorage` adapter so the app can sync the full workspace snapshot to a remote file owned by that host.
+
+By default, the sync entry is enabled only when the URL includes `?drive=1` or `?driveStorage=1`. Deployments can change that behavior with an environment variable:
+
+```bash
+VITE_DRIVE_STORAGE_EXPOSURE=url   # default: URL parameter only
+VITE_DRIVE_STORAGE_EXPOSURE=auto  # enable automatically when driveStorage is detected
+VITE_DRIVE_STORAGE_EXPOSURE=off   # disable completely
+```
+
+The host should provide `window.driveStorage`, or make `/drive-storage/driveStorage.js` provide it after loading. Minimal interface:
+
+```ts
+type DriveStorageApi = {
+  forApp(config: { appId: string; fileName: string; schemaVersion: number }): DriveStorage;
+};
+
+type DriveStorage = {
+  available?: boolean;
+  status(): { connected?: boolean; configured?: boolean; file?: { id?: string; name?: string; modifiedTime?: string } };
+  connect(options?: { prompt?: string }): Promise<void>;
+  create(data: unknown): Promise<void>;
+  load(): Promise<unknown>;
+  save(data: unknown, options?: { force?: boolean }): Promise<void>;
+};
+```
+
+When the remote file changed on another device, `save()` can throw an error with `name === 'DriveStorageConflictError'`; the app will switch to the conflict resolution flow.
 
 ### Local Development
 
