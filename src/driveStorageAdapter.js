@@ -67,6 +67,15 @@ function clearStoredFile() {
   localStorage.removeItem(FILE_RECORD_KEY);
 }
 
+function clearStoredFileIfMatches(file) {
+  const stored = getStoredFile();
+  if (!file?.id || stored?.id === file.id) clearStoredFile();
+}
+
+function isFileNotFoundError(error) {
+  return error?.code === 'file_not_found' || error?.name === 'DriveStorageFileNotFoundError';
+}
+
 function createLocator() {
   return {
     name: FILE_NAME,
@@ -167,7 +176,11 @@ export async function createPlanGachaDriveStorage() {
     if (!file?.id) return file;
     try {
       return normalizeFileRecord(await api.getFile(file.id)) || file;
-    } catch {
+    } catch (error) {
+      if (isFileNotFoundError(error)) {
+        clearStoredFileIfMatches(file);
+        throw error;
+      }
       return file;
     }
   };
@@ -210,13 +223,15 @@ export async function createPlanGachaDriveStorage() {
       return this.status();
     },
     findFile,
-    async create(payload = {}) {
-      const existing = await findFile();
-      if (existing?.file?.id) {
-        throw createConflictError(api, 'An existing Drive file matched the app locator.', {
-          remote: existing.file,
-          local: getStoredFile(),
-        });
+    async create(payload = {}, options = {}) {
+      if (options.reuseExisting !== false) {
+        const existing = await findFile();
+        if (existing?.file?.id) {
+          throw createConflictError(api, 'An existing Drive file matched the app locator.', {
+            remote: existing.file,
+            local: getStoredFile(),
+          });
+        }
       }
 
       const file = await api.createFile({
@@ -235,33 +250,68 @@ export async function createPlanGachaDriveStorage() {
         throw error;
       }
 
-      const payload = await api.readJson(file.id);
-      setStoredFile(await getCurrentFile(file));
-      return unwrapLegacyEnvelope(payload);
+      const readPayload = async (targetFile) => {
+        try {
+          const payload = await api.readJson(targetFile.id);
+          setStoredFile(await getCurrentFile(targetFile));
+          return unwrapLegacyEnvelope(payload);
+        } catch (error) {
+          if (isFileNotFoundError(error)) clearStoredFileIfMatches(targetFile);
+          throw error;
+        }
+      };
+
+      try {
+        return await readPayload(file);
+      } catch (error) {
+        if (!isFileNotFoundError(error)) throw error;
+
+        const recovered = await findFile();
+        if (recovered?.file?.id) return readPayload(recovered.file);
+        throw error;
+      }
     },
     async save(payload, options = {}) {
       let file = await resolveFile();
       if (!file?.id) {
-        const created = await this.create(payload);
+        const created = await this.create(payload, { reuseExisting: false });
         return { ...created, skipped: false };
       }
 
-      const local = getStoredFile();
-      const current = await getCurrentFile(file);
-      if (!options.force && local?.version && current?.version && local.version !== current.version) {
-        throw createConflictError(api, 'The Drive file changed after the last local load.', {
-          remote: current,
-          local,
-        });
-      }
+      const writePayload = async (targetFile) => {
+        const local = getStoredFile();
+        const current = await getCurrentFile(targetFile);
+        if (!options.force && local?.version && current?.version && local.version !== current.version) {
+          throw createConflictError(api, 'The Drive file changed after the last local load.', {
+            remote: current,
+            local,
+          });
+        }
 
-      file = await api.writeJson(file.id, payload, {
-        mimeType: JSON_MIME,
-        appProperties: APP_PROPERTIES,
-        space: 2,
-      });
-      setStoredFile(file);
-      return { file: normalizeFileRecord(file), payload, skipped: false };
+        try {
+          const updatedFile = await api.writeJson(targetFile.id, payload, {
+            mimeType: JSON_MIME,
+            appProperties: APP_PROPERTIES,
+            space: 2,
+          });
+          setStoredFile(updatedFile);
+          return { file: normalizeFileRecord(updatedFile), payload, skipped: false };
+        } catch (error) {
+          if (isFileNotFoundError(error)) clearStoredFileIfMatches(targetFile);
+          throw error;
+        }
+      };
+
+      try {
+        return await writePayload(file);
+      } catch (error) {
+        if (!isFileNotFoundError(error)) throw error;
+
+        const recovered = await findFile();
+        if (recovered?.file?.id) return writePayload(recovered.file);
+
+        return this.create(payload, { reuseExisting: false });
+      }
     },
   };
 }

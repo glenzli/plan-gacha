@@ -83,7 +83,8 @@
 
 - 数据默认保存在浏览器 `localStorage`，没有账号系统或云同步。
 - `127.0.0.1:5173` 和 `localhost:5173` 是不同浏览器 origin，数据不会互通。
-- 旅行计划导出会直接下载 JSON，包含计划池、日程和天气缓存，不包含旅行清单；导入支持粘贴 JSON 或选择本地 JSON 文件。
+- 旅行计划导出会直接下载 JSON，包含计划池和日程，不包含旅行清单；导入支持粘贴 JSON 或选择本地 JSON 文件。
+- 天气结果只作为本地缓存保存在浏览器里，不写入旅行导出 JSON 或远端同步文件。
 - 旅行清单是全局独立数据，可以单独下载 JSON，之后可通过粘贴或选择文件导入，并选择替换或合并。
 - 合并清单时，同分类同文本视为同一项；同文本不同分类会迁移可确定的状态，并提示冲突。
 - 同文本多次出现或状态不一致时，不会自动覆盖当前清单，会提示用户整理后再导入。
@@ -145,6 +146,8 @@ type DriveCreateFileOptions = {
 首次同步会按 `name = "plan-gacha.state.json"` 和 `appProperties.appId = "plan-gacha"` 查找远端文件。本地为空时会直接拉取远端；本地已有内容时会进入确认流程；找不到远端文件才会创建新文件。
 
 保存前会用本地记录的 Drive `version` 和当前远端 `version` 做粗略冲突判断。由于 `driveStorage` 不再提供内容级指纹，内容是否相同只在首次定位远端文件时通过稳定 JSON 对比判断。
+
+如果本地记住的 `fileId` 已被删除或不可访问，应用会清掉本地绑定。执行“同步”保存时会重新按 locator 查找，找不到就创建新的远端文件；执行拉取或合并时会明确提示远端文件已不存在。远端文件不是合法 JSON 时会直接报错，不会进入冲突处理流程。
 
 发生冲突时，界面提供三种处理：拉取远端覆盖本地、用本地覆盖远端、或尝试自动合并。自动合并只处理当前 `appSchemaVersion` 的完整同步文件；schema 不匹配、远端格式不完整、同一个 trip/plan/date/checklist 项两边都改过时，会拒绝合并并提示原因。
 
@@ -247,7 +250,8 @@ Weather lookup prioritizes `location.weather_location`, city, district or coordi
 
 - Data is stored in browser `localStorage`; there is no account system or cloud sync.
 - `127.0.0.1:5173` and `localhost:5173` are different browser origins, so their local data is separate.
-- Trip export downloads a JSON file containing the plan pool, schedule and weather cache. It does not include the trip checklist; import supports pasted JSON or a local JSON file.
+- Trip export downloads a JSON file containing the plan pool and schedule. It does not include the trip checklist; import supports pasted JSON or a local JSON file.
+- Weather results are stored only as local browser cache. They are not written to trip export JSON or remote sync files.
 - The checklist is global standalone data. It can be downloaded separately as JSON, then imported by pasting or choosing a file, with replace or merge behavior.
 - During checklist merge, same category plus same text is treated as the same item. Same text in a different category migrates clear status matches and reports a conflict.
 - Repeated same-text items or status disagreements do not overwrite the current checklist automatically; the app reports them for cleanup before re-importing.
@@ -309,6 +313,8 @@ type DriveCreateFileOptions = {
 On first sync, the app searches for a remote file with `name = "plan-gacha.state.json"` and `appProperties.appId = "plan-gacha"`. Empty local state pulls remote automatically; non-empty local state asks for confirmation; a new file is created only when no remote file is found.
 
 Before saving, the app compares the locally remembered Drive `version` with the current remote `version` as a coarse conflict check. Since `driveStorage` no longer provides a content fingerprint, content equality is checked only when first locating an existing remote file, using stable JSON comparison.
+
+If the remembered `fileId` was deleted or became inaccessible, the app clears the local binding. A sync/save action relocates by locator and creates a new remote file when none is found; pull or merge actions report the missing remote file explicitly. Invalid remote JSON is reported directly and never enters the conflict flow.
 
 On conflict, the UI offers three actions: pull remote over local, overwrite remote with local, or try automatic merge. Automatic merge only supports complete sync files for the current `appSchemaVersion`; schema mismatch, incomplete remote format, or two-sided edits to the same trip/plan/date/checklist item cause merge to fail with a reason.
 

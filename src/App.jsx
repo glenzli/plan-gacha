@@ -111,6 +111,8 @@ const UI_TEXT = {
     driveRemoteFound: '已找到远端同步文件，请选择拉取远端或覆盖远端。',
     driveActionFailed: ({ message }) => `远端同步失败：${message}`,
     driveAmbiguousFile: '找到多个同名同步文件，请先在 Drive 中清理重复文件后再同步。',
+    driveFileMissing: '远端同步文件已不存在，已清除本地绑定。再次同步会创建新的远端文件。',
+    driveInvalidJson: '远端文件不是合法 JSON，请检查文件内容，或清除绑定后重新同步。',
     driveConflictTitle: '需要确认远端文件',
     driveConflictHelp: '远端文件和当前本地数据需要确认。可以尝试自动合并；如果失败，再选择拉取远端或覆盖远端。',
     drivePullRemote: '拉取远端',
@@ -135,6 +137,10 @@ const UI_TEXT = {
     editPlan: '编辑计划',
     noEditablePlan: '暂无可编辑计划',
     createOrImportFirst: '先新建或导入计划',
+    quickEdit: '快速编辑',
+    planNameLabel: '计划名称',
+    planPriorityLabel: '计划属性',
+    saveQuickEdit: '保存修改',
     createTrip: '新建旅行计划',
     tripSwitcher: '切换旅行计划',
     tripList: '旅行计划',
@@ -152,11 +158,15 @@ const UI_TEXT = {
     warnings: '预警',
     warningClasses: ({ count }) => `${count} 类`,
     noBlockingRisks: '当前安排没有把未排计划卡死。',
+    checklistIncomplete: '旅行清单未完成',
     aiReplanHelper: '用于大改剩余行程：整理未完成计划、当前安排、天气和预警，再复制给你常用的 AI。',
     aiGenerateHelperWhenEmpty: '当前还是空计划，会直接进入 AI 生成，用来创建计划池、备选方案和初始日程。',
     weather: '天气',
     updating: '更新中',
     updateWeather: '更新天气',
+    weatherSourcesCount: ({ count }) => `已更新 ${count} 个地点`,
+    viewWeatherSources: '查看地点',
+    hideWeatherSources: '收起地点',
     weatherHelper: '使用 Open-Meteo 按计划地点查询；同地点和同日期范围 2 小时内复用缓存，跨城和多地点计划会合并评估对应地点天气。',
     noWeather: '尚未获取天气',
     aiPlanning: 'AI Planning',
@@ -263,6 +273,8 @@ const UI_TEXT = {
     candidateReady: '可直接选择',
     candidateScheduled: '已安排，可移动',
     candidateUnavailable: '不可选',
+    viewPlanDetails: '查看细节',
+    hidePlanDetails: '收起细节',
     select: '选择',
     noWeatherForPlace: '尚未获取地点天气，先更新天气',
     reminders: '特别提醒',
@@ -371,6 +383,8 @@ const UI_TEXT = {
     driveRemoteFound: 'Remote sync file found. Pull remote or overwrite remote to continue.',
     driveActionFailed: ({ message }) => `Remote sync failed: ${message}`,
     driveAmbiguousFile: 'Multiple matching sync files were found in Drive. Clean up duplicates before syncing again.',
+    driveFileMissing: 'The remote sync file no longer exists. The local binding was cleared; syncing again will create a new remote file.',
+    driveInvalidJson: 'The remote file is not valid JSON. Check the file content, or clear the binding and sync again.',
     driveConflictTitle: 'Remote file needs review',
     driveConflictHelp: 'The remote file and current local data need review. Try automatic merge first; if it fails, pull remote or overwrite remote.',
     drivePullRemote: 'Pull remote',
@@ -395,6 +409,10 @@ const UI_TEXT = {
     editPlan: 'Edit trip',
     noEditablePlan: 'No trip to edit',
     createOrImportFirst: 'Create or import a trip first',
+    quickEdit: 'Quick edit',
+    planNameLabel: 'Plan name',
+    planPriorityLabel: 'Plan type',
+    saveQuickEdit: 'Save changes',
     createTrip: 'Create trip',
     tripSwitcher: 'Switch trip',
     tripList: 'Trips',
@@ -412,11 +430,15 @@ const UI_TEXT = {
     warnings: 'Warnings',
     warningClasses: ({ count }) => `${count} types`,
     noBlockingRisks: 'No current arrangement blocks the remaining plans.',
+    checklistIncomplete: 'Checklist incomplete',
     aiReplanHelper: 'For larger changes: collect remaining plans, current schedule, weather and warnings, then copy them to your usual AI.',
     aiGenerateHelperWhenEmpty: 'This is still empty, so it opens AI Generate to create a plan pool, backups and initial schedule.',
     weather: 'Weather',
     updating: 'Updating',
     updateWeather: 'Update',
+    weatherSourcesCount: ({ count }) => `${count} locations updated`,
+    viewWeatherSources: 'View locations',
+    hideWeatherSources: 'Hide locations',
     weatherHelper: 'Uses Open-Meteo by plan location. The same location and date range reuse cache for 2 hours; multi-city plans are evaluated across their locations.',
     noWeather: 'No weather yet',
     aiPlanning: 'AI Planning',
@@ -523,6 +545,8 @@ const UI_TEXT = {
     candidateReady: 'Ready to select',
     candidateScheduled: 'Scheduled elsewhere',
     candidateUnavailable: 'Unavailable',
+    viewPlanDetails: 'View details',
+    hidePlanDetails: 'Hide details',
     select: 'Select',
     noWeatherForPlace: 'No location weather yet. Update weather first.',
     reminders: 'Reminders',
@@ -667,6 +691,7 @@ const STORAGE_KEYS = {
   currentTrip: 'pg_currentTripId',
   checklistText: 'pg_checklistText',
   checklistState: 'pg_checklistState',
+  weatherCache: 'pg_weatherCache',
   driveAutoSync: 'pg_driveAutoSync',
 };
 
@@ -779,6 +804,9 @@ function normalizeSnapshotForSyncCompare(snapshot) {
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return snapshot;
   const comparable = { ...snapshot };
   delete comparable.updatedAt;
+  if (Array.isArray(comparable.trips)) {
+    comparable.trips = comparable.trips.map(stripChecklistFromTripSnapshot);
+  }
   return comparable;
 }
 
@@ -827,7 +855,6 @@ function normalizeAppSnapshotForSync(snapshot, language = DEFAULT_LANGUAGE, sour
         ? normalizedTrip.plans.map((plan, planIndex) => normalizePlan(plan, planIndex, tripDates))
         : [],
       schedule: normalizeSchedule(normalizedTrip.schedule),
-      weatherData: normalizedTrip.weatherData || {},
     });
   });
 
@@ -908,7 +935,6 @@ function mergeTripForSync(localTrip, remoteTrip) {
     tripDays: mergeScalarValue(localTrip.tripDays, remoteTrip.tripDays, `${path}.tripDays`),
     plans: mergePlansForSync(localTrip.plans, remoteTrip.plans, path),
     schedule: mergeScheduleForSync(localTrip.schedule, remoteTrip.schedule, path),
-    weatherData: { ...(remoteTrip.weatherData || {}), ...(localTrip.weatherData || {}) },
     archived: mergeScalarValue(localTrip.archived, remoteTrip.archived, `${path}.archived`),
   };
 }
@@ -1047,6 +1073,7 @@ function translateRiskTitle(title, language = DEFAULT_LANGUAGE) {
     日期不合适: 'incompatibleDate',
     和其他安排冲突: 'arrangementConflict',
     已经排在别的日期: 'scheduledElsewhere',
+    旅行清单未完成: 'checklistIncomplete',
     需要调整: 'needsAdjustment',
   };
 
@@ -1487,7 +1514,6 @@ function createExampleTripSnapshot(name = '青岛 5 日示例', startDate = getT
     tripDays: DEFAULT_TRIP_DAYS,
     plans: createExamplePlans(startDate),
     schedule: createExampleSchedule(startDate),
-    weatherData: {},
     archived: false,
   };
 }
@@ -1500,7 +1526,6 @@ function createEmptyTripSnapshot(name = '新旅行计划', startDate = getTodayI
     tripDays: DEFAULT_TRIP_DAYS,
     plans: [],
     schedule: {},
-    weatherData: {},
     archived: false,
   };
 }
@@ -1516,7 +1541,6 @@ function normalizeTripSnapshot(trip, index = 0) {
     tripDays,
     plans: Array.isArray(trip.plans) ? trip.plans : [],
     schedule: normalizeSchedule(trip.schedule || {}),
-    weatherData: trip.weatherData || {},
     checklistText: normalizeChecklistText(
       Object.hasOwn(trip, 'checklistText') ? trip.checklistText : trip.checklist || trip.packingList,
     ),
@@ -2177,6 +2201,7 @@ function stripChecklistFromTripSnapshot(trip) {
   delete nextTrip.checklist;
   delete nextTrip.checklistStatus;
   delete nextTrip.packingList;
+  delete nextTrip.weatherData;
   return nextTrip;
 }
 
@@ -2207,6 +2232,7 @@ function loadInitialState() {
   const activeTrip = visibleTrips.find((trip) => trip.id === loadedActiveTrip.id) || visibleTrips[0] || trips[0];
   const storedChecklistText = localStorage.getItem(STORAGE_KEYS.checklistText);
   const storedChecklistState = safeJsonRead(STORAGE_KEYS.checklistState, null);
+  const storedWeatherCache = safeJsonRead(STORAGE_KEYS.weatherCache, {});
   const loadedChecklistText = storedChecklistText ?? activeTrip.checklistText;
   const loadedChecklistState = storedChecklistState ?? activeTrip.checklistState;
   const nextChecklistText = isUntouchedExampleChecklist(loadedChecklistText, loadedChecklistState)
@@ -2227,7 +2253,9 @@ function loadInitialState() {
     plans: activeTrip.plans,
     schedule: activeTrip.schedule,
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
-    weatherData: activeTrip.weatherData,
+    weatherData: storedWeatherCache && typeof storedWeatherCache === 'object' && !Array.isArray(storedWeatherCache)
+      ? storedWeatherCache
+      : {},
     checklistText: nextChecklistText,
     checklistState: nextChecklistState,
   };
@@ -2721,6 +2749,28 @@ function buildRiskGroups(riskItems, tripDates) {
       if (levelDiff) return levelDiff;
       return b.items.length - a.items.length;
     });
+}
+
+function buildChecklistRiskGroup(groups, state, language = DEFAULT_LANGUAGE) {
+  const pendingItems = groups.flatMap((group) =>
+    group.items
+      .filter((item) => {
+        const status = state[item.id] || CHECKLIST_STATUS.todo;
+        return status !== CHECKLIST_STATUS.done && status !== CHECKLIST_STATUS.skipped;
+      })
+      .map((item) => (
+        language === 'en' ? `${group.title}: ${item.text}` : `${group.title} · ${item.text}`
+      )),
+  );
+
+  if (!pendingItems.length) return null;
+
+  return {
+    title: '旅行清单未完成',
+    level: 'warning',
+    items: pendingItems,
+    unit: '项',
+  };
 }
 
 function parseForecastDaily(data) {
@@ -3225,6 +3275,159 @@ function sanitizeFileNamePart(value, fallback = 'plan-gacha') {
   return normalized || fallback;
 }
 
+function Icon({ name, className = '' }) {
+  const commonProps = {
+    className: `svg-icon ${className}`.trim(),
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2.2,
+    strokeLinecap: 'round',
+    strokeLinejoin: 'round',
+    'aria-hidden': 'true',
+  };
+
+  const paths = {
+    check: (
+      <path d="M20 6 9 17l-5-5" />
+    ),
+    listChecks: (
+      <>
+        <path d="m3 7 2 2 4-4" />
+        <path d="m3 17 2 2 4-4" />
+        <path d="M13 6h8" />
+        <path d="M13 18h8" />
+      </>
+    ),
+    pencil: (
+      <>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </>
+    ),
+    plus: (
+      <>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </>
+    ),
+    refresh: (
+      <>
+        <path d="M21 12a9 9 0 0 1-15.2 6.5" />
+        <path d="M3 12A9 9 0 0 1 18.2 5.5" />
+        <path d="M18 3v4h-4" />
+        <path d="M6 21v-4h4" />
+      </>
+    ),
+    cloud: (
+      <>
+        <path d="M17.5 19H8a5 5 0 1 1 1.4-9.8A7 7 0 0 1 22 13.5 4.5 4.5 0 0 1 17.5 19Z" />
+        <path d="m12 13 2 2 4-4" />
+      </>
+    ),
+    sparkles: (
+      <>
+        <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8Z" />
+        <path d="m19 15 .8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.8Z" />
+        <path d="m5 14 .7 1.5L7.2 16l-1.5.7L5 18.2l-.7-1.5L2.8 16l1.5-.7Z" />
+      </>
+    ),
+    trash: (
+      <>
+        <path d="M3 6h18" />
+        <path d="M8 6V4h8v2" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 11v5" />
+        <path d="M14 11v5" />
+      </>
+    ),
+    x: (
+      <>
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </>
+    ),
+  };
+
+  return <svg {...commonProps}>{paths[name] || paths.plus}</svg>;
+}
+
+function BufferedTripNameField({ value, t, onCommit }) {
+  const [draft, setDraft] = useState(value || '');
+
+  const commitDraft = () => {
+    if (draft !== value) onCommit(draft);
+  };
+
+  return (
+    <label className="trip-name-field">
+      <span>{t('planName')}</span>
+      <input
+        className="input"
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commitDraft}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') event.currentTarget.blur();
+        }}
+      />
+    </label>
+  );
+}
+
+function PlanQuickEditor({ plan, language, t, onSave }) {
+  const [draft, setDraft] = useState(() => ({
+    name: plan.name,
+    priority: plan.priority,
+  }));
+
+  return (
+    <div className="plan-quick-editor">
+      <div className="panel-header compact">
+        <h3>{t('quickEdit')}</h3>
+      </div>
+      <div className="plan-quick-fields">
+        <label>
+          <span>{t('planNameLabel')}</span>
+          <input
+            className="input"
+            value={draft.name}
+            onChange={(event) => setDraft((current) => ({
+              ...current,
+              name: event.target.value,
+            }))}
+          />
+        </label>
+        <label>
+          <span>{t('planPriorityLabel')}</span>
+          <select
+            className="input"
+            value={draft.priority}
+            onChange={(event) => setDraft((current) => ({
+              ...current,
+              priority: event.target.value,
+            }))}
+          >
+            {Object.keys(PRIORITY_META).map((priority) => (
+              <option key={priority} value={priority}>
+                {getPriorityLabel(priority, language)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() => onSave(draft)}
+          disabled={!draft.name.trim()}
+        >
+          {t('saveQuickEdit')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const { i18n } = useTranslation();
   const [language, setLanguage] = useState(() => normalizeLanguage(i18n.language || getInitialLanguage()));
@@ -3249,14 +3452,11 @@ function App() {
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState('');
   const [importModalOpen, setImportModalOpen] = useState(false);
-  const [importText, setImportText] = useState('');
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPlanId, setEditorPlanId] = useState(null);
   const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
   const [aiPlannerMode, setAiPlannerMode] = useState('replan');
-  const [aiPlannerQuestion, setAiPlannerQuestion] = useState('');
-  const [aiPlannerResult, setAiPlannerResult] = useState('');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState(null);
@@ -3273,8 +3473,11 @@ function App() {
   const toastTimerRef = useRef(null);
   const autoWeatherKeyRef = useRef('');
   const dayTileRefs = useRef(new Map());
+  const aiPlannerQuestionRef = useRef(null);
+  const aiPlannerResultRef = useRef(null);
   const planAiQuestionRef = useRef(null);
   const planAiResultRef = useRef(null);
+  const importTextRef = useRef(null);
   const latestAppSnapshotRef = useRef(null);
   const driveBusyRef = useRef('');
   const driveConflictRef = useRef(false);
@@ -3330,9 +3533,17 @@ function App() {
     () => buildRiskItems(normalizedPlans, tripDates, schedule, plansById, weatherData),
     [normalizedPlans, plansById, schedule, tripDates, weatherData],
   );
-  const riskGroups = useMemo(
+  const scheduleRiskGroups = useMemo(
     () => buildRiskGroups(riskItems, tripDates),
     [riskItems, tripDates],
+  );
+  const checklistRiskGroup = useMemo(
+    () => buildChecklistRiskGroup(checklistGroups, checklistState, language),
+    [checklistGroups, checklistState, language],
+  );
+  const riskGroups = useMemo(
+    () => (checklistRiskGroup ? [...scheduleRiskGroups, checklistRiskGroup] : scheduleRiskGroups),
+    [checklistRiskGroup, scheduleRiskGroups],
   );
 
   const visibleTrips = useMemo(
@@ -3483,7 +3694,6 @@ function App() {
       tripDays,
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
-      weatherData,
       archived: activeTripArchived,
     };
     const persistedTrips = pruneEmptyTripDrafts(
@@ -3504,13 +3714,16 @@ function App() {
     tripName,
     tripDays,
     trips,
-    weatherData,
   ]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.checklistText, checklistText);
     localStorage.setItem(STORAGE_KEYS.checklistState, JSON.stringify(checklistState));
   }, [checklistState, checklistText]);
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEYS.weatherCache, JSON.stringify(weatherData));
+  }, [weatherData]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.driveAutoSync, driveAutoSync ? 'true' : 'false');
@@ -3535,7 +3748,6 @@ function App() {
     tripDays,
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
-    weatherData,
     archived: activeTripArchived,
   });
 
@@ -3547,7 +3759,6 @@ function App() {
     setTripDays(normalizedTrip.tripDays);
     setPlans(normalizedTrip.plans);
     setSchedule(normalizedTrip.schedule);
-    setWeatherData(normalizedTrip.weatherData);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     setWeatherError('');
   };
@@ -3620,7 +3831,7 @@ function App() {
     setArchivedViewTripId(null);
     setBatchAiOpen(false);
     setAiPlannerOpen(false);
-    setAiPlannerResult('');
+    resetAiPlannerFields();
   };
 
   const refreshDriveStatus = () => {
@@ -3649,6 +3860,18 @@ function App() {
     return error?.message || String(error);
   };
 
+  const isDriveFileNotFoundError = (error) => (
+    error?.code === 'file_not_found' || error?.name === 'DriveStorageFileNotFoundError'
+  );
+
+  const isDriveInvalidJsonError = (error) => error?.code === 'invalid_json';
+
+  const assertRemoteSnapshotImportable = (payload) => {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.trips)) {
+      throw new Error(t('driveInvalidSnapshot'));
+    }
+  };
+
   const runDriveAction = async (busyKey, action) => {
     if (!driveStorage) {
       notify(t('driveActionFailed', { message: t('driveUnavailable') }));
@@ -3662,6 +3885,20 @@ function App() {
     } catch (error) {
       if (error?.name === 'DriveStorageAmbiguousFileError') {
         notify(t('driveAmbiguousFile'));
+        refreshDriveStatus();
+        return;
+      }
+
+      if (isDriveFileNotFoundError(error)) {
+        setDriveConflict(false);
+        notify(t('driveFileMissing'));
+        refreshDriveStatus();
+        return;
+      }
+
+      if (isDriveInvalidJsonError(error)) {
+        setDriveConflict(false);
+        notify(t('driveInvalidJson'));
         refreshDriveStatus();
         return;
       }
@@ -3702,6 +3939,7 @@ function App() {
 
       if (existing?.file?.id) {
         const remoteSnapshot = await driveStorage.load();
+        assertRemoteSnapshotImportable(remoteSnapshot);
         if (remoteSnapshotMatchesLocal(remoteSnapshot, localSnapshot)) {
           setDriveConflict(false);
           notify(t('driveLinkedExisting'));
@@ -3762,7 +4000,13 @@ function App() {
         if (snapshot) await driveStorage.save(snapshot);
         setDriveStatus(driveStorage.status());
       } catch (error) {
-        if (error?.name === 'DriveStorageConflictError') {
+        if (isDriveFileNotFoundError(error)) {
+          setDriveConflict(false);
+          notifyRef.current?.(t('driveFileMissing'));
+        } else if (isDriveInvalidJsonError(error)) {
+          setDriveConflict(false);
+          notifyRef.current?.(t('driveInvalidJson'));
+        } else if (error?.name === 'DriveStorageConflictError') {
           setDriveConflict(true);
           notifyRef.current?.(t('driveConflictTitle'));
         } else {
@@ -3827,7 +4071,7 @@ function App() {
     setEditorPlanId(null);
     setEditorOpen(true);
     setBatchAiOpen(true);
-    setAiPlannerResult('');
+    resetAiPlannerFields();
   };
 
   const openAiPlanner = (mode = 'replan') => {
@@ -3838,8 +4082,13 @@ function App() {
 
     setAiPlannerMode('replan');
     setEditorOpen(false);
-    setAiPlannerResult('');
+    resetAiPlannerFields();
     setAiPlannerOpen(true);
+  };
+
+  const resetAiPlannerFields = () => {
+    if (aiPlannerQuestionRef.current) aiPlannerQuestionRef.current.value = '';
+    if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
   };
 
   const resetPlanAiFields = () => {
@@ -3870,6 +4119,28 @@ function App() {
     ));
     if (editorPlanId === planId) closePlanEditor();
     notify(t('planDeleted'));
+  };
+
+  const savePlanQuickEdit = (draft) => {
+    if (!editorPlan) return;
+
+    const nextName = String(draft?.name || '').trim();
+    const nextPriority = PRIORITY_META[draft?.priority] ? draft.priority : editorPlan.priority;
+    if (!nextName) return;
+
+    setPlans((current) => current.map((plan, index) => {
+      const normalizedPlan = normalizePlan(plan, index, tripDates);
+      if (normalizedPlan.id !== editorPlan.id) return plan;
+
+      return {
+        ...plan,
+        name: nextName,
+        priority: nextPriority,
+        must: nextPriority === 'must',
+        must_go: nextPriority === 'must',
+      };
+    }));
+    notify(t('planUpdated'));
   };
 
   const updatePlanBookingStatus = (planId, bookingId, nextStatus) => {
@@ -4323,10 +4594,11 @@ function App() {
     };
 
     const planSchema = getPlanJsonSchema(language);
+    const plannerQuestion = aiPlannerQuestionRef.current?.value || '';
 
     if (mode === 'generate') {
       const unplannedDates = tripDates.filter((date) => !schedule[date.id]?.planId);
-      const generateRequest = aiPlannerQuestion.trim() || (hasInitializedPlans
+      const generateRequest = plannerQuestion.trim() || (hasInitializedPlans
         ? (language === 'en'
           ? 'Add candidate plans for backups or added days; include assigned_day when useful.'
           : '请补充计划池、backup 或新增天数需要的候选计划；必要时给出 assigned_day。')
@@ -4392,7 +4664,7 @@ JSON 格式：
 ${planSchema}`;
     }
 
-    const replanRequest = aiPlannerQuestion.trim() || (language === 'en'
+    const replanRequest = plannerQuestion.trim() || (language === 'en'
       ? 'Replan the remaining dates based on current weather, date limits, must-go priority and itinerary intensity.'
       : '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。');
     const context = {
@@ -4482,7 +4754,6 @@ ${JSON.stringify(context, null, 2)}
 
     if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
     if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
-    if (parsed.weatherData) setWeatherData(parsed.weatherData);
 
     if (Array.isArray(parsed.plans)) {
       touched = true;
@@ -4530,7 +4801,7 @@ ${JSON.stringify(context, null, 2)}
       setSchedule((current) => ({ ...current, ...normalizeSchedule(parsed.schedule) }));
     }
 
-    if (!touched && !parsed.startDateStr && !parsed.tripDays && !parsed.weatherData) {
+    if (!touched && !parsed.startDateStr && !parsed.tripDays) {
       throw new Error(t('noApplicableJson'));
     }
 
@@ -4539,8 +4810,8 @@ ${JSON.stringify(context, null, 2)}
 
   const applyAiPlannerResult = () => {
     try {
-      applyImportedPayload(parseImportJson(aiPlannerResult), t('aiPlanApplied'));
-      setAiPlannerResult('');
+      applyImportedPayload(parseImportJson(aiPlannerResultRef.current?.value || ''), t('aiPlanApplied'));
+      resetAiPlannerFields();
       setAiPlannerOpen(false);
       setBatchAiOpen(false);
     } catch (error) {
@@ -4621,9 +4892,9 @@ ${schema}`}
 
   const handleImport = () => {
     try {
-      applyImportedPayload(parseImportJson(importText), t('importDone'));
+      applyImportedPayload(parseImportJson(importTextRef.current?.value || ''), t('importDone'));
       setImportModalOpen(false);
-      setImportText('');
+      if (importTextRef.current) importTextRef.current.value = '';
     } catch (error) {
       notify(t('importFailed', { message: error.message }));
     }
@@ -4644,7 +4915,9 @@ ${schema}`}
     }
   };
 
-  const handleTripImportFile = (event) => handleImportFile(event, setImportText);
+  const handleTripImportFile = (event) => handleImportFile(event, (text) => {
+    if (importTextRef.current) importTextRef.current.value = text;
+  });
 
   const handleChecklistImportFile = (event) => handleImportFile(event, (text) => {
     setChecklistImportText(text);
@@ -4652,7 +4925,7 @@ ${schema}`}
   });
 
   const handleExportState = () => {
-    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule, weatherData };
+    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule };
     const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
     downloadJson(data, fileName, t('jsonDownloaded'));
   };
@@ -4881,15 +5154,55 @@ ${schema}`}
     );
   };
 
+  const renderCandidateDetails = (plan) => {
+    const hasDetails = Boolean(plan?.stops.length || plan?.bookings.length || plan?.reminders.length || plan?.tips.length);
+    if (!hasDetails) return null;
+    const routeStops = plan.stops
+      .map((stop) => stop.title || stop.location.label)
+      .filter(Boolean);
+    const visibleRouteStops = routeStops.slice(0, 4);
+    const hiddenRouteCount = Math.max(routeStops.length - visibleRouteStops.length, 0);
+
+    return (
+      <details className="candidate-card-details">
+        <summary>
+          {visibleRouteStops.length > 0 && (
+            <span className="candidate-route-summary">
+              {visibleRouteStops.map((label, index) => (
+                <Fragment key={`${plan.id}-route-${label}-${index}`}>
+                  {index > 0 && <span className="route-separator">-&gt;</span>}
+                  <span>{label}</span>
+                </Fragment>
+              ))}
+              {hiddenRouteCount > 0 && <em>+{hiddenRouteCount}</em>}
+            </span>
+          )}
+          <span className="candidate-detail-toggle">
+            <span className="details-closed">{t('viewPlanDetails')}</span>
+            <span className="details-open">{t('hidePlanDetails')}</span>
+            <span className="details-chevron" aria-hidden="true" />
+          </span>
+        </summary>
+        <div className="candidate-card-detail-body">
+          {renderPlanStops(plan)}
+          {renderPlanBookings(plan)}
+          {renderPlanNotes(plan)}
+        </div>
+      </details>
+    );
+  };
+
   const renderCandidateActions = (plan, canAssign, weatherOverride = false) => (
     <div className="candidate-actions">
       <button
-        className={`btn btn-card ${weatherOverride && canAssign ? 'is-risky' : ''}`}
+        className={`icon-btn compact-icon-btn candidate-select-btn ${weatherOverride && canAssign ? 'is-risky' : ''}`}
         type="button"
         disabled={!canAssign || !selectedDate}
         onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
+        aria-label={`${t('select')} ${plan.name}`}
+        title={t('select')}
       >
-        {t('select')}
+        <Icon name="check" />
       </button>
       <button
         className="icon-btn compact-icon-btn candidate-edit-btn"
@@ -4898,7 +5211,7 @@ ${schema}`}
         aria-label={t('editSinglePlan')}
         title={t('editSinglePlan')}
       >
-        <span className="edit-icon" aria-hidden="true" />
+        <Icon name="pencil" />
       </button>
     </div>
   );
@@ -4926,9 +5239,7 @@ ${schema}`}
           </div>
         </div>
 
-        {renderPlanStops(plan)}
-        {renderPlanBookings(plan)}
-        {renderPlanNotes(plan)}
+        {renderCandidateDetails(plan)}
         {renderCandidateSignals(candidate)}
 
         {renderCandidateActions(plan, canAssign, weatherOverride)}
@@ -4976,8 +5287,23 @@ ${schema}`}
 
     return (
       <div className="current-actions">
-        <button className="btn btn-ghost" type="button" onClick={() => clearDay(selectedDate.id)}>
-          {t('clear')}
+        <button
+          className="icon-btn compact-icon-btn"
+          type="button"
+          onClick={() => openPlanEditor(selectedPlan.id)}
+          aria-label={`${t('editSinglePlan')} ${selectedPlan.name}`}
+          title={t('editSinglePlan')}
+        >
+          <Icon name="pencil" />
+        </button>
+        <button
+          className="icon-btn compact-icon-btn current-clear-btn"
+          type="button"
+          onClick={() => clearDay(selectedDate.id)}
+          aria-label={t('clear')}
+          title={t('clear')}
+        >
+          <Icon name="x" />
         </button>
       </div>
     );
@@ -5075,13 +5401,12 @@ ${schema}`}
     const archivePlans = (trip.plans || []).map((plan, index) => normalizePlan(plan, index, archiveDates));
     const archivePlansById = new Map(archivePlans.map((plan) => [plan.id, plan]));
     const archiveSchedule = normalizeSchedule(trip.schedule);
-    const archiveWeatherData = trip.weatherData || {};
 
     return (
       <div className="archived-view-body">
         {archiveDates.map((date) => {
           const plan = archivePlansById.get(archiveSchedule[date.id]?.planId);
-          const weather = plan ? evaluateWeather(plan, date.id, archiveWeatherData, language) : null;
+          const weather = plan ? evaluateWeather(plan, date.id, weatherData, language) : null;
 
           return (
             <article className={`archived-day-card ${plan ? `priority-${plan.priority}` : 'is-empty'}`} key={date.id}>
@@ -5152,7 +5477,7 @@ ${schema}`}
                         onClick={() => toggleChecklistDone(item.id)}
                         aria-label={isDone ? t('checklistTodo') : t('checklistDone')}
                       >
-                        {isDone && <span className="check-icon" aria-hidden="true" />}
+                        {isDone && <Icon name="check" />}
                       </button>
                       <span>{item.text}</span>
                       <button className="checklist-skip" type="button" onClick={() => toggleChecklistSkipped(item.id)}>
@@ -5223,54 +5548,70 @@ ${schema}`}
           <h1>{t('appName')}</h1>
         </div>
         <div className="trip-switcher" aria-label={t('tripSwitcher')}>
-          <div
-            className="trip-menu"
-            onBlur={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget)) setTripMenuOpen(false);
-            }}
-          >
-            <button
-              className={`trip-menu-trigger ${tripMenuOpen ? 'is-open' : ''} ${activeTripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
-              type="button"
-              aria-haspopup="listbox"
-              aria-expanded={tripMenuOpen}
-              disabled={tripMenuDisabled}
-              onClick={() => setTripMenuOpen((current) => !current)}
+          <div className="trip-primary-row">
+            <div
+              className="trip-menu"
+              onBlur={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setTripMenuOpen(false);
+              }}
             >
-              <span>{activeTripDisplay.name}</span>
-              {activeTripDisplay.meta && <em>{activeTripDisplay.meta}</em>}
-            </button>
-            {tripMenuOpen && (
-              <div className="trip-menu-popover" role="listbox" aria-label={t('tripList')}>
-                {visibleTrips.map((trip) => {
-                  const isCurrentTrip = trip.id === activeTripId;
-                  const tripDisplay = getTripDisplay(trip, isCurrentTrip);
+              <button
+                className={`trip-menu-trigger ${tripMenuOpen ? 'is-open' : ''} ${activeTripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
+                type="button"
+                aria-haspopup="listbox"
+                aria-expanded={tripMenuOpen}
+                disabled={tripMenuDisabled}
+                onClick={() => setTripMenuOpen((current) => !current)}
+              >
+                <span>{activeTripDisplay.name}</span>
+                {activeTripDisplay.meta && <em>{activeTripDisplay.meta}</em>}
+              </button>
+              {tripMenuOpen && (
+                <div className="trip-menu-popover" role="listbox" aria-label={t('tripList')}>
+                  {visibleTrips.map((trip) => {
+                    const isCurrentTrip = trip.id === activeTripId;
+                    const tripDisplay = getTripDisplay(trip, isCurrentTrip);
 
-                  return (
-                    <button
-                      className={`trip-menu-option ${isCurrentTrip ? 'is-selected' : ''} ${tripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
-                      key={trip.id}
-                      type="button"
-                      role="option"
-                      aria-selected={isCurrentTrip}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => switchTrip(trip.id)}
-                    >
-                      <span>{tripDisplay.name}</span>
-                      {tripDisplay.meta && <em>{tripDisplay.meta}</em>}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
+                    return (
+                      <button
+                        className={`trip-menu-option ${isCurrentTrip ? 'is-selected' : ''} ${tripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
+                        key={trip.id}
+                        type="button"
+                        role="option"
+                        aria-selected={isCurrentTrip}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => switchTrip(trip.id)}
+                      >
+                        <span>{tripDisplay.name}</span>
+                        {tripDisplay.meta && <em>{tripDisplay.meta}</em>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <button className="icon-btn mobile-language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')} aria-label={t('langSwitchTitle')}>
+              {t('langSwitch')}
+            </button>
           </div>
           <div className="trip-actions">
+            {hasInitializedPlans && (
+              <button
+                className="icon-btn ai-replan-btn"
+                type="button"
+                onClick={() => openAiPlanner('replan')}
+                aria-label={t('aiReplan')}
+                title={t('aiReplan')}
+              >
+                <Icon name="sparkles" />
+              </button>
+            )}
             <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
-              <span className="check-icon" aria-hidden="true" />
+              <Icon name="listChecks" />
             </button>
             {driveFeatureEnabled && driveStorage && (
               <button className="icon-btn drive-sync-btn" type="button" onClick={() => setDrivePanelOpen(true)} aria-label={t('driveSync')} title={t('driveSync')}>
-                <span className="sync-icon" aria-hidden="true" />
+                <Icon name="cloud" />
               </button>
             )}
             <button
@@ -5285,13 +5626,10 @@ ${schema}`}
               aria-label={activeTripDisplay.isEmpty ? t('noEditablePlan') : t('editPlan')}
               title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('editPlan')}
             >
-              <span className="edit-icon" aria-hidden="true" />
+              <Icon name="pencil" />
             </button>
             <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')}>
-              +
-            </button>
-            <button className="icon-btn mobile-language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')} aria-label={t('langSwitchTitle')}>
-              {t('langSwitch')}
+              <Icon name="plus" />
             </button>
           </div>
         </div>
@@ -5329,16 +5667,6 @@ ${schema}`}
           </div>
 
           {renderMobileRiskPanel()}
-
-          <div className="mobile-ai-entry">
-            <button
-              className="btn btn-primary"
-              type="button"
-              onClick={() => openAiPlanner(hasInitializedPlans ? 'replan' : 'generate')}
-            >
-              {hasInitializedPlans ? t('aiReplan') : t('aiGenerateShort')}
-            </button>
-          </div>
 
           <div className="day-list" aria-label={t('dateList')}>
             {tripDates.map((date) => {
@@ -5436,41 +5764,43 @@ ${schema}`}
             {riskGroups.slice(0, 8).map(renderRiskGroup)}
           </div>
 
-          <div className="workflow-panel ai-workflow-panel">
-            <div className="panel-header compact">
-              <h2>{t('aiReplan')}</h2>
-              <button
-                className="btn btn-primary"
-                type="button"
-                onClick={() => openAiPlanner(hasInitializedPlans ? 'replan' : 'generate')}
-              >
-                {t('open')}
-              </button>
-            </div>
-            <p className="helper-text">
-              {hasInitializedPlans
-                ? t('aiReplanHelper')
-                : t('aiGenerateHelperWhenEmpty')}
-            </p>
-          </div>
-
           <div className="workflow-panel">
             <div className="panel-header compact">
               <h2>{t('weather')}</h2>
-              <button className="btn btn-primary" type="button" onClick={refreshWeather} disabled={weatherLoading}>
-                {weatherLoading ? t('updating') : t('updateWeather')}
+              <button
+                className="icon-btn weather-refresh-btn"
+                type="button"
+                onClick={refreshWeather}
+                disabled={weatherLoading}
+                aria-label={weatherLoading ? t('updating') : t('updateWeather')}
+                title={weatherLoading ? t('updating') : t('updateWeather')}
+              >
+                <Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />
               </button>
             </div>
             <p className="helper-text">
               {t('weatherHelper')}
             </p>
             {weatherError && <div className="risk-item warning"><p>{weatherError}</p></div>}
-            <div className="weather-source-list">
-              {Object.entries(weatherData).length === 0 && <span>{t('noWeather')}</span>}
-              {Object.entries(weatherData).map(([key, value]) => (
-                <span key={key}>{value.label || key}</span>
-              ))}
-            </div>
+            {Object.entries(weatherData).length === 0 ? (
+              <p className="weather-source-empty">{t('noWeather')}</p>
+            ) : (
+              <details className="weather-source-panel">
+                <summary>
+                  <span>{t('weatherSourcesCount', { count: Object.entries(weatherData).length })}</span>
+                  <span className="weather-source-toggle">
+                    <span className="details-closed">{t('viewWeatherSources')}</span>
+                    <span className="details-open">{t('hideWeatherSources')}</span>
+                    <span className="details-chevron" aria-hidden="true" />
+                  </span>
+                </summary>
+                <div className="weather-source-list">
+                  {Object.entries(weatherData).map(([key, value]) => (
+                    <span key={key}>{value.label || key}</span>
+                  ))}
+                </div>
+              </details>
+            )}
           </div>
 
         </aside>
@@ -5486,7 +5816,7 @@ ${schema}`}
                 <h2>{t('aiReplan')}</h2>
               </div>
               <button className="icon-btn" type="button" onClick={() => setAiPlannerOpen(false)} aria-label={t('closeAiPlanning')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
 
@@ -5499,8 +5829,7 @@ ${schema}`}
               <span>{t('extraQuestion')}</span>
               <textarea
                 className="textarea ai-question"
-                value={aiPlannerQuestion}
-                onChange={(event) => setAiPlannerQuestion(event.target.value)}
+                ref={aiPlannerQuestionRef}
                 placeholder={aiReplanText.placeholder}
               />
             </label>
@@ -5509,8 +5838,7 @@ ${schema}`}
               <span>{t('aiResult')}</span>
               <textarea
                 className="textarea ai-result"
-                value={aiPlannerResult}
-                onChange={(event) => setAiPlannerResult(event.target.value)}
+                ref={aiPlannerResultRef}
                 placeholder={t('aiResultPlaceholder')}
               />
             </label>
@@ -5539,7 +5867,7 @@ ${schema}`}
                 <h2>{editorPlanId ? (isCreatingPlan ? t('addPlan') : t('editSinglePlan')) : t('editPlan')}</h2>
               </div>
               <button className="icon-btn" type="button" onClick={() => setEditorOpen(false)} aria-label={t('closeEditor')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
 
@@ -5564,6 +5892,16 @@ ${schema}`}
                     <p>{t('newPlanHelp')}</p>
                   )}
                 </div>
+
+                {!isCreatingPlan && editorPlan && (
+                  <PlanQuickEditor
+                    key={`${editorPlan.id}-${editorPlan.name}-${editorPlan.priority}`}
+                    plan={editorPlan}
+                    language={language}
+                    t={t}
+                    onSave={savePlanQuickEdit}
+                  />
+                )}
 
                 <label>
                   <span>{t('yourRequest')}</span>
@@ -5595,14 +5933,7 @@ ${schema}`}
             ) : (
               <>
             <div className="trip-editor-grid">
-              <label className="trip-name-field">
-                <span>{t('planName')}</span>
-                <input
-                  className="input"
-                  value={tripName}
-                  onChange={(event) => setTripName(event.target.value)}
-                />
-              </label>
+              <BufferedTripNameField key={`${activeTripId}-${tripName}`} value={tripName} t={t} onCommit={setTripName} />
               <div className="date-range-field">
                 <span>{t('dateRange')}</span>
                 <div className="date-range-inputs">
@@ -5684,8 +6015,7 @@ ${schema}`}
                     <span>{t('yourRequest')}</span>
                     <textarea
                       className="textarea ai-question"
-                      value={aiPlannerQuestion}
-                      onChange={(event) => setAiPlannerQuestion(event.target.value)}
+                      ref={aiPlannerQuestionRef}
                       placeholder={aiGenerateText.placeholder}
                     />
                   </label>
@@ -5694,8 +6024,7 @@ ${schema}`}
                     <span>{t('aiResult')}</span>
                     <textarea
                       className="textarea ai-result"
-                      value={aiPlannerResult}
-                      onChange={(event) => setAiPlannerResult(event.target.value)}
+                      ref={aiPlannerResultRef}
                       placeholder={t('aiResultPlaceholder')}
                     />
                   </label>
@@ -5737,7 +6066,7 @@ ${schema}`}
                           aria-label={`${t('editPlan')} ${plan.name}`}
                           title={t('editPlan')}
                         >
-                          <span className="edit-icon" aria-hidden="true" />
+                          <Icon name="pencil" />
                         </button>
                         <button
                           className="icon-btn compact-icon-btn danger-icon-btn"
@@ -5746,7 +6075,7 @@ ${schema}`}
                           aria-label={`${t('delete')} ${plan.name}`}
                           title={t('delete')}
                         >
-                          <span className="trash-icon" aria-hidden="true" />
+                          <Icon name="trash" />
                         </button>
                       </div>
                     </div>
@@ -5785,7 +6114,7 @@ ${schema}`}
                 <h2>{t('driveSync')}</h2>
               </div>
               <button className="icon-btn" type="button" onClick={() => setDrivePanelOpen(false)} aria-label={t('close')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
             {renderDriveSyncPanel()}
@@ -5802,7 +6131,7 @@ ${schema}`}
                 <h2>{t('checklistTitle')}</h2>
               </div>
               <button className="icon-btn" type="button" onClick={() => setChecklistOpen(false)} aria-label={t('close')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
 
@@ -5890,7 +6219,7 @@ ${schema}`}
               <div className="archived-view-actions">
                 <span className="readonly-badge">{t('readOnly')}</span>
                 <button className="icon-btn" type="button" onClick={() => setArchivedViewTripId(null)} aria-label={t('close')}>
-                  ×
+                  <Icon name="x" />
                 </button>
               </div>
             </div>
@@ -5909,7 +6238,7 @@ ${schema}`}
                 <h2>{t('checklistImportTitle')}</h2>
               </div>
               <button className="icon-btn" type="button" onClick={closeChecklistImport} aria-label={t('close')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
 
@@ -5972,7 +6301,7 @@ ${schema}`}
             <div className="panel-header">
               <h2>{t('importJsonTitle')}</h2>
               <button className="icon-btn" type="button" onClick={() => setImportModalOpen(false)} aria-label={t('close')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
             <div className="import-file-row">
@@ -5984,8 +6313,7 @@ ${schema}`}
             <textarea
               className="textarea"
               rows={12}
-              value={importText}
-              onChange={(event) => setImportText(event.target.value)}
+              ref={importTextRef}
               placeholder='{"plans":[]}'
             />
             <div className="modal-actions">
@@ -6010,7 +6338,7 @@ ${schema}`}
             <div className="panel-header">
               <h2>{t('impactPreview')}</h2>
               <button className="icon-btn" type="button" onClick={() => setPendingAssignment(null)} aria-label={t('close')}>
-                ×
+                <Icon name="x" />
               </button>
             </div>
 
