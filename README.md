@@ -87,37 +87,66 @@
 - 旅行清单是全局独立数据，可以单独下载 JSON，之后可通过粘贴或选择文件导入，并选择替换或合并。
 - 合并清单时，同分类同文本视为同一项；同文本不同分类会迁移可确定的状态，并提示冲突。
 - 同文本多次出现或状态不一致时，不会自动覆盖当前清单，会提示用户整理后再导入。
+- 当前同步文件 schema 为 `appSchemaVersion: "1.0"`；兼容字段新增、UI 调整和同步策略变化不升级 schema，只有破坏性数据结构变化才升级。
 
-### 可选网盘同步适配
+### 可选远端同步适配
 
-应用本身不绑定具体网盘服务。部署环境可以注入一个最小 `driveStorage` 适配器，让应用把完整工作区快照同步到宿主提供的远端文件。
+应用本身不绑定具体远端存储服务。部署环境可以注入一个最小 `driveStorage` 适配器，让应用把完整工作区快照同步到宿主提供的远端 JSON 文件。
 
-默认构建只在 URL 带 `?drive=1` 或 `?driveStorage=1` 时启用同步入口。部署时可通过环境变量调整：
+默认构建只在 URL 带 `?sync=1`，或本地已经记录过同步文件时启用同步入口；同时宿主必须实际提供 `driveStorage` API，否则入口不会展示。部署时可通过环境变量彻底关闭：
 
 ```bash
-VITE_DRIVE_STORAGE_EXPOSURE=url   # 默认：仅 URL 参数启用
-VITE_DRIVE_STORAGE_EXPOSURE=auto  # 检测到 driveStorage 时自动启用
+VITE_DRIVE_STORAGE_EXPOSURE=url   # 默认：URL 参数，或本地已有同步文件
 VITE_DRIVE_STORAGE_EXPOSURE=off   # 完全禁用
 ```
 
-宿主需要提供 `window.driveStorage`，或让 `/drive-storage/driveStorage.js` 加载后提供它。最小接口如下：
+宿主需要提供 `window.driveStorage`，或让 `/drive-storage/driveStorage.js` 加载后提供它。应用侧会用 `name + appProperties.appId` 定位同步文件；如果定位到多个文件，宿主应抛出 `DriveStorageAmbiguousFileError`。最小接口如下：
 
 ```ts
 type DriveStorageApi = {
-  forApp(config: { appId: string; fileName: string; schemaVersion: number }): DriveStorage;
+  status(): { configured?: boolean; connected?: boolean };
+  isConfigured?(): boolean;
+  connect(options?: { prompt?: '' | 'consent' | 'select_account' }): Promise<unknown>;
+  disconnect?(options?: { revoke?: boolean }): Promise<unknown>;
+  getFile(fileIdOrLocator: string | DriveFileLocator): Promise<DriveFileRecord>;
+  findFile(locator: DriveFileLocator): Promise<DriveFileRecord | null>;
+  createFile(options: DriveCreateFileOptions): Promise<DriveFileRecord>;
+  readJson<T = unknown>(fileIdOrLocator: string | DriveFileLocator): Promise<T>;
+  writeJson(fileIdOrLocator: string | DriveFileLocator, data: unknown, options?: { space?: number; mimeType?: string; appProperties?: Record<string, string> }): Promise<DriveFileRecord>;
+  DriveStorageConflictError?: new (message: string, details?: { remote?: unknown; local?: unknown }) => Error;
 };
 
-type DriveStorage = {
-  available?: boolean;
-  status(): { connected?: boolean; configured?: boolean; file?: { id?: string; name?: string; modifiedTime?: string } };
-  connect(options?: { prompt?: string }): Promise<void>;
-  create(data: unknown): Promise<void>;
-  load(): Promise<unknown>;
-  save(data: unknown, options?: { force?: boolean }): Promise<void>;
+type DriveFileLocator = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  appProperties?: Record<string, string>;
+};
+
+type DriveFileRecord = {
+  id: string;
+  name: string | null;
+  mimeType: string | null;
+  modifiedTime: string | null;
+  version: string | null;
+  appProperties: Record<string, string>;
+  webViewLink: string | null;
+  canEdit: boolean | null;
+};
+
+type DriveCreateFileOptions = {
+  name: string;
+  mimeType?: string;
+  appProperties?: Record<string, string>;
+  content?: string | Blob | ArrayBuffer;
 };
 ```
 
-如果远端文件已被其他设备修改，`save()` 可以抛出 `name === 'DriveStorageConflictError'` 的错误，应用会进入冲突处理流程。
+首次同步会按 `name = "plan-gacha.state.json"` 和 `appProperties.appId = "plan-gacha"` 查找远端文件。本地为空时会直接拉取远端；本地已有内容时会进入确认流程；找不到远端文件才会创建新文件。
+
+保存前会用本地记录的 Drive `version` 和当前远端 `version` 做粗略冲突判断。由于 `driveStorage` 不再提供内容级指纹，内容是否相同只在首次定位远端文件时通过稳定 JSON 对比判断。
+
+发生冲突时，界面提供三种处理：拉取远端覆盖本地、用本地覆盖远端、或尝试自动合并。自动合并只处理当前 `appSchemaVersion` 的完整同步文件；schema 不匹配、远端格式不完整、同一个 trip/plan/date/checklist 项两边都改过时，会拒绝合并并提示原因。
 
 ### 本地开发
 
@@ -222,37 +251,66 @@ Weather lookup prioritizes `location.weather_location`, city, district or coordi
 - The checklist is global standalone data. It can be downloaded separately as JSON, then imported by pasting or choosing a file, with replace or merge behavior.
 - During checklist merge, same category plus same text is treated as the same item. Same text in a different category migrates clear status matches and reports a conflict.
 - Repeated same-text items or status disagreements do not overwrite the current checklist automatically; the app reports them for cleanup before re-importing.
+- The current sync-file schema is `appSchemaVersion: "1.0"`; compatible field additions, UI changes and sync-strategy changes do not bump the schema. Only breaking data-shape changes should.
 
-### Optional Cloud Storage Adapter
+### Optional Remote Sync Adapter
 
-The app does not bind to a specific cloud storage provider. A host can inject a minimal `driveStorage` adapter so the app can sync the full workspace snapshot to a remote file owned by that host.
+The app does not bind to a specific remote storage provider. A host can inject a minimal `driveStorage` adapter so the app can sync the full workspace snapshot to a remote JSON file owned by that host.
 
-By default, the sync entry is enabled only when the URL includes `?drive=1` or `?driveStorage=1`. Deployments can change that behavior with an environment variable:
+By default, the sync entry is enabled when the URL includes `?sync=1`, or when the browser already remembers a synced file; the host must also provide the `driveStorage` API, otherwise the entry stays hidden. Deployments can disable it completely with an environment variable:
 
 ```bash
-VITE_DRIVE_STORAGE_EXPOSURE=url   # default: URL parameter only
-VITE_DRIVE_STORAGE_EXPOSURE=auto  # enable automatically when driveStorage is detected
+VITE_DRIVE_STORAGE_EXPOSURE=url   # default: URL parameter, or a remembered sync file
 VITE_DRIVE_STORAGE_EXPOSURE=off   # disable completely
 ```
 
-The host should provide `window.driveStorage`, or make `/drive-storage/driveStorage.js` provide it after loading. Minimal interface:
+The host should provide `window.driveStorage`, or make `/drive-storage/driveStorage.js` provide it after loading. The app locates the sync file by `name + appProperties.appId`; if multiple files match, the host should throw `DriveStorageAmbiguousFileError`. Minimal interface:
 
 ```ts
 type DriveStorageApi = {
-  forApp(config: { appId: string; fileName: string; schemaVersion: number }): DriveStorage;
+  status(): { configured?: boolean; connected?: boolean };
+  isConfigured?(): boolean;
+  connect(options?: { prompt?: '' | 'consent' | 'select_account' }): Promise<unknown>;
+  disconnect?(options?: { revoke?: boolean }): Promise<unknown>;
+  getFile(fileIdOrLocator: string | DriveFileLocator): Promise<DriveFileRecord>;
+  findFile(locator: DriveFileLocator): Promise<DriveFileRecord | null>;
+  createFile(options: DriveCreateFileOptions): Promise<DriveFileRecord>;
+  readJson<T = unknown>(fileIdOrLocator: string | DriveFileLocator): Promise<T>;
+  writeJson(fileIdOrLocator: string | DriveFileLocator, data: unknown, options?: { space?: number; mimeType?: string; appProperties?: Record<string, string> }): Promise<DriveFileRecord>;
+  DriveStorageConflictError?: new (message: string, details?: { remote?: unknown; local?: unknown }) => Error;
 };
 
-type DriveStorage = {
-  available?: boolean;
-  status(): { connected?: boolean; configured?: boolean; file?: { id?: string; name?: string; modifiedTime?: string } };
-  connect(options?: { prompt?: string }): Promise<void>;
-  create(data: unknown): Promise<void>;
-  load(): Promise<unknown>;
-  save(data: unknown, options?: { force?: boolean }): Promise<void>;
+type DriveFileLocator = {
+  id?: string;
+  name?: string;
+  mimeType?: string;
+  appProperties?: Record<string, string>;
+};
+
+type DriveFileRecord = {
+  id: string;
+  name: string | null;
+  mimeType: string | null;
+  modifiedTime: string | null;
+  version: string | null;
+  appProperties: Record<string, string>;
+  webViewLink: string | null;
+  canEdit: boolean | null;
+};
+
+type DriveCreateFileOptions = {
+  name: string;
+  mimeType?: string;
+  appProperties?: Record<string, string>;
+  content?: string | Blob | ArrayBuffer;
 };
 ```
 
-When the remote file changed on another device, `save()` can throw an error with `name === 'DriveStorageConflictError'`; the app will switch to the conflict resolution flow.
+On first sync, the app searches for a remote file with `name = "plan-gacha.state.json"` and `appProperties.appId = "plan-gacha"`. Empty local state pulls remote automatically; non-empty local state asks for confirmation; a new file is created only when no remote file is found.
+
+Before saving, the app compares the locally remembered Drive `version` with the current remote `version` as a coarse conflict check. Since `driveStorage` no longer provides a content fingerprint, content equality is checked only when first locating an existing remote file, using stable JSON comparison.
+
+On conflict, the UI offers three actions: pull remote over local, overwrite remote with local, or try automatic merge. Automatic merge only supports complete sync files for the current `appSchemaVersion`; schema mismatch, incomplete remote format, or two-sided edits to the same trip/plan/date/checklist item cause merge to fail with a reason.
 
 ### Local Development
 

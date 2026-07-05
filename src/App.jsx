@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { createPlanGachaDriveStorage } from './driveStorageAdapter.js';
+import { createPlanGachaDriveStorage, hasStoredDriveStorageFile } from './driveStorageAdapter.js';
 
-const APP_SCHEMA_VERSION = '13';
+const APP_SCHEMA_VERSION = '1.0';
+const COMPATIBLE_APP_SCHEMA_VERSIONS = new Set([APP_SCHEMA_VERSION, '13']);
 const DEFAULT_TRIP_DAYS = 5;
 const WEATHER_FETCH_TIMEOUT_MS = 20000;
 const WEATHER_BATCH_TIMEOUT_MS = 60000;
@@ -10,7 +11,7 @@ const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const WEATHER_FETCH_CONCURRENCY = 4;
 const DRIVE_AUTO_SYNC_MS = 5 * 60 * 1000;
 const DRIVE_STORAGE_EXPOSURE = normalizeDriveStorageExposure(
-  import.meta.env.VITE_DRIVE_STORAGE_EXPOSURE || import.meta.env.VITE_DRIVE_STORAGE || 'url',
+  import.meta.env.VITE_DRIVE_STORAGE_EXPOSURE || 'url',
 );
 const WEATHER_ERRORS_KEY = Symbol('weatherErrors');
 const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
@@ -90,11 +91,11 @@ const UI_TEXT = {
     jsonCopied: 'JSON 已复制',
     jsonDownloaded: 'JSON 已下载',
     downloadFailed: '下载失败',
-    driveSync: '网盘同步',
-    driveSyncHelp: '把本地工作区同步到宿主提供的网盘存储；未连接时会先连接，未创建文件时会自动创建。',
-    driveUnavailable: '当前环境没有可用的网盘同步服务，仍会继续保存在本地浏览器。',
-    driveNotConfigured: '网盘同步能力已加载，但宿主侧尚未完成配置。',
-    driveNotConnected: '未连接网盘同步',
+    driveSync: '远端同步',
+    driveSyncHelp: '把本地工作区同步到宿主提供的远端 JSON 存储；未连接时会先连接，未创建文件时会自动创建。',
+    driveUnavailable: '当前环境没有可用的远端同步服务，仍会继续保存在本地浏览器。',
+    driveNotConfigured: '远端同步能力已加载，但宿主侧尚未完成配置。',
+    driveNotConnected: '未连接远端同步',
     driveNoFile: '已连接，还没有同步文件',
     driveConnectedFile: ({ name }) => `同步文件：${name}`,
     driveUpdatedAt: ({ time }) => `远端更新：${time}`,
@@ -103,13 +104,22 @@ const UI_TEXT = {
     driveAutoSync: '自动同步',
     driveAutoSyncHelp: '连接并创建同步文件后，每 5 分钟自动保存一次。',
     driveBusy: '同步中...',
-    driveLoaded: '已从网盘拉取',
-    driveSynced: '已同步到网盘',
-    driveActionFailed: ({ message }) => `网盘同步失败：${message}`,
-    driveConflictTitle: '远端文件已变化',
-    driveConflictHelp: '远端文件在上次读取后被其他设备修改了。请选择拉取远端覆盖本地，或用当前本地状态覆盖远端。',
+    driveLoaded: '已从远端拉取',
+    driveSynced: '已同步到远端',
+    driveMerged: '已合并并同步到远端',
+    driveLinkedExisting: '已绑定远端同步文件',
+    driveRemoteFound: '已找到远端同步文件，请选择拉取远端或覆盖远端。',
+    driveActionFailed: ({ message }) => `远端同步失败：${message}`,
+    driveAmbiguousFile: '找到多个同名同步文件，请先在 Drive 中清理重复文件后再同步。',
+    driveConflictTitle: '需要确认远端文件',
+    driveConflictHelp: '远端文件和当前本地数据需要确认。可以尝试自动合并；如果失败，再选择拉取远端或覆盖远端。',
     drivePullRemote: '拉取远端',
+    driveMergeRemote: '合并',
     driveOverwriteRemote: '覆盖远端',
+    driveMergeFailed: ({ message }) => `无法自动合并：${message}`,
+    driveMergeInvalidSnapshot: ({ source }) => `${source === 'remote' ? '远端' : source === 'local' ? '本地' : '合并结果'}不是当前应用的完整同步文件`,
+    driveMergeSchemaMismatch: ({ source, version }) => `${source === 'remote' ? '远端' : source === 'local' ? '本地' : '合并结果'} schemaVersion 不兼容：${version}`,
+    driveMergeDataConflict: ({ path }) => `同一数据被两边修改（${path}）`,
     driveInvalidSnapshot: '远端文件不是可用的行程扭蛋数据',
     aiPromptCopied: ({ label }) => `${label} Prompt 已复制`,
     addPlanPromptCopied: '新增计划 Prompt 已复制',
@@ -341,11 +351,11 @@ const UI_TEXT = {
     jsonCopied: 'JSON copied',
     jsonDownloaded: 'JSON downloaded',
     downloadFailed: 'Download failed',
-    driveSync: 'Cloud sync',
-    driveSyncHelp: 'Sync the local workspace with host-provided cloud storage. It connects first, then creates a sync file when needed.',
-    driveUnavailable: 'Cloud sync is unavailable in this environment. Local browser storage still works.',
-    driveNotConfigured: 'Cloud sync is loaded, but the host integration is not configured.',
-    driveNotConnected: 'Cloud sync not connected',
+    driveSync: 'Remote sync',
+    driveSyncHelp: 'Sync the local workspace with host-provided remote JSON storage. It connects first, then creates a sync file when needed.',
+    driveUnavailable: 'Remote sync is unavailable in this environment. Local browser storage still works.',
+    driveNotConfigured: 'Remote sync is loaded, but the host integration is not configured.',
+    driveNotConnected: 'Remote sync not connected',
     driveNoFile: 'Connected, no sync file yet',
     driveConnectedFile: ({ name }) => `Sync file: ${name}`,
     driveUpdatedAt: ({ time }) => `Remote updated: ${time}`,
@@ -354,13 +364,22 @@ const UI_TEXT = {
     driveAutoSync: 'Auto sync',
     driveAutoSyncHelp: 'After connecting and creating a sync file, save automatically every 5 minutes.',
     driveBusy: 'Syncing...',
-    driveLoaded: 'Pulled from cloud storage',
-    driveSynced: 'Synced to cloud storage',
-    driveActionFailed: ({ message }) => `Cloud sync failed: ${message}`,
-    driveConflictTitle: 'Remote file changed',
-    driveConflictHelp: 'The remote file changed on another device after the last load. Pull remote to replace local state, or overwrite remote with the current local state.',
+    driveLoaded: 'Pulled from remote',
+    driveSynced: 'Synced to remote',
+    driveMerged: 'Merged and synced to remote',
+    driveLinkedExisting: 'Existing remote sync file linked',
+    driveRemoteFound: 'Remote sync file found. Pull remote or overwrite remote to continue.',
+    driveActionFailed: ({ message }) => `Remote sync failed: ${message}`,
+    driveAmbiguousFile: 'Multiple matching sync files were found in Drive. Clean up duplicates before syncing again.',
+    driveConflictTitle: 'Remote file needs review',
+    driveConflictHelp: 'The remote file and current local data need review. Try automatic merge first; if it fails, pull remote or overwrite remote.',
     drivePullRemote: 'Pull remote',
+    driveMergeRemote: 'Merge',
     driveOverwriteRemote: 'Overwrite remote',
+    driveMergeFailed: ({ message }) => `Cannot auto-merge: ${message}`,
+    driveMergeInvalidSnapshot: ({ source }) => `${source} is not a complete sync file for this app`,
+    driveMergeSchemaMismatch: ({ source, version }) => `${source} schemaVersion is incompatible: ${version}`,
+    driveMergeDataConflict: ({ path }) => `Both sides changed the same data (${path})`,
     driveInvalidSnapshot: 'The remote file is not valid Plan Gacha data',
     aiPromptCopied: ({ label }) => `${label} prompt copied`,
     addPlanPromptCopied: 'New plan prompt copied',
@@ -684,9 +703,8 @@ function normalizeLanguage(value) {
 
 function normalizeDriveStorageExposure(value) {
   const normalized = String(value || '').trim().toLowerCase();
-  if (['auto', 'url', 'off'].includes(normalized)) return normalized;
-  if (['1', 'true', 'yes', 'on'].includes(normalized)) return 'auto';
   if (['0', 'false', 'no', 'none'].includes(normalized)) return 'off';
+  if (normalized === 'off') return 'off';
   return 'url';
 }
 
@@ -699,26 +717,257 @@ function getInitialLanguage() {
   }
 }
 
-function isEnabledUrlFlag(params, key) {
-  if (!params.has(key)) return false;
-  const value = params.get(key);
-  if (!value) return true;
-  return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
-}
-
 function getDriveStorageEnabledFromUrl() {
   try {
     const params = new URLSearchParams(window.location.search);
-    return isEnabledUrlFlag(params, 'drive') || isEnabledUrlFlag(params, 'driveStorage');
+    return params.get('sync') === '1';
   } catch {
     return false;
   }
 }
 
 function getDriveStorageFeatureEnabled() {
-  if (DRIVE_STORAGE_EXPOSURE === 'auto') return true;
   if (DRIVE_STORAGE_EXPOSURE === 'off') return false;
-  return getDriveStorageEnabledFromUrl();
+  return getDriveStorageEnabledFromUrl() || hasStoredDriveStorageFile();
+}
+
+function normalizeJsonValue(value, seen = new WeakSet()) {
+  if (value === null) return null;
+
+  const valueType = typeof value;
+  if (valueType === 'string' || valueType === 'boolean') return value;
+  if (valueType === 'number') return Number.isFinite(value) ? value : null;
+  if (valueType === 'bigint') throw new Error('JSON payload cannot contain BigInt values.');
+  if (valueType === 'undefined' || valueType === 'function' || valueType === 'symbol') return undefined;
+
+  if (typeof value.toJSON === 'function') {
+    return normalizeJsonValue(value.toJSON(), seen);
+  }
+
+  if (seen.has(value)) throw new Error('JSON payload cannot contain circular references.');
+
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((item) => {
+        const normalized = normalizeJsonValue(item, seen);
+        return normalized === undefined ? null : normalized;
+      });
+    }
+
+    const normalizedObject = {};
+    for (const key of Object.keys(value).sort()) {
+      const normalizedProperty = normalizeJsonValue(value[key], seen);
+      if (normalizedProperty !== undefined) normalizedObject[key] = normalizedProperty;
+    }
+    return normalizedObject;
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function stableJsonStringify(value) {
+  const normalized = normalizeJsonValue(value);
+  return normalized === undefined ? '' : JSON.stringify(normalized);
+}
+
+function jsonEqual(a, b) {
+  return stableJsonStringify(a) === stableJsonStringify(b);
+}
+
+function normalizeSnapshotForSyncCompare(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return snapshot;
+  const comparable = { ...snapshot };
+  delete comparable.updatedAt;
+  return comparable;
+}
+
+function remoteSnapshotMatchesLocal(remotePayload, localSnapshot) {
+  return jsonEqual(
+    normalizeSnapshotForSyncCompare(remotePayload),
+    normalizeSnapshotForSyncCompare(localSnapshot),
+  );
+}
+
+function createSyncMergeError(code, details = {}) {
+  const error = new Error(code);
+  error.code = code;
+  error.details = details;
+  return error;
+}
+
+function normalizeSchemaVersion(value) {
+  return String(value ?? '').trim();
+}
+
+function isCompatibleAppSchemaVersion(value) {
+  return COMPATIBLE_APP_SCHEMA_VERSIONS.has(normalizeSchemaVersion(value));
+}
+
+function getSnapshotSchemaVersion(snapshot) {
+  return snapshot?.appSchemaVersion ?? snapshot?.schemaVersion ?? '';
+}
+
+function normalizeAppSnapshotForSync(snapshot, language = DEFAULT_LANGUAGE, source = 'remote') {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot) || !Array.isArray(snapshot.trips)) {
+    throw createSyncMergeError('merge_invalid_snapshot', { source });
+  }
+
+  const version = getSnapshotSchemaVersion(snapshot);
+  if (!isCompatibleAppSchemaVersion(version)) {
+    throw createSyncMergeError('merge_schema_mismatch', { source, version: version || 'missing' });
+  }
+
+  const trips = snapshot.trips.map((trip, index) => {
+    const normalizedTrip = normalizeTripSnapshot(trip, index);
+    const tripDates = createTripDates(normalizedTrip.startDateStr, normalizedTrip.tripDays, language);
+    return stripChecklistFromTripSnapshot({
+      ...normalizedTrip,
+      plans: Array.isArray(normalizedTrip.plans)
+        ? normalizedTrip.plans.map((plan, planIndex) => normalizePlan(plan, planIndex, tripDates))
+        : [],
+      schedule: normalizeSchedule(normalizedTrip.schedule),
+      weatherData: normalizedTrip.weatherData || {},
+    });
+  });
+
+  if (!trips.length) throw createSyncMergeError('merge_invalid_snapshot', { source });
+
+  const activeTripId = trips.some((trip) => trip.id === snapshot.activeTripId)
+    ? snapshot.activeTripId
+    : trips.find((trip) => !trip.archived)?.id || trips[0].id;
+  const checklistText = normalizeChecklistText(snapshot.checklistText ?? snapshot.checklist ?? snapshot.packingList, '');
+  const checklistGroups = parseChecklistText(checklistText, language);
+
+  return {
+    appSchemaVersion: APP_SCHEMA_VERSION,
+    snapshotVersion: 1,
+    activeTripId,
+    trips: pruneEmptyTripDrafts(trips, activeTripId).map(stripChecklistFromTripSnapshot),
+    checklistText,
+    checklistState: reconcileChecklistStateForGroups(snapshot.checklistState || snapshot.checklistStatus || {}, checklistGroups),
+  };
+}
+
+function mergeScalarValue(localValue, remoteValue, path) {
+  if (jsonEqual(localValue, remoteValue)) return localValue;
+  if (localValue === undefined || localValue === null || localValue === '') return remoteValue;
+  if (remoteValue === undefined || remoteValue === null || remoteValue === '') return localValue;
+  throw createSyncMergeError('merge_data_conflict', { path });
+}
+
+function mergeScheduleForSync(localSchedule, remoteSchedule, path) {
+  const result = { ...remoteSchedule };
+  Object.entries(localSchedule || {}).forEach(([dateId, localEntry]) => {
+    const remoteEntry = result[dateId];
+    if (!remoteEntry) {
+      result[dateId] = localEntry;
+      return;
+    }
+    if (!jsonEqual(localEntry, remoteEntry)) {
+      throw createSyncMergeError('merge_data_conflict', { path: `${path}.schedule.${dateId}` });
+    }
+  });
+  return normalizeSchedule(result);
+}
+
+function mergePlansForSync(localPlans, remotePlans, path) {
+  const result = [];
+  const localById = new Map((localPlans || []).map((plan) => [plan.id, plan]));
+  const remoteById = new Map((remotePlans || []).map((plan) => [plan.id, plan]));
+  const ids = [...new Set([...remoteById.keys(), ...localById.keys()])];
+
+  ids.forEach((id) => {
+    const localPlan = localById.get(id);
+    const remotePlan = remoteById.get(id);
+    if (!localPlan) {
+      result.push(remotePlan);
+      return;
+    }
+    if (!remotePlan) {
+      result.push(localPlan);
+      return;
+    }
+    if (!jsonEqual(localPlan, remotePlan)) {
+      throw createSyncMergeError('merge_data_conflict', { path: `${path}.plans.${id}` });
+    }
+    result.push(localPlan);
+  });
+
+  return result;
+}
+
+function mergeTripForSync(localTrip, remoteTrip) {
+  if (jsonEqual(localTrip, remoteTrip)) return localTrip;
+  const path = `trips.${localTrip.id}`;
+
+  return {
+    id: localTrip.id,
+    name: mergeScalarValue(localTrip.name, remoteTrip.name, `${path}.name`),
+    startDateStr: mergeScalarValue(localTrip.startDateStr, remoteTrip.startDateStr, `${path}.startDateStr`),
+    tripDays: mergeScalarValue(localTrip.tripDays, remoteTrip.tripDays, `${path}.tripDays`),
+    plans: mergePlansForSync(localTrip.plans, remoteTrip.plans, path),
+    schedule: mergeScheduleForSync(localTrip.schedule, remoteTrip.schedule, path),
+    weatherData: { ...(remoteTrip.weatherData || {}), ...(localTrip.weatherData || {}) },
+    archived: mergeScalarValue(localTrip.archived, remoteTrip.archived, `${path}.archived`),
+  };
+}
+
+function mergeTripsForSync(localTrips, remoteTrips) {
+  const result = [];
+  const localById = new Map(localTrips.map((trip) => [trip.id, trip]));
+  const remoteById = new Map(remoteTrips.map((trip) => [trip.id, trip]));
+  const ids = [...new Set([...remoteById.keys(), ...localById.keys()])];
+
+  ids.forEach((id) => {
+    const localTrip = localById.get(id);
+    const remoteTrip = remoteById.get(id);
+    if (!localTrip) {
+      result.push(remoteTrip);
+      return;
+    }
+    if (!remoteTrip) {
+      result.push(localTrip);
+      return;
+    }
+    result.push(mergeTripForSync(localTrip, remoteTrip));
+  });
+
+  return result;
+}
+
+function mergeAppSnapshots(localSnapshot, remoteSnapshot, language = DEFAULT_LANGUAGE) {
+  const local = normalizeAppSnapshotForSync(localSnapshot, language, 'local');
+  const remote = normalizeAppSnapshotForSync(remoteSnapshot, language, 'remote');
+
+  if (jsonEqual(local, remote)) return local;
+
+  const trips = mergeTripsForSync(local.trips, remote.trips);
+  const activeTripId = trips.some((trip) => trip.id === local.activeTripId)
+    ? local.activeTripId
+    : trips.some((trip) => trip.id === remote.activeTripId)
+      ? remote.activeTripId
+      : trips.find((trip) => !trip.archived)?.id || trips[0]?.id;
+  const checklist = mergeChecklistPayload(
+    local.checklistText,
+    local.checklistState,
+    remote.checklistText,
+    remote.checklistState,
+    language,
+  );
+
+  if (checklist.conflicts.length) {
+    throw createSyncMergeError('merge_data_conflict', { path: 'checklist' });
+  }
+
+  return normalizeAppSnapshotForSync({
+    appSchemaVersion: APP_SCHEMA_VERSION,
+    snapshotVersion: 1,
+    activeTripId,
+    trips,
+    checklistText: checklist.checklistText,
+    checklistState: checklist.checklistState,
+  }, language, 'merged');
 }
 
 function getLocale(language) {
@@ -1946,7 +2195,7 @@ function getSmartSelectedDate(startDate, tripDays) {
 function loadInitialState() {
   const currentVersion = localStorage.getItem(STORAGE_KEYS.schemaVersion);
   const storedTrips = safeJsonRead(STORAGE_KEYS.trips, null);
-  const loadedTrips = currentVersion === APP_SCHEMA_VERSION && Array.isArray(storedTrips) && storedTrips.length > 0
+  const loadedTrips = isCompatibleAppSchemaVersion(currentVersion) && Array.isArray(storedTrips) && storedTrips.length > 0
     ? storedTrips.map(normalizeTripSnapshot)
     : [createEmptyTripSnapshot('新旅行计划', getTodayId(), 'trip-default')];
 
@@ -3317,8 +3566,17 @@ function App() {
     trips: pruneEmptyTripDrafts(saveCurrentTripInto(trips), activeTripId).map(stripChecklistFromTripSnapshot),
     checklistText,
     checklistState: reconcileChecklistStateForGroups(checklistState, checklistGroups),
-    updatedAt: new Date().toISOString(),
   });
+
+  const isLocalWorkspaceEmpty = (snapshot = exportAppSnapshot()) => {
+    const hasTripContent = snapshot.trips.some((trip) => (
+      Array.isArray(trip.plans) && trip.plans.length > 0
+    ) || Object.values(trip.schedule || {}).some((entry) => entry?.planId));
+    const hasChecklistContent = Boolean(snapshot.checklistText?.trim())
+      || Object.keys(snapshot.checklistState || {}).length > 0;
+
+    return !hasTripContent && !hasChecklistContent;
+  };
 
   useEffect(() => {
     driveBusyRef.current = driveBusy;
@@ -3375,6 +3633,22 @@ function App() {
     }
   };
 
+  const formatDriveMergeError = (error) => {
+    if (error?.code === 'merge_invalid_snapshot') {
+      return t('driveMergeInvalidSnapshot', { source: error.details?.source || 'remote' });
+    }
+    if (error?.code === 'merge_schema_mismatch') {
+      return t('driveMergeSchemaMismatch', {
+        source: error.details?.source || 'remote',
+        version: error.details?.version || 'missing',
+      });
+    }
+    if (error?.code === 'merge_data_conflict') {
+      return t('driveMergeDataConflict', { path: error.details?.path || 'unknown' });
+    }
+    return error?.message || String(error);
+  };
+
   const runDriveAction = async (busyKey, action) => {
     if (!driveStorage) {
       notify(t('driveActionFailed', { message: t('driveUnavailable') }));
@@ -3386,6 +3660,18 @@ function App() {
       await action();
       refreshDriveStatus();
     } catch (error) {
+      if (error?.name === 'DriveStorageAmbiguousFileError') {
+        notify(t('driveAmbiguousFile'));
+        refreshDriveStatus();
+        return;
+      }
+
+      if (String(error?.code || '').startsWith('merge_')) {
+        notify(t('driveMergeFailed', { message: formatDriveMergeError(error) }));
+        refreshDriveStatus();
+        return;
+      }
+
       if (error?.name === 'DriveStorageConflictError') {
         setDriveConflict(true);
         notify(t('driveConflictTitle'));
@@ -3402,11 +3688,36 @@ function App() {
 
   const syncDrive = () => runDriveAction('sync', async () => {
     await ensureDriveConnected();
+    const localSnapshot = exportAppSnapshot();
+
     if (driveStorage.status()?.file?.id) {
-      await driveStorage.save(exportAppSnapshot());
-    } else {
-      await driveStorage.create(exportAppSnapshot());
+      await driveStorage.save(localSnapshot);
+      setDriveConflict(false);
+      notify(t('driveSynced'));
+      return;
     }
+
+    if (typeof driveStorage.findFile === 'function') {
+      const existing = await driveStorage.findFile();
+
+      if (existing?.file?.id) {
+        const remoteSnapshot = await driveStorage.load();
+        if (remoteSnapshotMatchesLocal(remoteSnapshot, localSnapshot)) {
+          setDriveConflict(false);
+          notify(t('driveLinkedExisting'));
+        } else if (isLocalWorkspaceEmpty(localSnapshot)) {
+          importAppSnapshot(remoteSnapshot);
+          setDriveConflict(false);
+          notify(t('driveLoaded'));
+        } else {
+          setDriveConflict(true);
+          notify(t('driveRemoteFound'));
+        }
+        return;
+      }
+    }
+
+    await driveStorage.create(exportAppSnapshot());
     setDriveConflict(false);
     notify(t('driveSynced'));
   });
@@ -3416,6 +3727,17 @@ function App() {
     importAppSnapshot(remote);
     setDriveConflict(false);
     notify(t('driveLoaded'));
+  });
+
+  const mergeDriveFile = () => runDriveAction('merge', async () => {
+    await ensureDriveConnected();
+    const localSnapshot = exportAppSnapshot();
+    const remoteSnapshot = await driveStorage.load();
+    const mergedSnapshot = mergeAppSnapshots(localSnapshot, remoteSnapshot, language);
+    await driveStorage.save(mergedSnapshot, { force: true });
+    importAppSnapshot(mergedSnapshot);
+    setDriveConflict(false);
+    notify(t('driveMerged'));
   });
 
   const overwriteDriveFile = () => runDriveAction('overwrite', async () => {
@@ -4354,6 +4676,7 @@ ${schema}`}
     const isAvailable = driveStorage.available !== false;
     const isBusy = Boolean(driveBusy);
     const disabled = !isAvailable || isBusy;
+    const syncDisabled = disabled || driveConflict;
     const canAutoSync = isAvailable && isConnected && hasFile;
     const modifiedAt = file?.modifiedTime ? new Date(file.modifiedTime) : null;
     const modifiedLabel = modifiedAt && !Number.isNaN(modifiedAt.getTime())
@@ -4409,6 +4732,9 @@ ${schema}`}
               <button className="btn btn-outline" type="button" onClick={loadDriveFile} disabled={disabled || !hasFile}>
                 {t('drivePullRemote')}
               </button>
+              <button className="btn btn-outline" type="button" onClick={mergeDriveFile} disabled={disabled || !hasFile}>
+                {t('driveMergeRemote')}
+              </button>
               <button className="btn btn-primary" type="button" onClick={overwriteDriveFile} disabled={disabled}>
                 {t('driveOverwriteRemote')}
               </button>
@@ -4416,7 +4742,7 @@ ${schema}`}
           </div>
         )}
         <div className="drive-sync-actions">
-          <button className="btn btn-primary drive-sync-main" type="button" onClick={syncDrive} disabled={disabled}>
+          <button className="btn btn-primary drive-sync-main" type="button" onClick={syncDrive} disabled={syncDisabled}>
             {isConnected ? t('driveSyncNow') : t('driveConnectAndSync')}
           </button>
         </div>
