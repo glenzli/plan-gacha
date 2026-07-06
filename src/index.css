@@ -1400,12 +1400,65 @@ label {
   line-height: 1.35;
 }
 
-.stop-detail span,
+.stop-location-text,
 .stop-detail em {
   color: var(--muted);
   font-size: 0.74rem;
   font-style: normal;
   line-height: 1.5;
+}
+
+.stop-location {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.38rem;
+  min-width: 0;
+}
+
+.stop-location-text {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stop-location-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.12rem;
+  margin-top: -0.08rem;
+  opacity: 0.72;
+  transition: opacity 0.18s ease;
+}
+
+.stop-item:hover .stop-location-actions {
+  opacity: 1;
+}
+
+.stop-location-action {
+  display: inline-grid;
+  width: 1.55rem;
+  height: 1.55rem;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.stop-location-action:hover {
+  border-color: var(--border);
+  background: var(--surface);
+  color: var(--text);
+  transform: translateY(-1px);
+}
+
+.stop-location-action .svg-icon {
+  width: 0.92rem;
+  height: 0.92rem;
 }
 
 .stop-detail small {

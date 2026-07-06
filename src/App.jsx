@@ -71,6 +71,10 @@ const UI_TEXT = {
     impactedDatesCleared: '已更新，并清空受影响日期',
     dayCleared: '当天安排已清空',
     copyFailed: '复制失败，请手动选中文本',
+    placeCopied: '地点已复制',
+    copyPlace: '复制地点',
+    openInMaps: '在 Google 地图打开',
+    openRouteInMaps: '从上一地点到这里',
     weatherTimeout: '天气更新超时，可稍后重试或检查网络。',
     autoWeatherTimeout: '自动天气更新超时，可稍后重试或检查网络。',
     weatherCacheValid: '天气缓存仍有效',
@@ -342,6 +346,10 @@ const UI_TEXT = {
     impactedDatesCleared: 'Updated and cleared impacted dates',
     dayCleared: 'Day cleared',
     copyFailed: 'Copy failed. Select the text manually.',
+    placeCopied: 'Place copied',
+    copyPlace: 'Copy place',
+    openInMaps: 'Open in Google Maps',
+    openRouteInMaps: 'Route from previous stop',
     weatherTimeout: 'Weather update timed out. Try again later or check the network.',
     autoWeatherTimeout: 'Automatic weather update timed out. Try again later or check the network.',
     weatherCacheValid: 'Weather cache is still valid',
@@ -3273,6 +3281,31 @@ function sanitizeFileNamePart(value, fallback = 'plan-gacha') {
   return normalized || fallback;
 }
 
+function getLocationSearchText(location) {
+  if (!location) return '';
+  const label = location.label || '';
+  const address = location.address || '';
+  const weatherLocation = location.weatherLocation || location.weather_location || location.weatherLabel || '';
+  return [address, label].filter(Boolean).join(' ') || weatherLocation;
+}
+
+function getLocationCopyText(location) {
+  if (!location) return '';
+  return [location.label, location.address].filter(Boolean).join('\n') || getLocationSearchText(location);
+}
+
+function getGoogleMapsUrl(location) {
+  const query = getLocationSearchText(location);
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : '';
+}
+
+function getGoogleMapsDirectionsUrl(origin, destination) {
+  const originText = getLocationSearchText(origin);
+  const destinationText = getLocationSearchText(destination);
+  if (!originText || !destinationText) return '';
+  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originText)}&destination=${encodeURIComponent(destinationText)}&travelmode=transit`;
+}
+
 function Icon({ name, className = '' }) {
   const commonProps = {
     className: `svg-icon ${className}`.trim(),
@@ -3301,6 +3334,25 @@ function Icon({ name, className = '' }) {
       <>
         <path d="M12 20h9" />
         <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </>
+    ),
+    copy: (
+      <>
+        <rect width="14" height="14" x="8" y="8" rx="2" />
+        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+      </>
+    ),
+    mapPin: (
+      <>
+        <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+        <circle cx="12" cy="10" r="3" />
+      </>
+    ),
+    route: (
+      <>
+        <circle cx="6" cy="18" r="2" />
+        <circle cx="18" cy="6" r="2" />
+        <path d="M8 18h3a3 3 0 0 0 0-6h2a3 3 0 0 0 3-3V8" />
       </>
     ),
     plus: (
@@ -5026,19 +5078,65 @@ ${schema}`}
 
     return (
       <ol className="stop-list" aria-label={t('stopsAria', { name: plan.name })}>
-        {plan.stops.map((stop) => (
-          <li className="stop-item" key={stop.id}>
-            <span className="stop-time">{stop.time || t('flexible')}</span>
-            <span className="stop-detail">
-              <strong>{stop.title}</strong>
-              <span>
-                {stop.location.label}
-                {stop.location.address && <small>{stop.location.address}</small>}
+        {plan.stops.map((stop, index) => {
+          const previousStop = index > 0 ? plan.stops[index - 1] : null;
+          const routeUrl = previousStop ? getGoogleMapsDirectionsUrl(previousStop.location, stop.location) : '';
+          const mapsUrl = getGoogleMapsUrl(stop.location);
+          const copyValue = getLocationCopyText(stop.location);
+
+          return (
+            <li className="stop-item" key={stop.id}>
+              <span className="stop-time">{stop.time || t('flexible')}</span>
+              <span className="stop-detail">
+                <strong>{stop.title}</strong>
+                <span className="stop-location">
+                  <span className="stop-location-text">
+                    {stop.location.label}
+                    {stop.location.address && <small>{stop.location.address}</small>}
+                  </span>
+                  <span className="stop-location-actions">
+                    {routeUrl && (
+                      <a
+                        className="stop-location-action"
+                        href={routeUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={t('openRouteInMaps')}
+                        title={t('openRouteInMaps')}
+                      >
+                        <Icon name="route" />
+                      </a>
+                    )}
+                    {mapsUrl && (
+                      <a
+                        className="stop-location-action"
+                        href={mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={t('openInMaps')}
+                        title={t('openInMaps')}
+                      >
+                        <Icon name="mapPin" />
+                      </a>
+                    )}
+                    {copyValue && (
+                      <button
+                        className="stop-location-action"
+                        type="button"
+                        onClick={() => copyText(copyValue, t('placeCopied'))}
+                        aria-label={t('copyPlace')}
+                        title={t('copyPlace')}
+                      >
+                        <Icon name="copy" />
+                      </button>
+                    )}
+                  </span>
+                </span>
+                {stop.note && <em>{stop.note}</em>}
               </span>
-              {stop.note && <em>{stop.note}</em>}
-            </span>
-          </li>
-        ))}
+            </li>
+          );
+        })}
       </ol>
     );
   };
