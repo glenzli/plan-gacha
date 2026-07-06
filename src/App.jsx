@@ -156,7 +156,6 @@ const UI_TEXT = {
     switchablePlans: '可切换计划',
     available: ({ count }) => `${count} 可用`,
     warnings: '预警',
-    warningClasses: ({ count }) => `${count} 类`,
     noBlockingRisks: '当前安排没有把未排计划卡死。',
     checklistIncomplete: '旅行清单未完成',
     aiReplanHelper: '用于大改剩余行程：整理未完成计划、当前安排、天气和预警，再复制给你常用的 AI。',
@@ -428,7 +427,6 @@ const UI_TEXT = {
     switchablePlans: 'Switchable plans',
     available: ({ count }) => `${count} available`,
     warnings: 'Warnings',
-    warningClasses: ({ count }) => `${count} types`,
     noBlockingRisks: 'No current arrangement blocks the remaining plans.',
     checklistIncomplete: 'Checklist incomplete',
     aiReplanHelper: 'For larger changes: collect remaining plans, current schedule, weather and warnings, then copy them to your usual AI.',
@@ -1027,16 +1025,6 @@ function getWeatherStatusLabel(level, language = DEFAULT_LANGUAGE) {
 
 function getAiModeText(mode, language = DEFAULT_LANGUAGE) {
   return AI_PLANNER_MODE_TEXT[normalizeLanguage(language)]?.[mode] || AI_PLANNER_MODE_TEXT[DEFAULT_LANGUAGE][mode];
-}
-
-function formatCount(count, unit, language = DEFAULT_LANGUAGE) {
-  if (language === 'en') {
-    const isDay = unit === '天' || unit === 'day' || unit === 'days';
-    const noun = isDay ? (count === 1 ? 'day' : 'days') : (count === 1 ? 'item' : 'items');
-    return `${count} ${noun}`;
-  }
-
-  return `${count} ${unit}`;
 }
 
 function translateIssue(issue, language = DEFAULT_LANGUAGE) {
@@ -2533,11 +2521,11 @@ function getDayInsight(plan, dateId, schedule, plansById, weatherData, language 
 function getCalendarDayState(plan, insight, language = DEFAULT_LANGUAGE) {
   if (!plan) return { key: 'empty', label: '', ariaLabel: translate('assignedAriaEmpty', language) };
 
-  if (insight.issueCount > 0 || ['blocked', 'danger', 'critical'].includes(insight.level)) {
+  if (insight.issueCount > 0 || ['danger', 'critical'].includes(insight.level)) {
     return { key: 'adjust', label: translate('adjust', language), ariaLabel: translate('assignedAriaAdjust', language) };
   }
 
-  if (['unknown', 'mismatch'].includes(insight.level)) {
+  if (['blocked', 'unknown', 'mismatch'].includes(insight.level)) {
     return { key: 'notice', label: '', ariaLabel: translate('assignedAriaNotice', language) };
   }
 
@@ -2585,6 +2573,14 @@ function getScheduledRiskTitle(issues) {
   return '需要调整';
 }
 
+function getScheduledRiskLevel(plan, title) {
+  if (plan.priority === 'must') return 'critical';
+  if (['天气不合适', '当天不可用', '日期不合适', '和其他安排冲突'].includes(title)) {
+    return 'critical';
+  }
+  return 'warning';
+}
+
 function buildRiskItems(plans, tripDates, schedule, plansById, weatherData) {
   const scheduledPlanIds = new Set(Object.values(schedule).map((entry) => entry.planId));
 
@@ -2599,11 +2595,13 @@ function buildRiskItems(plans, tripDates, schedule, plansById, weatherData) {
 
       if (!issues.length) return null;
 
+      const title = getScheduledRiskTitle(issues);
+
       return {
         plan,
         dateId,
-        level: plan.priority === 'must' ? 'critical' : 'warning',
-        title: getScheduledRiskTitle(issues),
+        level: getScheduledRiskLevel(plan, title),
+        title,
         reasons: issues,
       };
     })
@@ -5313,7 +5311,6 @@ ${schema}`}
     <div className={`risk-item risk-group ${group.level}`} key={group.title}>
       <div className="risk-group-head">
         <strong>{translateRiskTitle(group.title, language)}</strong>
-        <span>{formatCount(group.items.length, group.unit, language)}</span>
       </div>
       <ul>
         {group.items.slice(0, 6).map((item) => (
@@ -5326,21 +5323,20 @@ ${schema}`}
 
   const renderMobileRiskPanel = () => {
     const primaryRisk = riskGroups[0];
-    const summaryTitle = primaryRisk
-      ? mobileRisksOpen
-        ? t('riskDetail')
-        : `${translateRiskTitle(primaryRisk.title, language)} · ${formatCount(primaryRisk.items.length, primaryRisk.unit, language)}`
-      : t('noClearRisk');
+    const summaryTitle = mobileRisksOpen
+      ? t('riskDetail')
+      : riskGroups.length
+        ? `${t('warnings')} (${riskGroups.length})`
+        : t('noWarnings');
 
     return (
       <div className={`mobile-risk-panel ${primaryRisk ? `level-${primaryRisk.level}` : 'is-clear'}`}>
         <button
-          className="mobile-risk-summary"
+          className={`mobile-risk-summary ${mobileRisksOpen ? 'is-open' : ''}`}
           type="button"
           aria-expanded={mobileRisksOpen}
           onClick={() => setMobileRisksOpen((current) => !current)}
         >
-          <span>{riskGroups.length ? t('warningClasses', { count: riskGroups.length }) : t('noWarnings')}</span>
           <strong>{summaryTitle}</strong>
           <em>{mobileRisksOpen ? t('collapse') : t('expand')}</em>
         </button>
@@ -5677,7 +5673,7 @@ ${schema}`}
               return (
                 <Fragment key={date.id}>
                   <button
-                    className={`day-tile ${selected ? 'is-selected' : ''} ${plan ? 'has-plan' : ''} status-${insight.level}`}
+                    className={`day-tile ${selected ? 'is-selected' : ''} ${plan ? 'has-plan' : ''} ${plan ? `priority-${plan.priority}` : ''} status-${insight.level}`}
                     type="button"
                     ref={(node) => {
                       if (node) dayTileRefs.current.set(date.id, node);
@@ -5756,7 +5752,6 @@ ${schema}`}
         <aside className="side-panel status-panel">
           <div className="panel-header">
             <h2>{t('warnings')}</h2>
-            <span className="small-stat">{t('warningClasses', { count: riskGroups.length })}</span>
           </div>
 
           <div className="risk-list">
