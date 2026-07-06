@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPlanGachaDriveStorage, hasStoredDriveStorageFile } from './driveStorageAdapter.js';
 
@@ -95,6 +95,11 @@ const UI_TEXT = {
     jsonCopied: 'JSON 已复制',
     jsonDownloaded: 'JSON 已下载',
     downloadFailed: '下载失败',
+    sharePlanImage: '分享图片',
+    planImageCopied: '图片已复制',
+    planImageShared: '图片已生成',
+    planImageDownloaded: '图片已下载',
+    planImageFailed: '生成图片失败',
     driveSync: '远端同步',
     driveSyncHelp: '把本地工作区同步到宿主提供的远端 JSON 存储；未连接时会先连接，未创建文件时会自动创建。',
     driveUnavailable: '当前环境没有可用的远端同步服务，仍会继续保存在本地浏览器。',
@@ -137,7 +142,7 @@ const UI_TEXT = {
     aiGenerateShort: 'AI',
     viewExample: '看示例',
     import: '导入',
-    export: '导出旅行',
+    export: '导出',
     editPlan: '编辑计划',
     noEditablePlan: '暂无可编辑计划',
     createOrImportFirst: '先新建或导入计划',
@@ -198,11 +203,24 @@ const UI_TEXT = {
     start: '开始',
     end: '结束',
     daysCount: ({ count }) => `${count} 天`,
+    lodgingSection: '住宿',
+    lodgingSectionHelp: '用于判断每天从哪里出发、在哪里结束，以及是否需要换酒店。',
+    lodgingEmpty: '还没有住宿信息',
+    lodgingEmptyHelp: '补上酒店/民宿名称、日期和地址后，预警会消失，AI 规划也会更准。',
+    editLodging: '补住宿',
+    addLodging: '新增住宿',
+    lodgingNameLabel: '住宿名称',
+    lodgingAddressLabel: '地址',
+    lodgingCheckIn: '入住',
+    lodgingCheckOut: '退房',
+    lodgingNote: '备注',
+    saveLodgings: '保存住宿',
+    lodgingsSaved: '住宿已更新',
     planData: '计划数据',
     plansCount: ({ count }) => `${count} 个计划`,
     loadFullExample: '载入完整示例',
     importJsonTitle: '导入 JSON',
-    copyCurrentJson: '下载当前 JSON',
+    copyCurrentJson: '导出 JSON',
     aiPlanPoolTitle: 'AI 生成计划池',
     aiPlanPoolHelp: '适合初始规划、批量补 backup、增加天数或补充候选计划。',
     planList: '计划清单',
@@ -269,6 +287,8 @@ const UI_TEXT = {
     riskDetail: '预警详情',
     noClearRisk: '当前安排没有明显冲突',
     noWarnings: '暂无预警',
+    lodgingMissing: '住宿信息未填写',
+    lodgingMissingHelp: '补上住宿后，AI 可以按每天出发点、返回点和换酒店约束规划。',
     collapse: '收起',
     expand: '展开',
     switchableCount: ({ count }) => `${count} 个可切换`,
@@ -283,6 +303,8 @@ const UI_TEXT = {
     reminders: '特别提醒',
     bookingAndTickets: '预约和订票',
     stopsAria: ({ name }) => `${name} 行程节点`,
+    transferLabel: '交通',
+    openingHours: '营业',
     bookingAria: ({ name }) => `${name} 预约和订票`,
     flexible: '弹性',
     noActionNeeded: '无需处理',
@@ -370,6 +392,11 @@ const UI_TEXT = {
     jsonCopied: 'JSON copied',
     jsonDownloaded: 'JSON downloaded',
     downloadFailed: 'Download failed',
+    sharePlanImage: 'Share image',
+    planImageCopied: 'Image copied',
+    planImageShared: 'Image ready',
+    planImageDownloaded: 'Image downloaded',
+    planImageFailed: 'Failed to create image',
     driveSync: 'Remote sync',
     driveSyncHelp: 'Sync the local workspace with host-provided remote JSON storage. It connects first, then creates a sync file when needed.',
     driveUnavailable: 'Remote sync is unavailable in this environment. Local browser storage still works.',
@@ -412,7 +439,7 @@ const UI_TEXT = {
     aiGenerateShort: 'AI',
     viewExample: 'Example',
     import: 'Import',
-    export: 'Export trip',
+    export: 'Export',
     editPlan: 'Edit trip',
     noEditablePlan: 'No trip to edit',
     createOrImportFirst: 'Create or import a trip first',
@@ -473,11 +500,24 @@ const UI_TEXT = {
     start: 'Start',
     end: 'End',
     daysCount: ({ count }) => `${count} days`,
+    lodgingSection: 'Lodging',
+    lodgingSectionHelp: 'Used to plan daily start/end points and hotel-transfer days.',
+    lodgingEmpty: 'No lodging yet',
+    lodgingEmptyHelp: 'Add hotel/stay name, dates and address to clear the warning and improve AI planning.',
+    editLodging: 'Add lodging',
+    addLodging: 'Add lodging',
+    lodgingNameLabel: 'Lodging name',
+    lodgingAddressLabel: 'Address',
+    lodgingCheckIn: 'Check-in',
+    lodgingCheckOut: 'Check-out',
+    lodgingNote: 'Note',
+    saveLodgings: 'Save lodging',
+    lodgingsSaved: 'Lodging updated',
     planData: 'Plan data',
     plansCount: ({ count }) => `${count} plans`,
     loadFullExample: 'Load full example',
     importJsonTitle: 'Import JSON',
-    copyCurrentJson: 'Download current JSON',
+    copyCurrentJson: 'Export JSON',
     aiPlanPoolTitle: 'AI plan pool',
     aiPlanPoolHelp: 'For initial planning, batch backups, added days or more candidate plans.',
     planList: 'Plan list',
@@ -544,6 +584,8 @@ const UI_TEXT = {
     riskDetail: 'Warning details',
     noClearRisk: 'No obvious conflicts in the current schedule.',
     noWarnings: 'No warnings',
+    lodgingMissing: 'Lodging missing',
+    lodgingMissingHelp: 'Add lodging so AI can plan around daily start, return and hotel-transfer constraints.',
     collapse: 'Collapse',
     expand: 'Expand',
     switchableCount: ({ count }) => `${count} switchable`,
@@ -558,6 +600,8 @@ const UI_TEXT = {
     reminders: 'Reminders',
     bookingAndTickets: 'Bookings and tickets',
     stopsAria: ({ name }) => `${name} itinerary stops`,
+    transferLabel: 'Transit',
+    openingHours: 'Hours',
     bookingAria: ({ name }) => `${name} bookings and tickets`,
     flexible: 'Flexible',
     noActionNeeded: 'No action',
@@ -930,6 +974,32 @@ function mergePlansForSync(localPlans, remotePlans, path) {
   return result;
 }
 
+function mergeLodgingsForSync(localLodgings, remoteLodgings, path) {
+  const result = [];
+  const localById = new Map((localLodgings || []).map((lodging) => [lodging.id, lodging]));
+  const remoteById = new Map((remoteLodgings || []).map((lodging) => [lodging.id, lodging]));
+  const ids = [...new Set([...remoteById.keys(), ...localById.keys()])];
+
+  ids.forEach((id) => {
+    const localLodging = localById.get(id);
+    const remoteLodging = remoteById.get(id);
+    if (!localLodging) {
+      result.push(remoteLodging);
+      return;
+    }
+    if (!remoteLodging) {
+      result.push(localLodging);
+      return;
+    }
+    if (!jsonEqual(localLodging, remoteLodging)) {
+      throw createSyncMergeError('merge_data_conflict', { path: `${path}.lodgings.${id}` });
+    }
+    result.push(localLodging);
+  });
+
+  return result;
+}
+
 function mergeTripForSync(localTrip, remoteTrip) {
   if (jsonEqual(localTrip, remoteTrip)) return localTrip;
   const path = `trips.${localTrip.id}`;
@@ -941,6 +1011,7 @@ function mergeTripForSync(localTrip, remoteTrip) {
     tripDays: mergeScalarValue(localTrip.tripDays, remoteTrip.tripDays, `${path}.tripDays`),
     plans: mergePlansForSync(localTrip.plans, remoteTrip.plans, path),
     schedule: mergeScheduleForSync(localTrip.schedule, remoteTrip.schedule, path),
+    lodgings: mergeLodgingsForSync(localTrip.lodgings, remoteTrip.lodgings, path),
     archived: mergeScalarValue(localTrip.archived, remoteTrip.archived, `${path}.archived`),
   };
 }
@@ -1070,6 +1141,7 @@ function translateRiskTitle(title, language = DEFAULT_LANGUAGE) {
     和其他安排冲突: 'arrangementConflict',
     已经排在别的日期: 'scheduledElsewhere',
     旅行清单未完成: 'checklistIncomplete',
+    住宿信息未填写: 'lodgingMissing',
     需要调整: 'needsAdjustment',
   };
 
@@ -1510,6 +1582,7 @@ function createExampleTripSnapshot(name = '青岛 5 日示例', startDate = getT
     tripDays: DEFAULT_TRIP_DAYS,
     plans: createExamplePlans(startDate),
     schedule: createExampleSchedule(startDate),
+    lodgings: [],
     archived: false,
   };
 }
@@ -1522,8 +1595,88 @@ function createEmptyTripSnapshot(name = '新旅行计划', startDate = getTodayI
     tripDays: DEFAULT_TRIP_DAYS,
     plans: [],
     schedule: {},
+    lodgings: [],
     archived: false,
   };
+}
+
+function normalizeLodging(lodging, index = 0) {
+  if (!lodging || typeof lodging !== 'object') return null;
+  const name = lodging.name || lodging.title || lodging.hotel || lodging.label || `住宿 ${index + 1}`;
+  const address = lodging.address || lodging.addr || lodging.full_address || lodging.location?.address || '';
+  const location = normalizeLocation(lodging.location || {
+    label: name,
+    address,
+  }, name);
+
+  return {
+    id: lodging.id || `lodging-${index + 1}`,
+    name,
+    location: {
+      ...location,
+      address: location.address || address,
+    },
+    checkIn: lodging.checkIn || lodging.check_in || lodging.startDate || lodging.start_date || lodging.from || '',
+    checkOut: lodging.checkOut || lodging.check_out || lodging.endDate || lodging.end_date || lodging.to || '',
+    note: lodging.note || lodging.description || '',
+    bookingUrl: lodging.bookingUrl || lodging.booking_url || lodging.url || '',
+    mapUrl: lodging.mapUrl || lodging.map_url || '',
+  };
+}
+
+function normalizeTripLodgings(lodgings) {
+  return toArray(lodgings)
+    .map(normalizeLodging)
+    .filter(Boolean);
+}
+
+function createLodgingId() {
+  return `lodging-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+}
+
+function hasUsefulLodgingInfo(lodging) {
+  if (!lodging || typeof lodging !== 'object') return false;
+  const location = lodging.location || {};
+
+  return [
+    lodging.name,
+    location.label,
+    location.address,
+    lodging.address,
+  ].some((value) => String(value || '').trim());
+}
+
+function createLodgingEditorDraft(lodging = {}, index = 0, startDateStr = getTodayId(), endDateStr = startDateStr) {
+  const location = lodging.location || {};
+
+  return {
+    id: lodging.id || createLodgingId(),
+    name: lodging.name || lodging.title || lodging.hotel || location.label || '',
+    checkIn: lodging.checkIn || lodging.check_in || lodging.startDate || lodging.start_date || startDateStr,
+    checkOut: lodging.checkOut || lodging.check_out || lodging.endDate || lodging.end_date || endDateStr,
+    address: lodging.address || location.address || '',
+    note: lodging.note || lodging.description || '',
+    order: index,
+  };
+}
+
+function normalizeLodgingDrafts(drafts) {
+  return drafts
+    .map((draft, index) => ({
+      id: draft.id || createLodgingId(),
+      name: String(draft.name || '').trim(),
+      location: {
+        label: String(draft.name || '').trim(),
+        address: String(draft.address || '').trim(),
+      },
+      checkIn: String(draft.checkIn || '').trim(),
+      checkOut: String(draft.checkOut || '').trim(),
+      note: String(draft.note || '').trim(),
+      order: index,
+    }))
+    .filter(hasUsefulLodgingInfo)
+    .map((lodging, index) => normalizeLodging(lodging, index))
+    .filter(Boolean);
 }
 
 function normalizeTripSnapshot(trip, index = 0) {
@@ -1537,6 +1690,7 @@ function normalizeTripSnapshot(trip, index = 0) {
     tripDays,
     plans: Array.isArray(trip.plans) ? trip.plans : [],
     schedule: normalizeSchedule(trip.schedule || {}),
+    lodgings: normalizeTripLodgings(trip.lodgings || trip.hotels || trip.accommodations || trip.stays),
     checklistText: normalizeChecklistText(
       Object.hasOwn(trip, 'checklistText') ? trip.checklistText : trip.checklist || trip.packingList,
     ),
@@ -1712,6 +1866,96 @@ function normalizeStopLocation(rawLocation, fallbackLocation) {
   };
 }
 
+function normalizeStopTransfer(value) {
+  if (!value) return null;
+  if (typeof value === 'string') {
+    const duration = value.trim();
+    return duration ? { departAt: '', arriveAt: '', duration, mode: '', note: '' } : null;
+  }
+
+  if (typeof value !== 'object') return null;
+  const duration = String(value.duration || value.time || value.travel_time || value.travelTime || '').trim();
+  const mode = String(value.mode || value.method || value.transport || '').trim();
+  const note = String(value.note || value.description || value.detail || '').trim();
+  const departAt = String(
+    value.depart_at || value.departAt || value.departure || value.depart || value.departure_at || value.departureAt || value.departure_time || value.departureTime || value.start_at || value.startAt || value.start_time || value.startTime || '',
+  ).trim();
+  const arriveAt = String(
+    value.arrive_at || value.arriveAt || value.arrival || value.arrive || value.arrival_at || value.arrivalAt || value.arrival_time || value.arrivalTime || value.end_at || value.endAt || value.end_time || value.endTime || '',
+  ).trim();
+  if (!duration && !mode && !note && !departAt && !arriveAt) return null;
+  return { departAt, arriveAt, duration, mode, note };
+}
+
+function formatStopTransfer(transfer) {
+  if (!transfer) return '';
+  return [transfer.mode, transfer.duration].filter(Boolean).join(' · ');
+}
+
+function normalizeNumericText(value) {
+  return String(value || '').replace(/[０-９]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0xFEE0));
+}
+
+function parseClockTime(value) {
+  const match = normalizeNumericText(value).match(/(\d{1,2})\s*[:：]\s*(\d{2})/);
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes) || hours > 47 || minutes > 59) return null;
+  return (hours % 24) * 60 + minutes;
+}
+
+function formatClockTime(totalMinutes) {
+  const normalized = ((Math.round(totalMinutes) % 1440) + 1440) % 1440;
+  const hours = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function parseDurationMinutes(value) {
+  const text = normalizeNumericText(value).toLowerCase();
+  if (!text.trim()) return null;
+
+  let total = 0;
+  let matched = false;
+  const hourMatch = text.match(/(\d+(?:\.\d+)?)\s*(小时|小時|時間|hours?|hrs?|hr|h)/i);
+  const minuteMatch = text.match(/(\d+(?:\.\d+)?)\s*(分钟|分鐘|分|min(?:ute)?s?|m)/i);
+
+  if (hourMatch) {
+    total += Number(hourMatch[1]) * 60;
+    matched = true;
+  }
+
+  if (minuteMatch) {
+    total += Number(minuteMatch[1]);
+    matched = true;
+  }
+
+  if (!matched) {
+    const plainNumber = text.match(/\d+(?:\.\d+)?/);
+    if (plainNumber) {
+      total = Number(plainNumber[0]);
+      matched = true;
+    }
+  }
+
+  return matched && Number.isFinite(total) && total > 0 ? total : null;
+}
+
+function formatStopTransferDeparture(transfer, fallbackArriveAt = '', language = DEFAULT_LANGUAGE) {
+  if (!transfer) return '';
+  const departAt = transfer.departAt || '';
+  if (departAt) return departAt;
+
+  const arriveAt = transfer.arriveAt || fallbackArriveAt;
+  const arriveMinutes = parseClockTime(arriveAt);
+  const durationMinutes = parseDurationMinutes(transfer.duration);
+  if (arriveMinutes === null || durationMinutes === null) return '';
+
+  const estimatedTime = formatClockTime(arriveMinutes - durationMinutes);
+  return language === 'en' ? `~ ${estimatedTime}` : `约 ${estimatedTime}`;
+}
+
 function normalizePlanStops(stops, fallbackLocation) {
   if (!Array.isArray(stops)) return [];
 
@@ -1725,12 +1969,18 @@ function normalizePlanStops(stops, fallbackLocation) {
           title: stop,
           location: normalizeStopLocation(stop, fallbackLocation),
           note: '',
+          transferFromPrevious: null,
+          openingHours: '',
           weatherRelevant: true,
         };
       }
 
       const location = normalizeStopLocation(stop.location || stop.place || fallbackLocation, fallbackLocation);
       const time = stop.time || stop.time_window || stop.window || (stop.start && stop.end ? `${stop.start}-${stop.end}` : stop.start || '');
+      const transferFromPrevious = normalizeStopTransfer(
+        stop.transfer_from_previous || stop.transferFromPrevious || stop.transfer || stop.travel_from_previous || stop.travelFromPrevious,
+      );
+      const openingHours = String(stop.opening_hours || stop.openingHours || stop.business_hours || stop.businessHours || stop.hours || '').trim();
 
       return {
         id: stop.id || `stop-${index + 1}`,
@@ -1738,6 +1988,8 @@ function normalizePlanStops(stops, fallbackLocation) {
         title: stop.title || stop.name || location.label,
         location,
         note: stop.note || stop.description || '',
+        transferFromPrevious,
+        openingHours,
         weatherRelevant: stop.weather_relevant !== false && stop.weatherRelevant !== false,
       };
     });
@@ -2183,7 +2435,8 @@ function mergeChecklistPayload(currentText, currentState, incomingText, incoming
 }
 
 function isEmptyTripDraft(trip) {
-  return !Array.isArray(trip?.plans) || trip.plans.length === 0;
+  return (!Array.isArray(trip?.plans) || trip.plans.length === 0)
+    && (!Array.isArray(trip?.lodgings) || trip.lodgings.length === 0);
 }
 
 function pruneEmptyTripDrafts(tripList, activeTripId) {
@@ -2248,6 +2501,7 @@ function loadInitialState() {
     tripDays: activeTrip.tripDays,
     plans: activeTrip.plans,
     schedule: activeTrip.schedule,
+    lodgings: activeTrip.lodgings || [],
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
     weatherData: storedWeatherCache && typeof storedWeatherCache === 'object' && !Array.isArray(storedWeatherCache)
       ? storedWeatherCache
@@ -2779,6 +3033,18 @@ function buildChecklistRiskGroup(groups, state, language = DEFAULT_LANGUAGE) {
   };
 }
 
+function buildLodgingRiskGroup(lodgings, hasTripContent, language = DEFAULT_LANGUAGE) {
+  const hasLodgings = Array.isArray(lodgings) && lodgings.some(hasUsefulLodgingInfo);
+  if (hasLodgings || !hasTripContent) return null;
+
+  return {
+    title: '住宿信息未填写',
+    level: 'warning',
+    items: [translate('lodgingMissingHelp', language)],
+    unit: '项',
+  };
+}
+
 function parseForecastDaily(data) {
   const daily = data.daily || {};
   const times = daily.time || [];
@@ -3062,6 +3328,8 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
           "time": "09:30",
           "title": "Stop title",
           "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": "Fill only when crossing city/district; English city name or coordinates preferred" },
+          "transfer_from_previous": { "depart_at": "09:00", "arrive_at": "09:30", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car", "note": "" },
+          "opening_hours": "Only the opening/business hours relevant to the planned arrival time, e.g. 10:00-17:00; leave empty if unknown or unreliable",
           "note": "What happens at this stop",
           "weather_relevant": true
         }
@@ -3111,6 +3379,8 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
           "time": "09:30",
           "title": "节点标题",
           "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": "跨城或不同区县时填写；优先英文城市名或坐标" },
+          "transfer_from_previous": { "depart_at": "09:00", "arrive_at": "09:30", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾", "note": "" },
+          "opening_hours": "只写和计划到达时间相关的开放/营业时间，例如 10:00-17:00；不确定或不可靠时留空",
           "note": "这个节点做什么",
           "weather_relevant": true
         }
@@ -3155,7 +3425,7 @@ function getSinglePlanJsonSchema(language = DEFAULT_LANGUAGE) {
   "description": "What to do",
   "priority": "must | preferred | backup | optional",
   "location": { "label": "Display place", "address": "", "weather_location": "English city name or coordinates preferred" },
-  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": "" }, "note": "", "weather_relevant": true }],
+  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": "" }, "transfer_from_previous": { "depart_at": "", "arrive_at": "", "duration": "", "mode": "", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
   "time_window": "10:00-16:00",
@@ -3181,7 +3451,7 @@ function getSinglePlanJsonSchema(language = DEFAULT_LANGUAGE) {
   "description": "当天做什么",
   "priority": "must | preferred | backup | optional",
   "location": { "label": "地点展示名", "address": "", "weather_location": "优先英文城市名或坐标" },
-  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": "" }, "note": "", "weather_relevant": true }],
+  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": "" }, "transfer_from_previous": { "depart_at": "", "arrive_at": "", "duration": "", "mode": "", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
   "time_window": "10:00-16:00",
@@ -3230,6 +3500,50 @@ function compactLocationForAi(location) {
   });
 }
 
+function compactLodgingForAi(lodging) {
+  if (!lodging) return undefined;
+
+  return pruneEmptyAiValue({
+    id: lodging.id,
+    name: lodging.name,
+    location: {
+      label: lodging.location?.label || lodging.name,
+      address: lodging.location?.address,
+    },
+    check_in: lodging.checkIn,
+    check_out: lodging.checkOut,
+    note: lodging.note,
+    booking_url: lodging.bookingUrl,
+    map_url: lodging.mapUrl,
+  });
+}
+
+function compactTransferForAi(transfer) {
+  if (!transfer) return undefined;
+
+  return pruneEmptyAiValue({
+    depart_at: transfer.departAt,
+    arrive_at: transfer.arriveAt,
+    mode: transfer.mode,
+    duration: transfer.duration,
+    note: transfer.note,
+  });
+}
+
+function getLodgingContextForDate(lodgings, dateId) {
+  const checkoutFrom = lodgings.filter((lodging) => lodging.checkOut === dateId).map(compactLodgingForAi);
+  const checkinTo = lodgings.filter((lodging) => lodging.checkIn === dateId).map(compactLodgingForAi);
+  const stayingNight = lodgings
+    .filter((lodging) => lodging.checkIn && lodging.checkOut && lodging.checkIn <= dateId && dateId < lodging.checkOut)
+    .map(compactLodgingForAi);
+
+  return pruneEmptyAiValue({
+    checkout_from: checkoutFrom,
+    checkin_to: checkinTo,
+    staying_night: stayingNight,
+  });
+}
+
 function compactPlanForAi(plan, assignedDay) {
   if (!plan) return null;
 
@@ -3243,6 +3557,8 @@ function compactPlanForAi(plan, assignedDay) {
       time: stop.time,
       title: stop.title,
       location: compactLocationForAi(stop.location),
+      transfer_from_previous: compactTransferForAi(stop.transferFromPrevious),
+      opening_hours: stop.openingHours,
       note: stop.note,
       weather_relevant: stop.weatherRelevant,
     })),
@@ -3279,6 +3595,165 @@ function sanitizeFileNamePart(value, fallback = 'plan-gacha') {
     .slice(0, 80);
 
   return normalized || fallback;
+}
+
+function getReadableStyleText() {
+  let cssText = '';
+  Array.from(document.styleSheets || []).forEach((sheet) => {
+    try {
+      Array.from(sheet.cssRules || []).forEach((rule) => {
+        cssText += `${rule.cssText}\n`;
+      });
+    } catch {
+      // Cross-origin stylesheets cannot be read; the app's own stylesheet is enough for export.
+    }
+  });
+
+  const rootStyle = window.getComputedStyle(document.documentElement);
+  const cssVariables = Array.from(rootStyle)
+    .filter((name) => name.startsWith('--'))
+    .map((name) => `${name}: ${rootStyle.getPropertyValue(name)};`)
+    .join('\n');
+
+  return `
+    :root,
+    .screenshot-export-shell {
+      ${cssVariables}
+      color: ${rootStyle.getPropertyValue('--text') || '#18181b'};
+      font-family: ${rootStyle.fontFamily || 'system-ui, sans-serif'};
+    }
+    * { box-sizing: border-box; }
+    [data-screenshot-exclude="true"] { display: none !important; }
+    .screenshot-export-shell {
+      width: 100%;
+      min-height: 100%;
+      padding: 24px;
+      background: ${rootStyle.getPropertyValue('--canvas') || '#f8f9fa'};
+    }
+    .screenshot-export-card {
+      width: 100% !important;
+      margin: 0 !important;
+    }
+    ${cssText}
+  `;
+}
+
+function blobFromDataUrl(dataUrl) {
+  const [header, data] = dataUrl.split(',');
+  const mimeType = header.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
+  const binary = atob(data || '');
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mimeType });
+}
+
+async function canvasToPngBlob(canvas) {
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob((result) => resolve(result), 'image/png');
+  });
+
+  if (blob) return blob;
+  return blobFromDataUrl(canvas.toDataURL('image/png'));
+}
+
+async function renderElementToImageBlob(element) {
+  if (!element) throw new Error('missing_element');
+
+  const rect = element.getBoundingClientRect();
+  const width = Math.ceil(rect.width);
+  if (!width) throw new Error('empty_element');
+
+  if (document.fonts?.ready) {
+    await document.fonts.ready.catch(() => {});
+  }
+
+  const clone = element.cloneNode(true);
+  clone.querySelectorAll('[data-screenshot-exclude="true"], .stop-location-actions').forEach((node) => node.remove());
+  clone.classList.add('screenshot-export-card');
+  clone.style.width = `${width}px`;
+
+  const measureHost = document.createElement('div');
+  measureHost.style.position = 'fixed';
+  measureHost.style.left = '-10000px';
+  measureHost.style.top = '0';
+  measureHost.style.width = `${width}px`;
+  measureHost.style.pointerEvents = 'none';
+  measureHost.appendChild(clone);
+  document.body.appendChild(measureHost);
+
+  const height = Math.ceil(clone.getBoundingClientRect().height);
+  const cloneMarkup = clone.outerHTML;
+  measureHost.remove();
+  if (!height) throw new Error('empty_element');
+
+  const padding = 24;
+  const svgWidth = width + padding * 2;
+  const svgHeight = height + padding * 2;
+  const shell = document.createElement('div');
+  shell.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+  shell.className = 'screenshot-export-shell';
+  shell.innerHTML = `<style>${getReadableStyleText()}</style>${cloneMarkup}`;
+  const xhtml = new XMLSerializer().serializeToString(shell);
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
+      <foreignObject x="0" y="0" width="${svgWidth}" height="${svgHeight}">
+        ${xhtml}
+      </foreignObject>
+    </svg>
+  `;
+  const svgBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });
+  const url = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = () => reject(new Error('svg_image_load_failed'));
+      image.src = url;
+    });
+
+    const scale = Math.min(2, Math.max(1, window.devicePixelRatio || 1));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(svgWidth * scale);
+    canvas.height = Math.round(svgHeight * scale);
+    const context = canvas.getContext('2d');
+    context.scale(scale, scale);
+    context.drawImage(image, 0, 0, svgWidth, svgHeight);
+
+    const pngBlob = await canvasToPngBlob(canvas);
+    return { blob: pngBlob, extension: 'png', mimeType: 'image/png' };
+  } catch (error) {
+    console.warn('[plan-gacha] PNG export failed, falling back to SVG image.', error);
+    return { blob: svgBlob, extension: 'svg', mimeType: 'image/svg+xml' };
+  }
+}
+
+function shouldUseNativeImageShare() {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  const isTouchPrimary = window.matchMedia?.('(pointer: coarse)').matches;
+  return Boolean(navigator.share && (navigator.maxTouchPoints > 0 || isTouchPrimary));
+}
+
+async function copyImageBlobToClipboard(blob) {
+  if (
+    blob?.type !== 'image/png'
+    || typeof ClipboardItem !== 'function'
+    || !navigator.clipboard?.write
+  ) {
+    return false;
+  }
+
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({ [blob.type]: blob }),
+    ]);
+    return true;
+  } catch (error) {
+    console.warn('[plan-gacha] Image clipboard write failed, falling back to download/share.', error);
+    return false;
+  }
 }
 
 function getLocationSearchText(location) {
@@ -3322,6 +3797,18 @@ function Icon({ name, className = '' }) {
     check: (
       <path d="M20 6 9 17l-5-5" />
     ),
+    camera: (
+      <>
+        <path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3Z" />
+        <circle cx="12" cy="12.5" r="3.2" />
+      </>
+    ),
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
     listChecks: (
       <>
         <path d="m3 7 2 2 4-4" />
@@ -3353,6 +3840,13 @@ function Icon({ name, className = '' }) {
         <circle cx="6" cy="18" r="2" />
         <circle cx="18" cy="6" r="2" />
         <path d="M8 18h3a3 3 0 0 0 0-6h2a3 3 0 0 0 3-3V8" />
+      </>
+    ),
+    home: (
+      <>
+        <path d="m3 10 9-7 9 7" />
+        <path d="M5 10v10h14V10" />
+        <path d="M9 20v-6h6v6" />
       </>
     ),
     plus: (
@@ -3478,8 +3972,130 @@ function PlanQuickEditor({ plan, language, t, onSave }) {
   );
 }
 
+function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }) {
+  const [drafts, setDrafts] = useState(() => (
+    lodgings.length
+      ? lodgings.map((lodging, index) => createLodgingEditorDraft(lodging, index, startDateStr, endDateStr))
+      : []
+  ));
+
+  const addDraft = () => {
+    setDrafts((current) => [
+      ...current,
+      createLodgingEditorDraft({}, current.length, startDateStr, endDateStr),
+    ]);
+  };
+
+  const updateDraft = (id, field, value) => {
+    setDrafts((current) => current.map((draft) => (
+      draft.id === id ? { ...draft, [field]: value } : draft
+    )));
+  };
+
+  const removeDraft = (id) => {
+    setDrafts((current) => current.filter((draft) => draft.id !== id));
+  };
+
+  const saveDrafts = () => {
+    onSave(normalizeLodgingDrafts(drafts));
+  };
+
+  return (
+    <div className="lodging-editor">
+      <div className="lodging-editor-head">
+        <div>
+          <h3>{t('lodgingSection')}</h3>
+          <p>{t('lodgingSectionHelp')}</p>
+        </div>
+        <button className="btn btn-small btn-outline" type="button" onClick={addDraft}>
+          {t('addLodging')}
+        </button>
+      </div>
+
+      {drafts.length === 0 ? (
+        <div className="lodging-empty">
+          <strong>{t('lodgingEmpty')}</strong>
+          <span>{t('lodgingEmptyHelp')}</span>
+        </div>
+      ) : (
+        <div className="lodging-list">
+          {drafts.map((draft) => (
+            <div className="lodging-row" key={draft.id}>
+              <div className="lodging-row-main">
+                <label>
+                  <span>{t('lodgingNameLabel')}</span>
+                  <input
+                    className="input"
+                    value={draft.name}
+                    onChange={(event) => updateDraft(draft.id, 'name', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>{t('lodgingAddressLabel')}</span>
+                  <input
+                    className="input"
+                    value={draft.address}
+                    onChange={(event) => updateDraft(draft.id, 'address', event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="lodging-row-meta">
+                <label>
+                  <span>{t('lodgingCheckIn')}</span>
+                  <input
+                    className="input"
+                    type="date"
+                    value={draft.checkIn}
+                    onChange={(event) => updateDraft(draft.id, 'checkIn', event.target.value)}
+                  />
+                </label>
+                <label>
+                  <span>{t('lodgingCheckOut')}</span>
+                  <input
+                    className="input"
+                    type="date"
+                    min={draft.checkIn || startDateStr}
+                    value={draft.checkOut}
+                    onChange={(event) => updateDraft(draft.id, 'checkOut', event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="lodging-row-footer">
+                <label>
+                  <span>{t('lodgingNote')}</span>
+                  <input
+                    className="input"
+                    value={draft.note}
+                    onChange={(event) => updateDraft(draft.id, 'note', event.target.value)}
+                  />
+                </label>
+                <button
+                  className="icon-btn compact-icon-btn danger-icon-btn"
+                  type="button"
+                  onClick={() => removeDraft(draft.id)}
+                  aria-label={t('delete')}
+                  title={t('delete')}
+                >
+                  <Icon name="trash" />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="modal-actions lodging-actions">
+        <button className="btn btn-primary" type="button" onClick={saveDrafts}>
+          {t('saveLodgings')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const { i18n } = useTranslation();
+  const [, startUiTransition] = useTransition();
   const [language, setLanguage] = useState(() => normalizeLanguage(i18n.language || getInitialLanguage()));
   const [initial] = useState(loadInitialState);
   const [trips, setTrips] = useState(initial.trips);
@@ -3489,6 +4105,7 @@ function App() {
   const [tripDays, setTripDays] = useState(initial.tripDays);
   const [plans, setPlans] = useState(initial.plans);
   const [schedule, setSchedule] = useState(initial.schedule);
+  const [lodgings, setLodgings] = useState(initial.lodgings);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
   const [weatherData, setWeatherData] = useState(initial.weatherData);
   const [checklistText, setChecklistText] = useState(initial.checklistText);
@@ -3504,6 +4121,7 @@ function App() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPlanId, setEditorPlanId] = useState(null);
+  const [editorTab, setEditorTab] = useState('itinerary');
   const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
   const [aiPlannerMode, setAiPlannerMode] = useState('replan');
@@ -3518,16 +4136,19 @@ function App() {
   const [driveConflict, setDriveConflict] = useState(false);
   const [drivePanelOpen, setDrivePanelOpen] = useState(false);
   const [driveAutoSync, setDriveAutoSync] = useState(() => localStorage.getItem(STORAGE_KEYS.driveAutoSync) === 'true');
+  const [planImageBusy, setPlanImageBusy] = useState(false);
   const [toast, setToast] = useState('');
 
   const toastTimerRef = useRef(null);
   const autoWeatherKeyRef = useRef('');
   const dayTileRefs = useRef(new Map());
+  const planImageBusyRef = useRef(false);
   const aiPlannerQuestionRef = useRef(null);
   const aiPlannerResultRef = useRef(null);
   const planAiQuestionRef = useRef(null);
   const planAiResultRef = useRef(null);
   const importTextRef = useRef(null);
+  const lodgingSectionRef = useRef(null);
   const latestAppSnapshotRef = useRef(null);
   const driveBusyRef = useRef('');
   const driveConflictRef = useRef(false);
@@ -3591,9 +4212,21 @@ function App() {
     () => buildChecklistRiskGroup(checklistGroups, checklistState, language),
     [checklistGroups, checklistState, language],
   );
+  const scheduleHasEntries = useMemo(
+    () => Object.keys(schedule).length > 0,
+    [schedule],
+  );
+  const lodgingRiskGroup = useMemo(
+    () => buildLodgingRiskGroup(lodgings, hasInitializedPlans || scheduleHasEntries, language),
+    [hasInitializedPlans, language, lodgings, scheduleHasEntries],
+  );
   const riskGroups = useMemo(
-    () => (checklistRiskGroup ? [...scheduleRiskGroups, checklistRiskGroup] : scheduleRiskGroups),
-    [checklistRiskGroup, scheduleRiskGroups],
+    () => [
+      ...scheduleRiskGroups,
+      ...(lodgingRiskGroup ? [lodgingRiskGroup] : []),
+      ...(checklistRiskGroup ? [checklistRiskGroup] : []),
+    ],
+    [checklistRiskGroup, lodgingRiskGroup, scheduleRiskGroups],
   );
 
   const visibleTrips = useMemo(
@@ -3671,16 +4304,36 @@ function App() {
     weatherData,
   ]);
 
-  const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
-  const switchCandidates = candidates.filter((candidate) => !candidate.isCurrent);
-  const readyCandidates = switchCandidates.filter((candidate) => candidate.canAssign && !candidate.assignedDateId);
-  const scheduledCandidates = switchCandidates.filter((candidate) => candidate.canAssign && candidate.assignedDateId);
-  const unavailableCandidates = switchCandidates.filter((candidate) => !candidate.canAssign);
-  const candidateGroups = [
-    { key: 'ready', title: t('candidateReady'), items: readyCandidates },
-    { key: 'scheduled', title: t('candidateScheduled'), items: scheduledCandidates },
-    { key: 'unavailable', title: t('candidateUnavailable'), items: unavailableCandidates },
-  ].filter((group) => group.items.length > 0);
+  const {
+    currentCandidate,
+    readyCandidates,
+    candidateGroups,
+  } = useMemo(() => {
+    const current = candidates.find((candidate) => candidate.isCurrent);
+    const ready = [];
+    const scheduled = [];
+    const unavailable = [];
+
+    candidates.forEach((candidate) => {
+      if (candidate.isCurrent) return;
+      if (!candidate.canAssign) {
+        unavailable.push(candidate);
+        return;
+      }
+      if (candidate.assignedDateId) scheduled.push(candidate);
+      else ready.push(candidate);
+    });
+
+    return {
+      currentCandidate: current,
+      readyCandidates: ready,
+      candidateGroups: [
+        { key: 'ready', title: t('candidateReady'), items: ready },
+        { key: 'scheduled', title: t('candidateScheduled'), items: scheduled },
+        { key: 'unavailable', title: t('candidateUnavailable'), items: unavailable },
+      ].filter((group) => group.items.length > 0),
+    };
+  }, [candidates, t]);
   const availableCandidateCount = readyCandidates.length;
   const isCreatingPlan = editorPlanId === NEW_PLAN_EDITOR_ID;
   const editorPlan = editorPlanId && !isCreatingPlan ? plansById.get(editorPlanId) : null;
@@ -3744,6 +4397,7 @@ function App() {
       tripDays,
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
+      lodgings,
       archived: activeTripArchived,
     };
     const persistedTrips = pruneEmptyTripDrafts(
@@ -3759,6 +4413,7 @@ function App() {
     activeTripArchived,
     t,
     normalizedPlans,
+    lodgings,
     schedule,
     startDateStr,
     tripName,
@@ -3798,6 +4453,7 @@ function App() {
     tripDays,
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
+    lodgings,
     archived: activeTripArchived,
   });
 
@@ -3809,6 +4465,7 @@ function App() {
     setTripDays(normalizedTrip.tripDays);
     setPlans(normalizedTrip.plans);
     setSchedule(normalizedTrip.schedule);
+    setLodgings(normalizedTrip.lodgings || []);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     setWeatherError('');
   };
@@ -3832,6 +4489,8 @@ function App() {
   const isLocalWorkspaceEmpty = (snapshot = exportAppSnapshot()) => {
     const hasTripContent = snapshot.trips.some((trip) => (
       Array.isArray(trip.plans) && trip.plans.length > 0
+    ) || (
+      Array.isArray(trip.lodgings) && trip.lodgings.length > 0
     ) || Object.values(trip.schedule || {}).some((entry) => entry?.planId));
     const hasChecklistContent = Boolean(snapshot.checklistText?.trim())
       || Object.keys(snapshot.checklistState || {}).length > 0;
@@ -4083,24 +4742,30 @@ function App() {
 
   const createNewTrip = () => {
     if (!hasInitializedPlans) {
-      setTripMenuOpen(false);
-      setEditorOpen(true);
-      setBatchAiOpen(false);
+      startUiTransition(() => {
+        setTripMenuOpen(false);
+        setEditorTab('itinerary');
+        setEditorOpen(true);
+        setBatchAiOpen(false);
+      });
       notify(t('emptyPlanNotice'));
       return;
     }
 
     const nextTrip = createEmptyTripSnapshot(language === 'en' ? `Trip ${trips.length + 1}` : `旅行计划 ${trips.length + 1}`, getTodayId());
-    setTripMenuOpen(false);
     setTrips([...pruneEmptyTripDrafts(saveCurrentTripInto(trips), activeTripId), nextTrip]);
     applyTripSnapshot(nextTrip);
-    setEditorOpen(true);
-    setBatchAiOpen(false);
+    startUiTransition(() => {
+      setTripMenuOpen(false);
+      setEditorTab('itinerary');
+      setEditorOpen(true);
+      setBatchAiOpen(false);
+    });
     notify(t('newTripCreated'));
   };
 
   const loadExampleTrip = () => {
-    const hasCurrentContent = normalizedPlans.length > 0 || Object.keys(schedule).length > 0;
+    const hasCurrentContent = normalizedPlans.length > 0 || lodgings.length > 0 || Object.keys(schedule).length > 0;
     if (hasCurrentContent && !window.confirm(t('overwriteExampleConfirm'))) return;
 
     const exampleTrip = createExampleTripSnapshot(t('exampleTripName'), startDateStr, activeTripId);
@@ -4108,6 +4773,7 @@ function App() {
     setTripDays(exampleTrip.tripDays);
     setPlans(exampleTrip.plans);
     setSchedule(exampleTrip.schedule);
+    setLodgings(exampleTrip.lodgings || []);
     setWeatherData({});
     setSelectedDateId(exampleTrip.startDateStr);
     closePlanEditor();
@@ -4116,11 +4782,14 @@ function App() {
   };
 
   const openBatchAiGenerator = () => {
-    setAiPlannerMode('generate');
-    setAiPlannerOpen(false);
-    setEditorPlanId(null);
-    setEditorOpen(true);
-    setBatchAiOpen(true);
+    startUiTransition(() => {
+      setAiPlannerMode('generate');
+      setAiPlannerOpen(false);
+      setEditorPlanId(null);
+      setEditorTab('itinerary');
+      setEditorOpen(true);
+      setBatchAiOpen(true);
+    });
     resetAiPlannerFields();
   };
 
@@ -4130,10 +4799,12 @@ function App() {
       return;
     }
 
-    setAiPlannerMode('replan');
-    setEditorOpen(false);
     resetAiPlannerFields();
-    setAiPlannerOpen(true);
+    startUiTransition(() => {
+      setAiPlannerMode('replan');
+      setEditorOpen(false);
+      setAiPlannerOpen(true);
+    });
   };
 
   const resetAiPlannerFields = () => {
@@ -4147,11 +4818,27 @@ function App() {
   };
 
   const openPlanEditor = (planId = NEW_PLAN_EDITOR_ID) => {
-    setEditorPlanId(planId);
-    setEditorOpen(true);
-    setBatchAiOpen(false);
-    setAiPlannerOpen(false);
+    startUiTransition(() => {
+      setEditorPlanId(planId);
+      setEditorTab('itinerary');
+      setEditorOpen(true);
+      setBatchAiOpen(false);
+      setAiPlannerOpen(false);
+    });
     resetPlanAiFields();
+  };
+
+  const openLodgingEditor = () => {
+    startUiTransition(() => {
+      setEditorPlanId(null);
+      setEditorTab('lodging');
+      setEditorOpen(true);
+      setBatchAiOpen(false);
+      setAiPlannerOpen(false);
+    });
+    window.setTimeout(() => {
+      lodgingSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 0);
   };
 
   const closePlanEditor = () => {
@@ -4193,6 +4880,11 @@ function App() {
     notify(t('planUpdated'));
   };
 
+  const saveLodgings = (nextLodgings) => {
+    setLodgings(nextLodgings);
+    notify(t('lodgingsSaved'));
+  };
+
   const updatePlanBookingStatus = (planId, bookingId, nextStatus) => {
     setPlans((current) => current.map((plan, index) => {
       const normalizedPlan = normalizePlan(plan, index, tripDates);
@@ -4228,7 +4920,7 @@ function App() {
   };
 
   const deleteCurrentTrip = () => {
-    const currentTripIsEmpty = !hasInitializedPlans && Object.keys(schedule).length === 0;
+    const currentTripIsEmpty = !hasInitializedPlans && lodgings.length === 0 && Object.keys(schedule).length === 0;
     if (!currentTripIsEmpty && !window.confirm(t('deleteTripConfirm', { name: tripName || t('unnamedTrip') }))) return;
 
     const updatedTrips = trips.filter((trip) => trip.id !== activeTripId);
@@ -4294,9 +4986,11 @@ function App() {
   };
 
   const openChecklist = () => {
-    setChecklistDraft(checklistText);
-    setChecklistEditing(false);
-    setChecklistOpen(true);
+    startUiTransition(() => {
+      setChecklistDraft(checklistText);
+      setChecklistEditing(false);
+      setChecklistOpen(true);
+    });
   };
 
   const updateChecklistItemStatus = (itemId, nextStatus) => {
@@ -4353,14 +5047,18 @@ function App() {
   };
 
   const openChecklistImport = () => {
-    setChecklistImportText('');
-    setChecklistImportConflicts([]);
-    setChecklistImportOpen(true);
+    startUiTransition(() => {
+      setChecklistImportText('');
+      setChecklistImportConflicts([]);
+      setChecklistImportOpen(true);
+    });
   };
 
   const closeChecklistImport = () => {
-    setChecklistImportOpen(false);
-    setChecklistImportConflicts([]);
+    startUiTransition(() => {
+      setChecklistImportOpen(false);
+      setChecklistImportConflicts([]);
+    });
   };
 
   const getChecklistImportPayload = () => parseChecklistImportPayload(checklistImportText, language);
@@ -4457,7 +5155,16 @@ function App() {
   const downloadJson = (data, fileName, message) => {
     try {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
+      downloadBlob(blob, fileName);
+      notify(message);
+    } catch {
+      notify(t('downloadFailed'));
+    }
+  };
+
+  const downloadBlob = (blob, fileName) => {
+    const url = URL.createObjectURL(blob);
+    try {
       const link = document.createElement('a');
 
       link.href = url;
@@ -4465,10 +5172,56 @@ function App() {
       document.body.appendChild(link);
       link.click();
       link.remove();
+    } finally {
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
-      notify(message);
-    } catch {
-      notify(t('downloadFailed'));
+    }
+  };
+
+  const shareCurrentPlanImage = async (cardElement) => {
+    if (!selectedDate || !selectedPlan || !cardElement || planImageBusyRef.current) return;
+
+    planImageBusyRef.current = true;
+    setPlanImageBusy(true);
+    try {
+      const imageResult = await renderElementToImageBlob(cardElement);
+      const fileName = `${sanitizeFileNamePart(tripName)}-${sanitizeFileNamePart(selectedDate.display)}-${sanitizeFileNamePart(selectedPlan.name)}.${imageResult.extension}`;
+      let file = null;
+      let canShareFile = false;
+      const canCopyImage = await copyImageBlobToClipboard(imageResult.blob);
+
+      if (canCopyImage) {
+        notify(t('planImageCopied'));
+        return;
+      }
+
+      if (shouldUseNativeImageShare() && typeof File === 'function') {
+        file = new File([imageResult.blob], fileName, { type: imageResult.mimeType });
+        try {
+          canShareFile = !navigator.canShare || navigator.canShare({ files: [file] });
+        } catch {
+          canShareFile = false;
+        }
+      }
+
+      if (canShareFile) {
+        await navigator.share({
+          files: [file],
+          title: selectedPlan.name,
+          text: `${tripName || t('unnamedTrip')} · ${selectedDate.display}`,
+        });
+        notify(t('planImageShared'));
+      } else {
+        downloadBlob(imageResult.blob, fileName);
+        notify(t('planImageDownloaded'));
+      }
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        console.error('[plan-gacha] plan image export failed', error);
+        notify(t('planImageFailed'));
+      }
+    } finally {
+      planImageBusyRef.current = false;
+      setPlanImageBusy(false);
     }
   };
 
@@ -4580,6 +5333,7 @@ function App() {
         status: insight.label || t('normal'),
         weather: insight.weatherText || '',
         note: insight.riskText || '',
+        lodging: getLodgingContextForDate(lodgings, date.id),
       };
     };
 
@@ -4603,6 +5357,8 @@ function App() {
         title: stop.title,
         location: stop.location.label,
         address: stop.location.address || '',
+        transfer_from_previous: compactTransferForAi(stop.transferFromPrevious),
+        opening_hours: stop.openingHours,
         note: stop.note,
       })),
       bookings: plan.bookings.map((booking) => ({
@@ -4634,6 +5390,7 @@ function App() {
         days: tripDays,
         planning_from: planningStartDate?.id || null,
       },
+      lodgings: lodgings.map(compactLodgingForAi),
       existing_schedule: tripDates.map(summarizeScheduleDate),
       existing_plans: normalizedPlans.map(summarizePlan),
       current_warnings: riskGroups.map((group) => ({
@@ -4677,9 +5434,15 @@ Output rules:
 4. Prefer an English city name or coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
 5. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
 6. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
-7. Add reminders and tips only when useful; otherwise use empty arrays.
-8. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
-9. If a plan should be scheduled, write assigned_day on that plan.
+7. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
+8. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
+9. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. Fill arrive_at when known; it should usually match the current stop time. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later.
+10. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
+11. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
+12. If lodgings are provided, use them as day start/end and hotel-transfer constraints.
+13. Add reminders and tips only when useful; otherwise use empty arrays.
+14. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
+15. If a plan should be scheduled, write assigned_day on that plan.
 
 JSON format:
 ${planSchema}`;
@@ -4706,9 +5469,15 @@ ${JSON.stringify({
 4. location.weather_location 优先写英文城市名或坐标，不要用景点名做天气查询。
 5. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
 6. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
-7. 有特别提醒和 tips 就写，没有就留空数组。
-8. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
-9. 需要安排日期时，在对应 plan 上写 assigned_day。
+7. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
+8. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
+9. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间；arrive_at 可在明确时填写，通常应和当前 stop.time 对齐。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。
+10. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
+11. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
+12. 如果提供了 lodgings，把住宿作为每天出发、返回和换酒店约束。
+13. 有特别提醒和 tips 就写，没有就留空数组。
+14. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
+15. 需要安排日期时，在对应 plan 上写 assigned_day。
 
 JSON 格式：
 ${planSchema}`;
@@ -4734,9 +5503,10 @@ You need to:
 1. Rearrange the dates in adjustable_dates.
 2. Prioritize must-go plans and reduce weather-unsuitable or date-unsuitable choices.
 3. Do not casually move reserved/ticketed plans; call out pending reservations/tickets in the reasons.
-4. Explain if a plan must be dropped.
-5. Clearly list anything I need to confirm if the adjustment creates risk.
-6. End with JSON so I can import or compare changes manually.
+4. Consider lodging check-in/check-out, day start/end and hotel-transfer constraints.
+5. Explain if a plan must be dropped.
+6. Clearly list anything I need to confirm if the adjustment creates risk.
+7. End with JSON so I can import or compare changes manually.
 
 Data:
 ${JSON.stringify(context, null, 2)}
@@ -4767,9 +5537,10 @@ ${replanRequest}
 1. 重新安排 adjustable_dates 中的日期。
 2. 优先保留必去计划，尽量减少天气不合适和日期不合适。
 3. 已预约/已订票的计划不要随意挪动；未预约/未订票的计划需要在原因里提醒。
-4. 如果必须放弃计划，请说明原因。
-5. 如果某个调整会带来风险，请明确列出需要我确认的事项。
-6. 最后输出一个 JSON，方便我手动导入或对照修改。
+4. 考虑住宿入住/退房、每天出发/返回和换酒店约束。
+5. 如果必须放弃计划，请说明原因。
+6. 如果某个调整会带来风险，请明确列出需要我确认的事项。
+7. 最后输出一个 JSON，方便我手动导入或对照修改。
 
 数据：
 ${JSON.stringify(context, null, 2)}
@@ -4804,6 +5575,11 @@ ${JSON.stringify(context, null, 2)}
 
     if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
     if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
+    const importedLodgings = parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays;
+    if (Array.isArray(importedLodgings)) {
+      touched = true;
+      setLodgings(normalizeTripLodgings(importedLodgings));
+    }
 
     if (Array.isArray(parsed.plans)) {
       touched = true;
@@ -4879,8 +5655,24 @@ ${JSON.stringify(context, null, 2)}
       ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
       : (language === 'en' ? 'Improve the current plan.' : '请优化当前计划。'));
     const planContext = isCreatingPlan
-      ? { existing_plan_ids: normalizedPlans.map((plan) => plan.id) }
-      : { current_plan: currentPlan };
+      ? {
+        trip: {
+          name: tripName || t('unnamedTrip'),
+          range: formatTripRange(startDateStr, tripDays, language),
+          days: tripDays,
+        },
+        lodgings: lodgings.map(compactLodgingForAi),
+        existing_plan_ids: normalizedPlans.map((plan) => plan.id),
+      }
+      : {
+        trip: {
+          name: tripName || t('unnamedTrip'),
+          range: formatTripRange(startDateStr, tripDays, language),
+          days: tripDays,
+        },
+        lodgings: lodgings.map(compactLodgingForAi),
+        current_plan: currentPlan,
+      };
 
     return `${language === 'en'
     ? `You are a single travel-plan editing assistant. ${isCreatingPlan ? 'Add one plan' : 'Modify the current plan'} based on the user request. Only output one plan JSON object.`
@@ -4897,8 +5689,14 @@ ${language === 'en' ? `Requirements:
 2. Prefer an English city name or coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
 3. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
 4. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
-5. If the plan fits a specific day, include assigned_day.
-6. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
+5. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
+6. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
+7. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. Fill arrive_at when known; it should usually match the current stop time. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later.
+8. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
+9. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
+10. If lodgings are provided, account for day start/end and hotel-transfer constraints.
+11. If the plan fits a specific day, include assigned_day.
+12. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
 
 Single plan JSON format:
 ${schema}` : `要求：
@@ -4906,8 +5704,14 @@ ${schema}` : `要求：
 2. location.weather_location 优先写英文城市名或坐标，不要用景点名做天气查询。
 3. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
 4. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
-5. 如果计划适合安排到某一天，可以写 assigned_day。
-6. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
+5. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
+6. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
+7. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间；arrive_at 可在明确时填写，通常应和当前 stop.time 对齐。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。
+8. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
+9. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
+10. 如果提供了 lodgings，把住宿作为当天出发、返回和换酒店约束。
+11. 如果计划适合安排到某一天，可以写 assigned_day。
+12. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
 
 单个计划 JSON 格式：
 ${schema}`}
@@ -4975,7 +5779,7 @@ ${schema}`}
   });
 
   const handleExportState = () => {
-    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, plans: normalizedPlans, schedule };
+    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, lodgings, plans: normalizedPlans, schedule };
     const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
     downloadJson(data, fileName, t('jsonDownloaded'));
   };
@@ -5083,58 +5887,91 @@ ${schema}`}
           const routeUrl = previousStop ? getGoogleMapsDirectionsUrl(previousStop.location, stop.location) : '';
           const mapsUrl = getGoogleMapsUrl(stop.location);
           const copyValue = getLocationCopyText(stop.location);
+          const transferText = formatStopTransfer(stop.transferFromPrevious);
+          const transferDepartureText = formatStopTransferDeparture(stop.transferFromPrevious, stop.time, language);
+          const metaSeparator = language === 'en' ? ': ' : '：';
+          const previousStopName = previousStop?.title || previousStop?.location?.label || '';
+          const currentStopName = stop.title || stop.location?.label || '';
+          const showTransfer = Boolean(previousStop && (transferText || transferDepartureText));
 
           return (
-            <li className="stop-item" key={stop.id}>
-              <span className="stop-time">{stop.time || t('flexible')}</span>
-              <span className="stop-detail">
-                <strong>{stop.title}</strong>
-                <span className="stop-location">
-                  <span className="stop-location-text">
-                    {stop.location.label}
-                    {stop.location.address && <small>{stop.location.address}</small>}
+            <Fragment key={stop.id}>
+              {showTransfer && (
+                <li className="stop-item stop-transfer-item">
+                  <span className="stop-time stop-transfer-time">
+                    {transferDepartureText}
                   </span>
-                  <span className="stop-location-actions">
-                    {routeUrl && (
-                      <a
-                        className="stop-location-action"
-                        href={routeUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={t('openRouteInMaps')}
-                        title={t('openRouteInMaps')}
-                      >
-                        <Icon name="route" />
-                      </a>
-                    )}
-                    {mapsUrl && (
-                      <a
-                        className="stop-location-action"
-                        href={mapsUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={t('openInMaps')}
-                        title={t('openInMaps')}
-                      >
-                        <Icon name="mapPin" />
-                      </a>
-                    )}
-                    {copyValue && (
-                      <button
-                        className="stop-location-action"
-                        type="button"
-                        onClick={() => copyText(copyValue, t('placeCopied'))}
-                        aria-label={t('copyPlace')}
-                        title={t('copyPlace')}
-                      >
-                        <Icon name="copy" />
-                      </button>
-                    )}
+                  <span className="stop-detail stop-transfer-detail">
+                    <span className="stop-commute" aria-label={`${previousStopName} ${t('transferLabel')} ${currentStopName}`}>
+                      <Icon name="route" />
+                      <span className="stop-commute-route">
+                        <span>{previousStopName}</span>
+                        <span aria-hidden="true">-&gt;</span>
+                        <span>{currentStopName}</span>
+                      </span>
+                      {transferText && <strong>{transferText}</strong>}
+                    </span>
                   </span>
+                </li>
+              )}
+              <li className="stop-item">
+                <span className="stop-time">{stop.time || t('flexible')}</span>
+                <span className="stop-detail">
+                  <strong>{stop.title}</strong>
+                  <span className="stop-location">
+                    <span className="stop-location-text">
+                      <span className="stop-location-line">
+                        <span className="stop-location-label">{stop.location.label}</span>
+                        {stop.openingHours && (
+                          <span className="stop-hours-inline">
+                            <Icon name="clock" />
+                            <span>{t('openingHours')}{metaSeparator}{stop.openingHours}</span>
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="stop-location-actions">
+                      {routeUrl && (
+                        <a
+                          className="stop-location-action"
+                          href={routeUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={t('openRouteInMaps')}
+                          title={t('openRouteInMaps')}
+                        >
+                          <Icon name="route" />
+                        </a>
+                      )}
+                      {mapsUrl && (
+                        <a
+                          className="stop-location-action"
+                          href={mapsUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={t('openInMaps')}
+                          title={t('openInMaps')}
+                        >
+                          <Icon name="mapPin" />
+                        </a>
+                      )}
+                      {copyValue && (
+                        <button
+                          className="stop-location-action"
+                          type="button"
+                          onClick={() => copyText(copyValue, t('placeCopied'))}
+                          aria-label={t('copyPlace')}
+                          title={t('copyPlace')}
+                        >
+                          <Icon name="copy" />
+                        </button>
+                      )}
+                    </span>
+                  </span>
+                  {stop.note && <em>{stop.note}</em>}
                 </span>
-                {stop.note && <em>{stop.note}</em>}
-              </span>
-            </li>
+              </li>
+            </Fragment>
           );
         })}
       </ol>
@@ -5370,7 +6207,7 @@ ${schema}`}
           </span>
         )}
       </div>
-      <p>{selectedPlan?.description || t('currentPlanHelp')}</p>
+      <p className="current-plan-summary">{selectedPlan?.description || t('currentPlanHelp')}</p>
       {renderPlanStops(selectedPlan)}
       {renderPlanBookings(selectedPlan)}
       {renderPlanNotes(selectedPlan)}
@@ -5386,9 +6223,21 @@ ${schema}`}
         <button
           className="icon-btn compact-icon-btn"
           type="button"
+          disabled={planImageBusy}
+          onClick={(event) => shareCurrentPlanImage(event.currentTarget.closest('[data-current-plan-card="true"]'))}
+          aria-label={t('sharePlanImage')}
+          title={t('sharePlanImage')}
+          data-screenshot-exclude="true"
+        >
+          <Icon name="camera" />
+        </button>
+        <button
+          className="icon-btn compact-icon-btn"
+          type="button"
           onClick={() => openPlanEditor(selectedPlan.id)}
           aria-label={`${t('editSinglePlan')} ${selectedPlan.name}`}
           title={t('editSinglePlan')}
+          data-screenshot-exclude="true"
         >
           <Icon name="pencil" />
         </button>
@@ -5398,6 +6247,7 @@ ${schema}`}
           onClick={() => clearDay(selectedDate.id)}
           aria-label={t('clear')}
           title={t('clear')}
+          data-screenshot-exclude="true"
         >
           <Icon name="x" />
         </button>
@@ -5405,19 +6255,28 @@ ${schema}`}
     );
   };
 
-  const renderRiskGroup = (group) => (
-    <div className={`risk-item risk-group ${group.level}`} key={group.title}>
-      <div className="risk-group-head">
-        <strong>{translateRiskTitle(group.title, language)}</strong>
+  const renderRiskGroup = (group) => {
+    const isLodgingRisk = group.title === '住宿信息未填写';
+
+    return (
+      <div className={`risk-item risk-group ${group.level}`} key={group.title}>
+        <div className="risk-group-head">
+          <strong>{translateRiskTitle(group.title, language)}</strong>
+          {isLodgingRisk && (
+            <button className="btn btn-small btn-outline" type="button" onClick={openLodgingEditor}>
+              {t('editLodging')}
+            </button>
+          )}
+        </div>
+        <ul>
+          {group.items.slice(0, 6).map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+          {group.items.length > 6 && <li>{t('moreItems', { count: group.items.length - 6 })}</li>}
+        </ul>
       </div>
-      <ul>
-        {group.items.slice(0, 6).map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-        {group.items.length > 6 && <li>{t('moreItems', { count: group.items.length - 6 })}</li>}
-      </ul>
-    </div>
-  );
+    );
+  };
 
   const renderMobileRiskPanel = () => {
     const primaryRisk = riskGroups[0];
@@ -5603,7 +6462,7 @@ ${schema}`}
           <button className="btn btn-outline" type="button" onClick={loadExampleTrip}>
             {t('viewExample')}
           </button>
-          <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(true)}>
+          <button className="btn btn-outline" type="button" onClick={() => startUiTransition(() => setImportModalOpen(true))}>
             {t('import')}
           </button>
         </div>
@@ -5703,8 +6562,18 @@ ${schema}`}
             <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
               <Icon name="listChecks" />
             </button>
+            <button
+              className="icon-btn lodging-shortcut-btn"
+              type="button"
+              disabled={activeTripDisplay.isEmpty}
+              onClick={openLodgingEditor}
+              aria-label={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('lodgingSection')}
+              title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('lodgingSection')}
+            >
+              <Icon name="home" />
+            </button>
             {driveFeatureEnabled && driveStorage && (
-              <button className="icon-btn drive-sync-btn" type="button" onClick={() => setDrivePanelOpen(true)} aria-label={t('driveSync')} title={t('driveSync')}>
+              <button className="icon-btn drive-sync-btn" type="button" onClick={() => startUiTransition(() => setDrivePanelOpen(true))} aria-label={t('driveSync')} title={t('driveSync')}>
                 <Icon name="cloud" />
               </button>
             )}
@@ -5713,9 +6582,12 @@ ${schema}`}
               type="button"
               disabled={activeTripDisplay.isEmpty}
               onClick={() => {
-                setTripMenuOpen(false);
-                setEditorPlanId(null);
-                setEditorOpen(true);
+                startUiTransition(() => {
+                  setTripMenuOpen(false);
+                  setEditorPlanId(null);
+                  setEditorTab('itinerary');
+                  setEditorOpen(true);
+                });
               }}
               aria-label={activeTripDisplay.isEmpty ? t('noEditablePlan') : t('editPlan')}
               title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('editPlan')}
@@ -5796,7 +6668,7 @@ ${schema}`}
                     {insight.riskText && <span className={`day-risk ${insight.riskTone}`}>{insight.riskText}</span>}
                   </button>
                   {selected && (
-                    <div className="current-plan selected-day-plan">
+                    <div className="current-plan selected-day-plan" data-current-plan-card="true">
                       {renderCurrentPlanBody()}
                       {renderCurrentPlanActions()}
                     </div>
@@ -5834,7 +6706,7 @@ ${schema}`}
             </button>
           </div>
 
-          <div className="current-plan">
+          <div className="current-plan" data-current-plan-card="true">
             {renderCurrentPlanBody()}
             {renderCurrentPlanActions()}
           </div>
@@ -5953,7 +6825,10 @@ ${schema}`}
 
       {editorOpen && (
         <div className="modal-overlay" onClick={() => setEditorOpen(false)}>
-          <div className="modal trip-editor-modal" onClick={(event) => event.stopPropagation()}>
+          <div
+            className={`modal trip-editor-modal ${editorPlanId ? 'is-plan-detail' : 'is-trip-detail'}`}
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="panel-header">
               <div>
                 <p className="eyebrow">{t('planSetup')}</p>
@@ -5964,235 +6839,280 @@ ${schema}`}
               </button>
             </div>
 
-            {editorPlanId ? (
-              <div className="plan-editor-detail">
-                <button className="btn btn-small btn-outline plan-back-btn" type="button" onClick={closePlanEditor}>
-                  {t('backToList')}
-                </button>
-
-                <div className="plan-editor-current">
-                  <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
-                  <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
-                  {!isCreatingPlan && editorPlan && (
-                    <>
-                      <p>{editorPlan.description}</p>
-                      {renderPlanStops(editorPlan)}
-                      {renderPlanBookings(editorPlan)}
-                      {renderPlanNotes(editorPlan)}
-                    </>
-                  )}
-                  {isCreatingPlan && (
-                    <p>{t('newPlanHelp')}</p>
-                  )}
-                </div>
-
-                {!isCreatingPlan && editorPlan && (
-                  <PlanQuickEditor
-                    key={`${editorPlan.id}-${editorPlan.name}-${editorPlan.priority}`}
-                    plan={editorPlan}
-                    language={language}
-                    t={t}
-                    onSave={savePlanQuickEdit}
-                  />
-                )}
-
-                <label>
-                  <span>{t('yourRequest')}</span>
-                  <textarea
-                    className="textarea plan-ai-question"
-                    ref={planAiQuestionRef}
-                    placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
-                  />
-                </label>
-
-                <label>
-                  <span>{t('aiResult')}</span>
-                  <textarea
-                    className="textarea plan-ai-result"
-                    ref={planAiResultRef}
-                    placeholder={t('planAiResultPlaceholder')}
-                  />
-                </label>
-
-                <div className="modal-actions">
-                  <button className="btn btn-outline" type="button" onClick={copyPlanAiPrompt}>
-                    {t('copyToAi')}
-                  </button>
-                  <button className="btn btn-primary" type="button" onClick={applyPlanAiResult}>
-                    {t('applyResult')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <>
-            <div className="trip-editor-grid">
-              <BufferedTripNameField key={`${activeTripId}-${tripName}`} value={tripName} t={t} onCommit={setTripName} />
-              <div className="date-range-field">
-                <span>{t('dateRange')}</span>
-                <div className="date-range-inputs">
-                  <label>
-                    <em>{t('start')}</em>
-                    <input
-                      className="input"
-                      type="date"
-                      value={startDateStr}
-                      onChange={(event) => {
-                        const nextStartDate = event.target.value;
-                        if (!nextStartDate) return;
-                        setStartDateStr(nextStartDate);
-                        setSelectedDateId(getSmartSelectedDate(nextStartDate, tripDays));
-                      }}
-                    />
-                  </label>
-                  <label>
-                    <em>{t('end')}</em>
-                    <input
-                      className="input"
-                      type="date"
-                      min={startDateStr}
-                      max={addDays(startDateStr, 29)}
-                      value={endDateStr}
-                      onChange={(event) => {
-                        if (!event.target.value) return;
-                        const nextTripDays = getInclusiveDateSpan(startDateStr, event.target.value);
-                        setTripDays(nextTripDays);
-                        setSelectedDateId(getSmartSelectedDate(startDateStr, nextTripDays));
-                      }}
-                    />
-                  </label>
-                  <strong>{t('daysCount', { count: tripDays })}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="editor-section">
-              <div className="panel-header compact">
-                <h2>{t('planData')}</h2>
-                <span className="small-stat">{t('plansCount', { count: normalizedPlans.length })}</span>
-              </div>
-              <div className="action-grid editor-action-grid">
-                <button
-                  className={`btn ai-toggle-btn ${batchAiOpen ? 'is-open' : 'btn-primary'}`}
-                  type="button"
-                  aria-expanded={batchAiOpen}
-                  onClick={() => {
-                    setEditorPlanId(null);
-                    setAiPlannerMode('generate');
-                    setBatchAiOpen((current) => !current);
-                  }}
-                  title={t('aiPlanPoolTitle')}
-                >
-                  <span>{t('aiGenerateShort')}</span>
-                  <span className="toggle-chevron" aria-hidden="true" />
-                </button>
-                <button className="btn btn-outline" type="button" onClick={loadExampleTrip} title={t('loadFullExample')}>
-                  {t('viewExample')}
-                </button>
-                <button className="btn btn-outline" type="button" onClick={() => setImportModalOpen(true)} title={t('importJsonTitle')}>
-                  {t('import')}
-                </button>
-                <button className="btn btn-outline" type="button" onClick={handleExportState} title={t('copyCurrentJson')}>
-                  {t('export')}
-                </button>
-              </div>
-              {batchAiOpen && (
-                <div className="editor-ai-panel">
-                  <div className="panel-header compact">
-                    <div>
-                      <h3>{t('aiPlanPoolTitle')}</h3>
-                      <p>{t('aiPlanPoolHelp')}</p>
+            {!editorPlanId && (
+              <div className="trip-editor-top">
+                <div className="trip-editor-grid">
+                  <BufferedTripNameField key={`${activeTripId}-${tripName}`} value={tripName} t={t} onCommit={setTripName} />
+                  <div className="date-range-field">
+                    <span>{t('dateRange')}</span>
+                    <div className="date-range-inputs">
+                      <label>
+                        <em>{t('start')}</em>
+                        <input
+                          className="input"
+                          type="date"
+                          value={startDateStr}
+                          onChange={(event) => {
+                            const nextStartDate = event.target.value;
+                            if (!nextStartDate) return;
+                            setStartDateStr(nextStartDate);
+                            setSelectedDateId(getSmartSelectedDate(nextStartDate, tripDays));
+                          }}
+                        />
+                      </label>
+                      <label>
+                        <em>{t('end')}</em>
+                        <input
+                          className="input"
+                          type="date"
+                          min={startDateStr}
+                          max={addDays(startDateStr, 29)}
+                          value={endDateStr}
+                          onChange={(event) => {
+                            if (!event.target.value) return;
+                            const nextTripDays = getInclusiveDateSpan(startDateStr, event.target.value);
+                            setTripDays(nextTripDays);
+                            setSelectedDateId(getSmartSelectedDate(startDateStr, nextTripDays));
+                          }}
+                        />
+                      </label>
+                      <strong>{t('daysCount', { count: tripDays })}</strong>
                     </div>
                   </div>
+                </div>
+
+                <div className="editor-tabs" role="tablist" aria-label={t('editPlan')}>
+                  <button
+                    className={editorTab === 'itinerary' ? 'is-active' : ''}
+                    type="button"
+                    role="tab"
+                    aria-selected={editorTab === 'itinerary'}
+                    onClick={() => startUiTransition(() => setEditorTab('itinerary'))}
+                  >
+                    {t('itinerary')}
+                  </button>
+                  <button
+                    className={editorTab === 'lodging' ? 'is-active' : ''}
+                    type="button"
+                    role="tab"
+                    aria-selected={editorTab === 'lodging'}
+                    onClick={() => startUiTransition(() => setEditorTab('lodging'))}
+                  >
+                    {t('lodgingSection')}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="trip-editor-body">
+              {editorPlanId ? (
+                <div className="plan-editor-detail">
+                  <button className="btn btn-small btn-outline plan-back-btn" type="button" onClick={closePlanEditor}>
+                    {t('backToList')}
+                  </button>
+
+                  <div className="plan-editor-current">
+                    <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
+                    <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
+                    {!isCreatingPlan && editorPlan && (
+                      <>
+                        <p>{editorPlan.description}</p>
+                        {renderPlanStops(editorPlan)}
+                        {renderPlanBookings(editorPlan)}
+                        {renderPlanNotes(editorPlan)}
+                      </>
+                    )}
+                    {isCreatingPlan && (
+                      <p>{t('newPlanHelp')}</p>
+                    )}
+                  </div>
+
+                  {!isCreatingPlan && editorPlan && (
+                    <PlanQuickEditor
+                      key={`${editorPlan.id}-${editorPlan.name}-${editorPlan.priority}`}
+                      plan={editorPlan}
+                      language={language}
+                      t={t}
+                      onSave={savePlanQuickEdit}
+                    />
+                  )}
 
                   <label>
                     <span>{t('yourRequest')}</span>
                     <textarea
-                      className="textarea ai-question"
-                      ref={aiPlannerQuestionRef}
-                      placeholder={aiGenerateText.placeholder}
+                      className="textarea plan-ai-question"
+                      ref={planAiQuestionRef}
+                      placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
                     />
                   </label>
 
                   <label>
                     <span>{t('aiResult')}</span>
                     <textarea
-                      className="textarea ai-result"
-                      ref={aiPlannerResultRef}
-                      placeholder={t('aiResultPlaceholder')}
+                      className="textarea plan-ai-result"
+                      ref={planAiResultRef}
+                      placeholder={t('planAiResultPlaceholder')}
                     />
                   </label>
 
                   <div className="modal-actions">
-                    <button className="btn btn-outline" type="button" onClick={copyBatchAiPrompt}>
+                    <button className="btn btn-outline" type="button" onClick={copyPlanAiPrompt}>
                       {t('copyToAi')}
                     </button>
-                    <button className="btn btn-primary" type="button" onClick={applyAiPlannerResult}>
+                    <button className="btn btn-primary" type="button" onClick={applyPlanAiResult}>
                       {t('applyResult')}
                     </button>
                   </div>
                 </div>
+              ) : editorTab === 'lodging' ? (
+                <div className="editor-section" ref={lodgingSectionRef}>
+                  <LodgingEditor
+                    lodgings={lodgings}
+                    startDateStr={startDateStr}
+                    endDateStr={endDateStr}
+                    t={t}
+                    onSave={saveLodgings}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="editor-section">
+                    <div className="panel-header compact">
+                      <h2>{t('planData')}</h2>
+                      <span className="small-stat">{t('plansCount', { count: normalizedPlans.length })}</span>
+                    </div>
+                    <div className="action-grid editor-action-grid">
+                      <button
+                        className={`btn ai-toggle-btn ${batchAiOpen ? 'is-open' : 'btn-primary'}`}
+                        type="button"
+                        aria-expanded={batchAiOpen}
+                        onClick={() => {
+                          startUiTransition(() => {
+                            setEditorPlanId(null);
+                            setEditorTab('itinerary');
+                            setAiPlannerMode('generate');
+                            setBatchAiOpen((current) => !current);
+                          });
+                        }}
+                        title={t('aiPlanPoolTitle')}
+                      >
+                        <span>{t('aiGenerateShort')}</span>
+                        <span className="toggle-chevron" aria-hidden="true" />
+                      </button>
+                      <button className="btn btn-outline" type="button" onClick={loadExampleTrip} title={t('loadFullExample')}>
+                        {t('viewExample')}
+                      </button>
+                      <button className="btn btn-outline" type="button" onClick={() => startUiTransition(() => setImportModalOpen(true))} title={t('importJsonTitle')}>
+                        {t('import')}
+                      </button>
+                      <button className="btn btn-outline" type="button" onClick={handleExportState} title={t('copyCurrentJson')}>
+                        {t('export')}
+                      </button>
+                    </div>
+                    {batchAiOpen && (
+                      <div className="editor-ai-panel">
+                        <div className="panel-header compact">
+                          <div>
+                            <h3>{t('aiPlanPoolTitle')}</h3>
+                            <p>{t('aiPlanPoolHelp')}</p>
+                          </div>
+                        </div>
+
+                        <label>
+                          <span>{t('yourRequest')}</span>
+                          <textarea
+                            className="textarea ai-question"
+                            ref={aiPlannerQuestionRef}
+                            placeholder={aiGenerateText.placeholder}
+                          />
+                        </label>
+
+                        <label>
+                          <span>{t('aiResult')}</span>
+                          <textarea
+                            className="textarea ai-result"
+                            ref={aiPlannerResultRef}
+                            placeholder={t('aiResultPlaceholder')}
+                          />
+                        </label>
+
+                        <div className="modal-actions">
+                          <button className="btn btn-outline" type="button" onClick={copyBatchAiPrompt}>
+                            {t('copyToAi')}
+                          </button>
+                          <button className="btn btn-primary" type="button" onClick={applyAiPlannerResult}>
+                            {t('applyResult')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="editor-section">
+                    <div className="panel-header compact">
+                      <h2>{t('planList')}</h2>
+                      <span className="small-stat">{t('itemsCount', { count: normalizedPlans.length })}</span>
+                    </div>
+                    <div className="plan-review-list">
+                      {normalizedPlans.map((plan) => {
+                        const assignedDate = planAssignments.get(plan.id);
+                        return (
+                          <div className="plan-review-row" key={plan.id}>
+                            <div>
+                              <strong>{plan.name}</strong>
+                              <span>
+                                {getPriorityLabel(plan.priority, language)}
+                                {assignedDate ? t('scheduledSuffix', { date: formatAssignedDate(assignedDate, tripDates) }) : t('unscheduledSuffix')}
+                              </span>
+                            </div>
+                            <div className="plan-review-actions">
+                              <button
+                                className="icon-btn compact-icon-btn"
+                                type="button"
+                                onClick={() => openPlanEditor(plan.id)}
+                                aria-label={`${t('editPlan')} ${plan.name}`}
+                                title={t('editPlan')}
+                              >
+                                <Icon name="pencil" />
+                              </button>
+                              <button
+                                className="icon-btn compact-icon-btn danger-icon-btn"
+                                type="button"
+                                onClick={() => removePlan(plan.id)}
+                                aria-label={`${t('delete')} ${plan.name}`}
+                                title={t('delete')}
+                              >
+                                <Icon name="trash" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <button className="plan-add-row" type="button" onClick={() => openPlanEditor()}>
+                        <strong>{t('addPlan')}</strong>
+                        <span>{t('addPlanHelp')}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="editor-section archive-section">
+                    {renderArchivedTripRows()}
+                  </div>
+                </>
               )}
             </div>
 
-            <div className="editor-section">
-              <div className="panel-header compact">
-                <h2>{t('planList')}</h2>
-                <span className="small-stat">{t('itemsCount', { count: normalizedPlans.length })}</span>
+            {!editorPlanId && (
+              <div className="trip-editor-footer">
+                <div className="trip-lifecycle-actions">
+                  <button className="btn btn-outline" type="button" onClick={archiveCurrentTrip}>
+                    {t('archive')}
+                  </button>
+                  <button className="btn btn-danger" type="button" onClick={deleteCurrentTrip}>
+                    {t('delete')}
+                  </button>
+                </div>
               </div>
-              <div className="plan-review-list">
-                {normalizedPlans.map((plan) => {
-                  const assignedDate = planAssignments.get(plan.id);
-                  return (
-                    <div className="plan-review-row" key={plan.id}>
-                      <div>
-                        <strong>{plan.name}</strong>
-                        <span>
-                          {getPriorityLabel(plan.priority, language)}
-                          {assignedDate ? t('scheduledSuffix', { date: formatAssignedDate(assignedDate, tripDates) }) : t('unscheduledSuffix')}
-                        </span>
-                      </div>
-                      <div className="plan-review-actions">
-                        <button
-                          className="icon-btn compact-icon-btn"
-                          type="button"
-                          onClick={() => openPlanEditor(plan.id)}
-                          aria-label={`${t('editPlan')} ${plan.name}`}
-                          title={t('editPlan')}
-                        >
-                          <Icon name="pencil" />
-                        </button>
-                        <button
-                          className="icon-btn compact-icon-btn danger-icon-btn"
-                          type="button"
-                          onClick={() => removePlan(plan.id)}
-                          aria-label={`${t('delete')} ${plan.name}`}
-                          title={t('delete')}
-                        >
-                          <Icon name="trash" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-                <button className="plan-add-row" type="button" onClick={() => openPlanEditor()}>
-                  <strong>{t('addPlan')}</strong>
-                  <span>{t('addPlanHelp')}</span>
-                </button>
-              </div>
-            </div>
-
-            <div className="editor-section archive-section">
-              <div className="trip-lifecycle-actions">
-                <button className="btn btn-outline" type="button" onClick={archiveCurrentTrip}>
-                  {t('archive')}
-                </button>
-                <button className="btn btn-danger" type="button" onClick={deleteCurrentTrip}>
-                  {t('delete')}
-                </button>
-              </div>
-              {renderArchivedTripRows()}
-            </div>
-              </>
             )}
           </div>
         </div>
@@ -6238,18 +7158,27 @@ ${schema}`}
               </div>
             </div>
 
-            {checklistEditing ? (
-              <div className="checklist-editor">
-                <p className="helper-text">{t('checklistFormatHint')}</p>
-                <label>
-                  <span>{t('checklistTextLabel')}</span>
-                  <textarea
-                    className="textarea checklist-textarea"
-                    value={checklistDraft}
-                    onChange={(event) => setChecklistDraft(event.target.value)}
-                  />
-                </label>
-                <div className="modal-actions">
+            <div className="checklist-scroll">
+              {checklistEditing ? (
+                <div className="checklist-editor">
+                  <p className="helper-text">{t('checklistFormatHint')}</p>
+                  <label>
+                    <span>{t('checklistTextLabel')}</span>
+                    <textarea
+                      className="textarea checklist-textarea"
+                      value={checklistDraft}
+                      onChange={(event) => setChecklistDraft(event.target.value)}
+                    />
+                  </label>
+                </div>
+              ) : (
+                renderChecklistItems()
+              )}
+            </div>
+
+            <div className="modal-actions checklist-actions">
+              {checklistEditing ? (
+                <>
                   <button
                     className="btn btn-outline"
                     type="button"
@@ -6263,37 +7192,34 @@ ${schema}`}
                   <button className="btn btn-primary" type="button" onClick={saveChecklistText}>
                     {t('checklistSave')}
                   </button>
-                </div>
-              </div>
-            ) : (
-              <>
-                {renderChecklistItems()}
-                <div className="modal-actions checklist-actions">
-                  {checklistStats.total === 0 && (
-                    <button className="btn btn-outline" type="button" onClick={loadChecklistExample}>
-                      {t('checklistUseExample')}
-                    </button>
-                  )}
-                  <button className="btn btn-outline" type="button" onClick={() => setChecklistEditing(true)}>
-                    {t('checklistEdit')}
+                </>
+              ) : (
+                <>
+                {checklistStats.total === 0 && (
+                  <button className="btn btn-outline" type="button" onClick={loadChecklistExample}>
+                    {t('checklistUseExample')}
                   </button>
-                  <button className="btn btn-outline" type="button" onClick={openChecklistImport}>
-                    {t('checklistImport')}
-                  </button>
-                  <button className="btn btn-outline" type="button" onClick={handleExportChecklist}>
-                    {t('checklistExport')}
-                  </button>
-                  <button
-                    className="btn btn-outline"
-                    type="button"
-                    onClick={resetChecklistState}
-                    disabled={checklistStats.done === 0 && checklistStats.skipped === 0}
-                  >
-                    {t('checklistResetState')}
-                  </button>
-                </div>
-              </>
-            )}
+                )}
+                <button className="btn btn-outline" type="button" onClick={() => startUiTransition(() => setChecklistEditing(true))}>
+                  {t('checklistEdit')}
+                </button>
+                <button className="btn btn-outline" type="button" onClick={openChecklistImport}>
+                  {t('checklistImport')}
+                </button>
+                <button className="btn btn-outline" type="button" onClick={handleExportChecklist}>
+                  {t('checklistExport')}
+                </button>
+                <button
+                  className="btn btn-outline"
+                  type="button"
+                  onClick={resetChecklistState}
+                  disabled={checklistStats.done === 0 && checklistStats.skipped === 0}
+                >
+                  {t('checklistResetState')}
+                </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
