@@ -17,7 +17,7 @@ export interface PlanCandidate {
   score: number;
   isCurrent: boolean;
   assignedDateId: string;
-  weather: WeatherEvaluation & { label: string };
+  weather: WeatherEvaluation & { label?: string };
   weatherOverride: boolean;
 }
 

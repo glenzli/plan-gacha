@@ -1,5 +1,28 @@
-// @ts-nocheck
 import { Icon } from './Icon';
+import type { TranslateFn } from '../types/ui';
+
+interface AssignmentClearItem {
+  dateId: string;
+  reason: string;
+  plan: { id: string; name: string };
+}
+
+interface AssignmentRiskItem {
+  level: string;
+  title: string;
+  reasons: string[];
+  plan: { id: string; name: string };
+}
+
+interface AssignmentImpactModalProps {
+  language: string;
+  onClose: () => void;
+  onConfirm: () => void;
+  pendingAssignment: any;
+  t: TranslateFn;
+  translateIssue: (issue: string, language: string) => string;
+  translateRiskTitle: (title: string, language: string) => string;
+}
 
 export function AssignmentImpactModal({
   language,
@@ -9,9 +32,11 @@ export function AssignmentImpactModal({
   t,
   translateIssue,
   translateRiskTitle,
-}) {
-  const movedItems = pendingAssignment.clears.filter((item) => item.reason === '同一计划被移动');
-  const clearedItems = pendingAssignment.clears.filter((item) => item.reason !== '同一计划被移动');
+}: AssignmentImpactModalProps) {
+  const clears = pendingAssignment.clears as AssignmentClearItem[];
+  const nextRisks = pendingAssignment.nextRisks as AssignmentRiskItem[];
+  const movedItems = clears.filter((item: AssignmentClearItem) => item.reason === '同一计划被移动');
+  const clearedItems = clears.filter((item: AssignmentClearItem) => item.reason !== '同一计划被移动');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -31,7 +56,7 @@ export function AssignmentImpactModal({
         {movedItems.length > 0 && (
           <div className="impact-section">
             <h3>{t('datesToMove')}</h3>
-            {movedItems.map((item) => (
+            {movedItems.map((item: AssignmentClearItem) => (
               <div className="impact-row is-move" key={`${item.dateId}-${item.plan.id}`}>
                 <span>{item.dateId}</span>
                 <strong>{item.plan.name}</strong>
@@ -44,7 +69,7 @@ export function AssignmentImpactModal({
         {clearedItems.length > 0 && (
           <div className="impact-section">
             <h3>{t('datesToClear')}</h3>
-            {clearedItems.map((item) => (
+            {clearedItems.map((item: AssignmentClearItem) => (
               <div className="impact-row" key={`${item.dateId}-${item.plan.id}`}>
                 <span>{item.dateId}</span>
                 <strong>{item.plan.name}</strong>
@@ -54,16 +79,16 @@ export function AssignmentImpactModal({
           </div>
         )}
 
-        {pendingAssignment.nextRisks.length > 0 && (
+        {nextRisks.length > 0 && (
           <div className="impact-section">
             <h3>{t('nextRisks')}</h3>
-            {pendingAssignment.nextRisks.map((risk) => (
+            {nextRisks.map((risk: AssignmentRiskItem) => (
               <div className={`risk-item ${risk.level}`} key={risk.plan.id}>
                 <strong>{risk.plan.name}</strong>
                 <p>
                   {translateRiskTitle(risk.title, language)}
                   {risk.reasons.length
-                    ? `${language === 'en' ? ': ' : '：'}${risk.reasons.map((reason) => translateIssue(reason, language)).join(' / ')}`
+                    ? `${language === 'en' ? ': ' : '：'}${risk.reasons.map((reason: string) => translateIssue(reason, language)).join(' / ')}`
                     : ''}
                 </p>
               </div>

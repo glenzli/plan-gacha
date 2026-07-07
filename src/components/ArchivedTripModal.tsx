@@ -1,16 +1,34 @@
-// @ts-nocheck
 import { Icon } from './Icon';
 import { WeatherIcon } from './PlanContent';
+import type { ReactNode } from 'react';
 import { addDays, parseDateId } from '../domain/date';
-import { normalizePlan } from '../domain/plan';
-import { normalizeSchedule } from '../domain/trip';
+import { normalizePlan, type NormalizedPlan } from '../domain/plan';
+import { normalizeSchedule, type NormalizedTripSnapshot } from '../domain/trip';
 import { formatWeatherDataSummary, getWeatherIconCondition } from '../domain/weather';
+import type { TranslateFn } from '../types/ui';
+import type { WeatherDataMap } from '../types/weatherData';
 
-function getLocale(language) {
+type RenderPlanSection = (plan: NormalizedPlan, options?: { readOnly?: boolean }) => ReactNode;
+
+interface ArchivedTripModalProps {
+  evaluateWeather: (plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap, language: string) => any;
+  formatTripRange: (startDateStr: string, tripDays: number, language: string) => string;
+  getPriorityLabel: (priority: string, language: string) => string;
+  language: string;
+  onClose: () => void;
+  renderPlanBookings: RenderPlanSection;
+  renderPlanNotes: RenderPlanSection;
+  renderPlanStops: RenderPlanSection;
+  t: TranslateFn;
+  trip: NormalizedTripSnapshot;
+  weatherData: WeatherDataMap;
+}
+
+function getLocale(language: string) {
   return language === 'en' ? 'en-US' : 'zh-CN';
 }
 
-function createArchivedTripDates(startDateStr, tripDays, language) {
+function createArchivedTripDates(startDateStr: string, tripDays: number, language: string) {
   if (!startDateStr || tripDays < 1) return [];
 
   return Array.from({ length: tripDays }, (_, index) => {
@@ -37,7 +55,7 @@ export function ArchivedTripModal({
   t,
   trip,
   weatherData,
-}) {
+}: ArchivedTripModalProps) {
   const archiveDates = createArchivedTripDates(trip.startDateStr, trip.tripDays, language);
   const archivePlans = (trip.plans || []).map((plan, index) => normalizePlan(plan, index, archiveDates));
   const archivePlansById = new Map(archivePlans.map((plan) => [plan.id, plan]));

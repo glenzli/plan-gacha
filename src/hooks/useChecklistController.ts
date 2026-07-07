@@ -1,16 +1,32 @@
-// @ts-nocheck
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { STORAGE_KEYS } from '../domain/appStorage';
 import {
   CHECKLIST_STATUS,
   EXAMPLE_CHECKLIST_TEXT,
+  type ChecklistMergeConflict,
   getChecklistStats,
   mergeChecklistPayload,
   normalizeChecklistText,
   parseChecklistImportPayload,
   parseChecklistText,
   reconcileChecklistStateForGroups,
+  type ChecklistState,
+  type ChecklistStatus,
 } from '../domain/checklist';
+import type { TranslateFn } from '../types/ui';
+
+interface UseChecklistControllerOptions {
+  initialChecklistState: ChecklistState;
+  initialChecklistText: string;
+  language: string;
+  notify: (message: string) => void;
+  startUiTransition: (callback: () => void) => void;
+  t: TranslateFn;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function useChecklistController({
   initialChecklistState,
@@ -19,15 +35,15 @@ export function useChecklistController({
   notify,
   startUiTransition,
   t,
-}) {
+}: UseChecklistControllerOptions) {
   const [checklistText, setChecklistText] = useState(initialChecklistText);
-  const [checklistState, setChecklistState] = useState(initialChecklistState);
+  const [checklistState, setChecklistState] = useState<ChecklistState>(initialChecklistState);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistEditing, setChecklistEditing] = useState(false);
   const [checklistImportOpen, setChecklistImportOpen] = useState(false);
   const [checklistImportText, setChecklistImportText] = useState('');
-  const [checklistImportConflicts, setChecklistImportConflicts] = useState([]);
-  const checklistDraftRef = useRef(null);
+  const [checklistImportConflicts, setChecklistImportConflicts] = useState<ChecklistMergeConflict[]>([]);
+  const checklistDraftRef = useRef<HTMLTextAreaElement | null>(null);
 
   const checklistGroups = useMemo(
     () => parseChecklistText(checklistText, language),
@@ -54,7 +70,7 @@ export function useChecklistController({
     });
   };
 
-  const updateChecklistItemStatus = (itemId, nextStatus) => {
+  const updateChecklistItemStatus = (itemId: string, nextStatus: ChecklistStatus) => {
     setChecklistState((current) => {
       const next = { ...current };
       if (nextStatus === CHECKLIST_STATUS.todo) {
@@ -66,7 +82,7 @@ export function useChecklistController({
     });
   };
 
-  const toggleChecklistDone = (itemId) => {
+  const toggleChecklistDone = (itemId: string) => {
     const currentStatus = checklistState[itemId] || CHECKLIST_STATUS.todo;
     updateChecklistItemStatus(
       itemId,
@@ -74,7 +90,7 @@ export function useChecklistController({
     );
   };
 
-  const toggleChecklistSkipped = (itemId) => {
+  const toggleChecklistSkipped = (itemId: string) => {
     const currentStatus = checklistState[itemId] || CHECKLIST_STATUS.todo;
     updateChecklistItemStatus(
       itemId,
@@ -132,7 +148,7 @@ export function useChecklistController({
       closeChecklistImport();
       notify(t('checklistImported'));
     } catch (error) {
-      notify(t('importFailed', { message: error.message }));
+      notify(t('importFailed', { message: getErrorMessage(error) }));
     }
   };
 
@@ -160,23 +176,23 @@ export function useChecklistController({
         notify(t('checklistMerged'));
       }
     } catch (error) {
-      notify(t('importFailed', { message: error.message }));
+      notify(t('importFailed', { message: getErrorMessage(error) }));
     }
   };
 
-  const getChecklistStatusLabel = (status) => {
+  const getChecklistStatusLabel = (status: ChecklistStatus | string) => {
     if (status === CHECKLIST_STATUS.done) return t('checklistDone');
     if (status === CHECKLIST_STATUS.skipped) return t('checklistNotNeeded');
     return t('checklistTodo');
   };
 
-  const getChecklistConflictLabel = (type) => {
+  const getChecklistConflictLabel = (type: string) => {
     if (type === 'category') return t('checklistConflictCategory');
     if (type === 'status') return t('checklistConflictStatus');
     return t('checklistConflictDuplicate');
   };
 
-  const applyChecklistSnapshot = (text, state) => {
+  const applyChecklistSnapshot = (text: unknown, state: unknown) => {
     const nextChecklistText = normalizeChecklistText(text, '');
     const nextChecklistGroups = parseChecklistText(nextChecklistText, language);
 

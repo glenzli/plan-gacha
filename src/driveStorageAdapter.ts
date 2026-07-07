@@ -1,3 +1,13 @@
+import type {
+  DriveFileLocator,
+  DriveStorageConflictDetails,
+  DriveStorageError,
+  DriveStorageFile,
+  DriveStorageStatus,
+  ExternalDriveStorageApi,
+  PlanGachaDriveStorage,
+} from './types/driveStorage';
+
 const DRIVE_STORAGE_SCRIPT = '/drive-storage/driveStorage.js';
 const APP_ID = 'plan-gacha';
 const FILE_NAME = 'plan-gacha.state.json';
@@ -5,17 +15,30 @@ const JSON_MIME = 'application/json';
 const FILE_RECORD_KEY = `driveStorage:${APP_ID}:file`;
 const APP_PROPERTIES = { appId: APP_ID };
 
-function isDriveStorageApi(api) {
-  return api
-    && typeof api.connect === 'function'
-    && typeof api.getFile === 'function'
-    && typeof api.findFile === 'function'
-    && typeof api.createFile === 'function'
-    && typeof api.readJson === 'function'
-    && typeof api.writeJson === 'function';
+declare global {
+  interface Window {
+    driveStorage?: ExternalDriveStorageApi;
+  }
 }
 
-function getDriveStatus(api) {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function isDriveStorageApi(api: unknown): api is ExternalDriveStorageApi {
+  return Boolean(
+    api
+      && typeof api === 'object'
+      && typeof (api as ExternalDriveStorageApi).connect === 'function'
+      && typeof (api as ExternalDriveStorageApi).getFile === 'function'
+      && typeof (api as ExternalDriveStorageApi).findFile === 'function'
+      && typeof (api as ExternalDriveStorageApi).createFile === 'function'
+      && typeof (api as ExternalDriveStorageApi).readJson === 'function'
+      && typeof (api as ExternalDriveStorageApi).writeJson === 'function',
+  );
+}
+
+function getDriveStatus(api: ExternalDriveStorageApi): DriveStorageStatus {
   if (typeof api.status === 'function') return api.status();
   return {
     provider: 'google-drive',
@@ -24,22 +47,22 @@ function getDriveStatus(api) {
   };
 }
 
-function getConfigured(api) {
+function getConfigured(api: ExternalDriveStorageApi) {
   if (typeof api.isConfigured === 'function') return api.isConfigured();
   return getDriveStatus(api).configured !== false;
 }
 
-function normalizeFileRecord(file) {
-  if (!file?.id) return null;
+function normalizeFileRecord(file: unknown): DriveStorageFile | null {
+  if (!isRecord(file) || !file.id) return null;
   return {
     id: String(file.id),
-    name: file.name ?? null,
-    mimeType: file.mimeType ?? null,
-    resourceKey: file.resourceKey ?? null,
-    modifiedTime: file.modifiedTime ?? null,
-    version: file.version ?? null,
-    appProperties: file.appProperties && typeof file.appProperties === 'object' ? file.appProperties : {},
-    webViewLink: file.webViewLink ?? null,
+    name: file.name == null ? null : String(file.name),
+    mimeType: file.mimeType == null ? null : String(file.mimeType),
+    resourceKey: file.resourceKey == null ? null : String(file.resourceKey),
+    modifiedTime: file.modifiedTime == null ? null : String(file.modifiedTime),
+    version: typeof file.version === 'string' || typeof file.version === 'number' ? file.version : null,
+    appProperties: isRecord(file.appProperties) ? file.appProperties : {},
+    webViewLink: file.webViewLink == null ? null : String(file.webViewLink),
     canEdit: typeof file.canEdit === 'boolean' ? file.canEdit : null,
   };
 }
@@ -56,7 +79,7 @@ export function hasStoredDriveStorageFile() {
   return Boolean(getStoredFile()?.id);
 }
 
-function setStoredFile(file) {
+function setStoredFile(file: unknown) {
   const record = normalizeFileRecord(file);
   if (!record) return null;
   localStorage.setItem(FILE_RECORD_KEY, JSON.stringify(record));
@@ -67,16 +90,22 @@ function clearStoredFile() {
   localStorage.removeItem(FILE_RECORD_KEY);
 }
 
-function clearStoredFileIfMatches(file) {
+function clearStoredFileIfMatches(file: DriveStorageFile | null | undefined) {
   const stored = getStoredFile();
   if (!file?.id || stored?.id === file.id) clearStoredFile();
 }
 
-function isFileNotFoundError(error) {
-  return error?.code === 'file_not_found' || error?.name === 'DriveStorageFileNotFoundError';
+function asDriveStorageError(error: unknown): DriveStorageError {
+  if (error && typeof error === 'object') return error as DriveStorageError;
+  return new Error(String(error));
 }
 
-function createLocator() {
+function isFileNotFoundError(error: unknown) {
+  const errorLike = asDriveStorageError(error);
+  return errorLike.code === 'file_not_found' || errorLike.name === 'DriveStorageFileNotFoundError';
+}
+
+function createLocator(): DriveFileLocator {
   return {
     name: FILE_NAME,
     mimeType: JSON_MIME,
@@ -84,11 +113,9 @@ function createLocator() {
   };
 }
 
-function unwrapLegacyEnvelope(data) {
+function unwrapLegacyEnvelope(data: unknown) {
   if (
-    data
-    && typeof data === 'object'
-    && !Array.isArray(data)
+    isRecord(data)
     && (data.format === 'driveStorage/v1' || data.format === 'jsonStorage/v1')
     && Object.prototype.hasOwnProperty.call(data, 'payload')
   ) {
@@ -97,20 +124,24 @@ function unwrapLegacyEnvelope(data) {
   return data;
 }
 
-function createConflictError(api, message, details = {}) {
+function createConflictError(
+  api: ExternalDriveStorageApi,
+  message: string,
+  details: DriveStorageConflictDetails = {},
+) {
   if (typeof api.DriveStorageConflictError === 'function') {
     return new api.DriveStorageConflictError(message, details);
   }
 
-  const error = new Error(message);
+  const error = new Error(message) as DriveStorageError;
   error.name = 'DriveStorageConflictError';
   error.remote = details.remote ?? null;
   error.local = details.local ?? null;
   return error;
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
+function loadScript(src: string) {
+  return new Promise<void>((resolve, reject) => {
     if (typeof document === 'undefined') {
       reject(new Error('Drive storage is browser-only'));
       return;
@@ -146,33 +177,33 @@ function loadScript(src) {
 export async function getDriveStorageApi() {
   if (typeof window === 'undefined') return null;
 
-  if (window.driveStorage) return window.driveStorage;
+  if (isDriveStorageApi(window.driveStorage)) return window.driveStorage;
 
   try {
-    if (window.parent?.driveStorage) return window.parent.driveStorage;
+    if (isDriveStorageApi(window.parent?.driveStorage)) return window.parent.driveStorage;
   } catch {
     // Cross-origin parent, ignore.
   }
 
   try {
     await loadScript(DRIVE_STORAGE_SCRIPT);
-    return window.driveStorage || null;
+    return isDriveStorageApi(window.driveStorage) ? window.driveStorage : null;
   } catch {
     return null;
   }
 }
 
-export async function createPlanGachaDriveStorage() {
+export async function createPlanGachaDriveStorage(): Promise<PlanGachaDriveStorage | null> {
   const api = await getDriveStorageApi();
-  if (!isDriveStorageApi(api)) return null;
+  if (!api) return null;
 
   const findFile = async () => {
-    const file = await api.findFile(createLocator());
+    const file = normalizeFileRecord(await api.findFile(createLocator()));
     if (file?.id) setStoredFile(file);
-    return file ? { file: normalizeFileRecord(file) } : null;
+    return file ? { file } : null;
   };
 
-  const getCurrentFile = async (file) => {
+  const getCurrentFile = async (file: DriveStorageFile | null) => {
     if (!file?.id) return file;
     try {
       return normalizeFileRecord(await api.getFile(file.id)) || file;
@@ -194,7 +225,7 @@ export async function createPlanGachaDriveStorage() {
     return null;
   };
 
-  return {
+  const storage: PlanGachaDriveStorage = {
     provider: 'google-drive',
     get available() {
       return getConfigured(api);
@@ -211,16 +242,16 @@ export async function createPlanGachaDriveStorage() {
     },
     async connect(options = {}) {
       await api.connect(options);
-      return this.status();
+      return storage.status();
     },
     async disconnect(options = {}) {
       if (options.forgetFile) clearStoredFile();
       if (typeof api.disconnect === 'function') await api.disconnect(options);
-      return this.status();
+      return storage.status();
     },
     forgetFile() {
       clearStoredFile();
-      return this.status();
+      return storage.status();
     },
     findFile,
     async create(payload = {}, options = {}) {
@@ -234,23 +265,23 @@ export async function createPlanGachaDriveStorage() {
         }
       }
 
-      const file = await api.createFile({
+      const file = normalizeFileRecord(await api.createFile({
         ...createLocator(),
         content: JSON.stringify(payload, null, 2),
-      });
+      }));
       setStoredFile(file);
-      return { file: normalizeFileRecord(file), payload };
+      return { file, payload };
     },
     async load() {
       const file = await resolveFile();
       if (!file?.id) {
-        const error = new Error('No Drive file is selected or discoverable.');
+        const error = new Error('No Drive file is selected or discoverable.') as DriveStorageError;
         error.name = 'DriveStorageError';
         error.code = 'file_not_found';
         throw error;
       }
 
-      const readPayload = async (targetFile) => {
+      const readPayload = async (targetFile: DriveStorageFile) => {
         try {
           const payload = await api.readJson(targetFile.id);
           setStoredFile(await getCurrentFile(targetFile));
@@ -272,13 +303,13 @@ export async function createPlanGachaDriveStorage() {
       }
     },
     async save(payload, options = {}) {
-      let file = await resolveFile();
+      const file = await resolveFile();
       if (!file?.id) {
-        const created = await this.create(payload, { reuseExisting: false });
+        const created = await storage.create(payload, { reuseExisting: false });
         return { ...created, skipped: false };
       }
 
-      const writePayload = async (targetFile) => {
+      const writePayload = async (targetFile: DriveStorageFile) => {
         const local = getStoredFile();
         const current = await getCurrentFile(targetFile);
         if (!options.force && local?.version && current?.version && local.version !== current.version) {
@@ -289,13 +320,13 @@ export async function createPlanGachaDriveStorage() {
         }
 
         try {
-          const updatedFile = await api.writeJson(targetFile.id, payload, {
+          const updatedFile = normalizeFileRecord(await api.writeJson(targetFile.id, payload, {
             mimeType: JSON_MIME,
             appProperties: APP_PROPERTIES,
             space: 2,
-          });
+          }));
           setStoredFile(updatedFile);
-          return { file: normalizeFileRecord(updatedFile), payload, skipped: false };
+          return { file: updatedFile, payload, skipped: false };
         } catch (error) {
           if (isFileNotFoundError(error)) clearStoredFileIfMatches(targetFile);
           throw error;
@@ -310,8 +341,11 @@ export async function createPlanGachaDriveStorage() {
         const recovered = await findFile();
         if (recovered?.file?.id) return writePayload(recovered.file);
 
-        return this.create(payload, { reuseExisting: false });
+        const created = await storage.create(payload, { reuseExisting: false });
+        return { ...created, skipped: false };
       }
     },
   };
+
+  return storage;
 }

@@ -1,8 +1,8 @@
-// @ts-nocheck
 import { getDateHardIssues } from './planning';
 import {
   getPlanWeatherLocations,
   getWeatherLocationKey,
+  type NormalizedPlan,
 } from './plan';
 import {
   buildAggregatedWeatherSnapshot,
@@ -16,8 +16,11 @@ import {
   translate,
   translateIssue,
 } from './display';
+import type { NormalizedSchedule } from './trip';
+import type { WeatherDataMap } from '../types/weatherData';
+import type { WeatherEvaluation, WeatherSnapshot } from './weather';
 
-export function getPlanWeatherSnapshot(plan, dateId, weatherData) {
+export function getPlanWeatherSnapshot(plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap) {
   const snapshots = getPlanWeatherLocations(plan)
     .map((location) => {
       const key = getWeatherLocationKey(location);
@@ -25,18 +28,25 @@ export function getPlanWeatherSnapshot(plan, dateId, weatherData) {
       const snapshot = buildWeatherSnapshot(autoDay);
       return snapshot ? { location, snapshot } : null;
     })
-    .filter(Boolean);
+    .filter((entry): entry is { location: ReturnType<typeof getPlanWeatherLocations>[number]; snapshot: WeatherSnapshot } => Boolean(entry));
 
   if (!snapshots.length) return null;
   return buildAggregatedWeatherSnapshot(snapshots);
 }
 
-export function evaluateWeather(plan, dateId, weatherData, language = DEFAULT_LANGUAGE) {
+export function evaluateWeather(plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap, language: string = DEFAULT_LANGUAGE): WeatherEvaluation {
   const snapshot = getPlanWeatherSnapshot(plan, dateId, weatherData);
   return evaluateWeatherForSnapshot(plan, snapshot, language);
 }
 
-export function getDayInsight(plan, dateId, schedule, plansById, weatherData, language = DEFAULT_LANGUAGE) {
+export function getDayInsight(
+  plan: NormalizedPlan | null | undefined,
+  dateId: string,
+  schedule: NormalizedSchedule,
+  plansById: Map<string, NormalizedPlan>,
+  weatherData: WeatherDataMap,
+  language: string = DEFAULT_LANGUAGE,
+) {
   if (!plan) {
     return {
       level: 'empty',
@@ -67,7 +77,7 @@ export function getDayInsight(plan, dateId, schedule, plansById, weatherData, la
   };
 }
 
-export function getCalendarDayState(plan, insight, language = DEFAULT_LANGUAGE) {
+export function getCalendarDayState(plan: NormalizedPlan | null | undefined, insight: { issueCount: number; level: string }, language: string = DEFAULT_LANGUAGE) {
   if (!plan) return { key: 'empty', label: '', ariaLabel: translate('assignedAriaEmpty', language) };
 
   if (insight.issueCount > 0 || ['danger', 'critical'].includes(insight.level)) {
@@ -81,6 +91,6 @@ export function getCalendarDayState(plan, insight, language = DEFAULT_LANGUAGE) 
   return { key: 'planned', label: '', ariaLabel: translate('assignedAriaPlanned', language) };
 }
 
-export function formatWeatherUpdateWarning(errors, language = DEFAULT_LANGUAGE) {
+export function formatWeatherUpdateWarning(errors: string[], language: string = DEFAULT_LANGUAGE) {
   return errors.length ? translate('partialWeatherFailed', language, { errors: errors.join(language === 'en' ? '; ' : '；') }) : '';
 }

@@ -1,6 +1,33 @@
-// @ts-nocheck
 import { Icon } from './Icon';
-import { CHECKLIST_STATUS, getChecklistStats } from '../domain/checklist';
+import { CHECKLIST_STATUS, getChecklistStats, type ChecklistGroup, type ChecklistState } from '../domain/checklist';
+import type { Dispatch, RefObject, SetStateAction } from 'react';
+import type { TranslateFn } from '../types/ui';
+
+interface ChecklistStats {
+  done: number;
+  skipped: number;
+  total: number;
+}
+
+interface ChecklistModalProps {
+  checklistDraftRef: RefObject<HTMLTextAreaElement | null>;
+  checklistEditing: boolean;
+  checklistGroups: ChecklistGroup[];
+  checklistState: ChecklistState;
+  checklistStats: ChecklistStats;
+  checklistText: string;
+  handleExportChecklist: () => void;
+  loadChecklistExample: () => void;
+  onClose: () => void;
+  openChecklistImport: () => void;
+  resetChecklistState: () => void;
+  saveChecklistText: () => void;
+  setChecklistEditing: Dispatch<SetStateAction<boolean>>;
+  startUiTransition: (callback: () => void) => void;
+  t: TranslateFn;
+  toggleChecklistDone: (id: string) => void;
+  toggleChecklistSkipped: (id: string) => void;
+}
 
 export function ChecklistModal({
   checklistDraftRef,
@@ -20,7 +47,7 @@ export function ChecklistModal({
   t,
   toggleChecklistDone,
   toggleChecklistSkipped,
-}) {
+}: ChecklistModalProps) {
   const renderChecklistItems = () => {
     if (!checklistGroups.length) return <div className="empty-state">{t('checklistEmpty')}</div>;
 

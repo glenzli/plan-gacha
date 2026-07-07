@@ -1,8 +1,19 @@
 import { CHECKLIST_STATUS } from './checklist';
-import { hasUsefulLodgingInfo } from './trip';
+import { hasUsefulLodgingInfo, type NormalizedSchedule } from './trip';
+import type { NormalizedPlan } from './plan';
+import type { DisplayTripDate } from './display';
+import type { RiskItem } from './risk';
+import type { WeatherEvaluation } from './weather';
+import type { WeatherDataMap } from '../types/weatherData';
 
 type AnyRecord = Record<string, any>;
 type Language = 'zh' | 'en' | string;
+type WeatherEvaluator = (
+  plan: NormalizedPlan,
+  dateId: string,
+  weatherData: WeatherDataMap,
+  language?: string,
+) => WeatherEvaluation;
 
 const PRIORITY_RANK: Record<string, number> = {
   must: 4,
@@ -24,12 +35,12 @@ export function planConflicts(a: AnyRecord, b: AnyRecord) {
 }
 
 export function getDateHardIssues(
-  plan: AnyRecord,
+  plan: NormalizedPlan,
   dateId: string,
-  schedule: AnyRecord,
-  plansById: Map<string, AnyRecord>,
-  weatherData: AnyRecord,
-  evaluateWeather: (plan: AnyRecord, dateId: string, weatherData: AnyRecord) => AnyRecord,
+  schedule: NormalizedSchedule,
+  plansById: Map<string, NormalizedPlan>,
+  weatherData: WeatherDataMap,
+  evaluateWeather: WeatherEvaluator,
   options: AnyRecord = {},
 ) {
   const issues = [];
@@ -43,7 +54,7 @@ export function getDateHardIssues(
     issues.push('当天已有安排');
   }
 
-  Object.entries(schedule).forEach(([otherDateId, otherEntry]: [string, any]) => {
+  Object.entries(schedule).forEach(([otherDateId, otherEntry]) => {
     if (!otherEntry?.planId || otherDateId === dateId) return;
     const otherPlan = plansById.get(otherEntry.planId);
     if (!otherPlan) return;
@@ -58,12 +69,12 @@ export function getDateHardIssues(
 }
 
 function getFeasibleDates(
-  plan: AnyRecord,
-  tripDates: AnyRecord[],
-  schedule: AnyRecord,
-  plansById: Map<string, AnyRecord>,
-  weatherData: AnyRecord,
-  evaluateWeather: (plan: AnyRecord, dateId: string, weatherData: AnyRecord) => AnyRecord,
+  plan: NormalizedPlan,
+  tripDates: DisplayTripDate[],
+  schedule: NormalizedSchedule,
+  plansById: Map<string, NormalizedPlan>,
+  weatherData: WeatherDataMap,
+  evaluateWeather: WeatherEvaluator,
 ) {
   return tripDates
     .filter((date) => getDateHardIssues(plan, date.id, schedule, plansById, weatherData, evaluateWeather).length === 0)
@@ -95,13 +106,13 @@ export function buildRiskItems({
   weatherData,
   evaluateWeather,
 }: {
-  plans: AnyRecord[];
-  tripDates: AnyRecord[];
-  schedule: AnyRecord;
-  plansById: Map<string, AnyRecord>;
-  weatherData: AnyRecord;
-  evaluateWeather: (plan: AnyRecord, dateId: string, weatherData: AnyRecord) => AnyRecord;
-}) {
+  plans: NormalizedPlan[];
+  tripDates: DisplayTripDate[];
+  schedule: NormalizedSchedule;
+  plansById: Map<string, NormalizedPlan>;
+  weatherData: WeatherDataMap;
+  evaluateWeather: WeatherEvaluator;
+}): RiskItem<NormalizedPlan>[] {
   const scheduledPlanIds = new Set(Object.values(schedule).map((entry: any) => entry.planId));
 
   const scheduledRisks = Object.entries(schedule)
@@ -115,7 +126,7 @@ export function buildRiskItems({
 
       if (!issues.length) return null;
 
-      const title = getScheduledRiskTitle(issues);
+      const title = getScheduledRiskTitle(issues as string[]);
 
       return {
         plan,
@@ -125,7 +136,7 @@ export function buildRiskItems({
         reasons: issues,
       };
     })
-    .filter(Boolean) as AnyRecord[];
+    .filter(Boolean) as RiskItem<NormalizedPlan>[];
 
   const unscheduledRisks = plans
     .filter((plan) => plan.priority === 'must' && !scheduledPlanIds.has(plan.id))
@@ -163,9 +174,9 @@ export function buildRiskItems({
         reasons: pendingBookings.map((booking: AnyRecord) => booking.title),
       };
     })
-    .filter(Boolean) as AnyRecord[];
+    .filter(Boolean) as RiskItem<NormalizedPlan>[];
 
-  return [...scheduledRisks, ...unscheduledRisks, ...bookingRisks].sort((a, b) => {
+  return [...scheduledRisks, ...unscheduledRisks as RiskItem<NormalizedPlan>[], ...bookingRisks].sort((a, b) => {
     const levelRank: Record<string, number> = { critical: 3, warning: 2, info: 1 };
     const levelDiff = levelRank[b.level] - levelRank[a.level];
     if (levelDiff) return levelDiff;
@@ -173,11 +184,16 @@ export function buildRiskItems({
   });
 }
 
-export function buildAssignmentPreview(schedule: AnyRecord, dateId: string, targetPlan: AnyRecord, plansById: Map<string, AnyRecord>) {
+export function buildAssignmentPreview(
+  schedule: NormalizedSchedule,
+  dateId: string,
+  targetPlan: NormalizedPlan,
+  plansById: Map<string, NormalizedPlan>,
+) {
   const nextSchedule = { ...schedule };
   const clearsByDate = new Map();
 
-  Object.entries(schedule).forEach(([otherDateId, entry]: [string, any]) => {
+  Object.entries(schedule).forEach(([otherDateId, entry]) => {
     if (!entry?.planId || otherDateId === dateId) return;
     const otherPlan = plansById.get(entry.planId);
     if (!otherPlan) return;

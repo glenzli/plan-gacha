@@ -1,5 +1,35 @@
-// @ts-nocheck
+import type { Dispatch, SetStateAction } from 'react';
+import type { NormalizedTripSnapshot } from '../domain/trip';
+import type { TranslateFn } from '../types/ui';
 import { Icon } from './Icon';
+
+interface TripDisplay {
+  name: string;
+  meta?: string;
+  isEmpty: boolean;
+}
+
+interface TripHeaderProps {
+  activeTripDisplay: TripDisplay;
+  activeTripId: string;
+  createNewTrip: () => void;
+  driveFeatureEnabled: boolean;
+  driveStorage: unknown;
+  getTripDisplay: (trip: Partial<NormalizedTripSnapshot>, isCurrentTrip?: boolean) => TripDisplay;
+  hasInitializedPlans: boolean;
+  onOpenDriveSync: () => void;
+  onOpenTripEditor: () => void;
+  openAiPlanner: (mode: 'replan' | 'generate') => void;
+  openChecklist: () => void;
+  openLodgingEditor: () => void;
+  setTripMenuOpen: Dispatch<SetStateAction<boolean>>;
+  switchTrip: (tripId: string) => void;
+  t: TranslateFn;
+  toggleLanguage: () => void;
+  tripMenuDisabled: boolean;
+  tripMenuOpen: boolean;
+  visibleTrips: NormalizedTripSnapshot[];
+}
 
 export function TripHeader({
   activeTripDisplay,
@@ -21,7 +51,7 @@ export function TripHeader({
   tripMenuDisabled,
   tripMenuOpen,
   visibleTrips,
-}) {
+}: TripHeaderProps) {
   return (
     <header className="trip-header">
       <div className="trip-brand">
@@ -105,7 +135,7 @@ export function TripHeader({
           >
             <Icon name="home" />
           </button>
-          {driveFeatureEnabled && driveStorage && (
+          {driveFeatureEnabled && Boolean(driveStorage) && (
             <button className="icon-btn drive-sync-btn" type="button" onClick={onOpenDriveSync} aria-label={t('driveSync')} title={t('driveSync')}>
               <Icon name="cloud" />
             </button>

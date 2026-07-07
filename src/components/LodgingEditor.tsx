@@ -1,14 +1,39 @@
-// @ts-nocheck
 import { useState } from 'react';
-import { normalizeLodgingDrafts } from '../domain/trip';
+import { normalizeLodgingDrafts, type NormalizedLodging } from '../domain/trip';
 import { getTodayId } from '../domain/date';
 import { Icon } from './Icon';
+import type { TranslateFn } from '../types/ui';
+
+type LodgingDraftInput = Record<string, any>;
+
+interface LodgingEditorDraft {
+  id: string;
+  name: string;
+  checkIn: string;
+  checkOut: string;
+  address: string;
+  note: string;
+  order: number;
+}
+
+interface LodgingEditorProps {
+  lodgings: NormalizedLodging[];
+  startDateStr: string;
+  endDateStr: string;
+  t: TranslateFn;
+  onSave: (lodgings: NormalizedLodging[]) => void;
+}
 
 function createLodgingId() {
   return `lodging-${Date.now()}-${Math.round(Math.random() * 1000)}`;
 }
 
-function createLodgingEditorDraft(lodging = {}, index = 0, startDateStr = getTodayId(), endDateStr = startDateStr) {
+function createLodgingEditorDraft(
+  lodging: LodgingDraftInput = {},
+  index = 0,
+  startDateStr = getTodayId(),
+  endDateStr = startDateStr,
+): LodgingEditorDraft {
   const location = lodging.location || {};
 
   return {
@@ -22,28 +47,28 @@ function createLodgingEditorDraft(lodging = {}, index = 0, startDateStr = getTod
   };
 }
 
-export function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }) {
+export function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }: LodgingEditorProps) {
   const [drafts, setDrafts] = useState(() => (
     lodgings.length
-      ? lodgings.map((lodging, index) => createLodgingEditorDraft(lodging, index, startDateStr, endDateStr))
+      ? lodgings.map((lodging: NormalizedLodging, index: number) => createLodgingEditorDraft(lodging, index, startDateStr, endDateStr))
       : []
   ));
 
   const addDraft = () => {
-    setDrafts((current) => [
+    setDrafts((current: LodgingEditorDraft[]) => [
       ...current,
       createLodgingEditorDraft({}, current.length, startDateStr, endDateStr),
     ]);
   };
 
-  const updateDraft = (id, field, value) => {
-    setDrafts((current) => current.map((draft) => (
+  const updateDraft = (id: string, field: keyof LodgingEditorDraft, value: string) => {
+    setDrafts((current: LodgingEditorDraft[]) => current.map((draft: LodgingEditorDraft) => (
       draft.id === id ? { ...draft, [field]: value } : draft
     )));
   };
 
-  const removeDraft = (id) => {
-    setDrafts((current) => current.filter((draft) => draft.id !== id));
+  const removeDraft = (id: string) => {
+    setDrafts((current: LodgingEditorDraft[]) => current.filter((draft: LodgingEditorDraft) => draft.id !== id));
   };
 
   const saveDrafts = () => {

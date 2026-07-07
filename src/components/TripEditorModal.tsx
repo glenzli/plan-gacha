@@ -1,9 +1,63 @@
-// @ts-nocheck
+import type { RefObject, ReactNode } from 'react';
 import { Icon } from './Icon';
 import { LodgingEditor } from './LodgingEditor';
 import { PlanEditorDetail } from './PlanEditor';
 import { TripItineraryEditorPanel } from './TripItineraryEditorPanel';
 import { TripSettingsPanel } from './TripSettingsPanel';
+import type { DisplayTripDate } from '../domain/display';
+import type { NormalizedPlan } from '../domain/plan';
+import type { NormalizedLodging } from '../domain/trip';
+import type { AiModeText, EditorTab, TranslateFn } from '../types/ui';
+
+type PlanRenderer = (plan: NormalizedPlan, options?: { readOnly?: boolean }) => ReactNode;
+
+interface TripEditorModalProps {
+  activeTripId: string;
+  aiGenerateText: AiModeText;
+  aiPlannerQuestionRef: RefObject<HTMLTextAreaElement | null>;
+  aiPlannerResultRef: RefObject<HTMLTextAreaElement | null>;
+  applyAiPlannerResult: () => void;
+  applyPlanEditDraft: (draftJson: string) => void;
+  archiveCurrentTrip: () => void;
+  batchAiOpen: boolean;
+  closePlanEditor: () => void;
+  copyBatchAiPrompt: () => void;
+  copyPlanAiPrompt: (question: string) => void;
+  deleteCurrentTrip: () => void;
+  editorPlan: NormalizedPlan | null | undefined;
+  editorPlanId: string | null;
+  editorTab: EditorTab;
+  endDateStr: string;
+  getPlanEditorDraftJson: (planId?: string) => string;
+  getPriorityLabel: (priority: string, language: string) => string;
+  handleExportState: () => void;
+  isCreatingPlan: boolean;
+  language: string;
+  loadExampleTrip: () => void;
+  lodgingSectionRef: RefObject<HTMLDivElement | null>;
+  lodgings: NormalizedLodging[];
+  normalizedPlans: NormalizedPlan[];
+  onChangeEndDate: (date: string) => void;
+  onChangeStartDate: (date: string) => void;
+  onClose: () => void;
+  onCommitTripName: (name: string) => void;
+  onOpenImport: () => void;
+  onOpenPlanEditor: (planId?: string) => void;
+  onRemovePlan: (planId: string) => void;
+  onSaveLodgings: (lodgings: NormalizedLodging[]) => void;
+  onSelectTab: (tab: EditorTab) => void;
+  onToggleBatchAi: () => void;
+  planAssignments: Map<string, string>;
+  renderArchivedTripRows: () => ReactNode;
+  renderPlanBookings: PlanRenderer;
+  renderPlanNotes: PlanRenderer;
+  renderPlanStops: PlanRenderer;
+  startDateStr: string;
+  t: TranslateFn;
+  tripDays: number;
+  tripDates: DisplayTripDate[];
+  tripName: string;
+}
 
 export function TripEditorModal({
   activeTripId,
@@ -51,7 +105,7 @@ export function TripEditorModal({
   tripDays,
   tripDates,
   tripName,
-}) {
+}: TripEditorModalProps) {
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div

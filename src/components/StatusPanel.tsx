@@ -2,13 +2,10 @@ import { Icon } from './Icon';
 import { RiskGroup } from './RiskPanels';
 import type { RiskGroup as RiskGroupData } from '../domain/risk';
 import type { TranslateFn, VoidFn } from '../types/ui';
+import type { WeatherDataMap } from '../types/weatherData';
 
 interface WeatherOverview {
   summary: string;
-}
-
-interface WeatherSourceEntry {
-  label?: string;
 }
 
 interface StatusPanelProps {
@@ -21,7 +18,7 @@ interface StatusPanelProps {
   weatherLoading: boolean;
   weatherOverview: WeatherOverview;
   weatherError: string;
-  weatherData: Record<string | symbol, WeatherSourceEntry>;
+  weatherData: WeatherDataMap;
 }
 
 export function StatusPanel({
@@ -90,7 +87,7 @@ export function StatusPanel({
             </summary>
             <div className="weather-source-list">
               {weatherEntries.map(([key, value]) => (
-                <span key={key}>{value.label || key}</span>
+                <span key={key}>{String(value.label || key)}</span>
               ))}
             </div>
           </details>

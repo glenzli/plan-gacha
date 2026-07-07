@@ -1,11 +1,10 @@
-// @ts-nocheck
 export interface ImageBlobResult {
   blob: Blob;
   extension: 'png' | 'svg';
   mimeType: 'image/png' | 'image/svg+xml';
 }
 
-export function sanitizeFileNamePart(value, fallback = 'plan-gacha') {
+export function sanitizeFileNamePart(value: unknown, fallback = 'plan-gacha') {
   const normalized = String(value || fallback)
     .trim()
     .replace(/[\\/:*?"<>|]/g, '-')
@@ -16,7 +15,7 @@ export function sanitizeFileNamePart(value, fallback = 'plan-gacha') {
   return normalized || fallback;
 }
 
-export function downloadBlob(blob, fileName) {
+export function downloadBlob(blob: Blob, fileName: string) {
   const url = URL.createObjectURL(blob);
   try {
     const link = document.createElement('a');
@@ -72,7 +71,7 @@ function getReadableStyleText() {
   `;
 }
 
-function blobFromDataUrl(dataUrl) {
+function blobFromDataUrl(dataUrl: string) {
   const [header, data] = dataUrl.split(',');
   const mimeType = header.match(/data:([^;]+)/)?.[1] || 'application/octet-stream';
   const binary = atob(data || '');
@@ -83,8 +82,8 @@ function blobFromDataUrl(dataUrl) {
   return new Blob([bytes], { type: mimeType });
 }
 
-async function canvasToPngBlob(canvas) {
-  const blob = await new Promise((resolve) => {
+async function canvasToPngBlob(canvas: HTMLCanvasElement) {
+  const blob = await new Promise<Blob | null>((resolve) => {
     canvas.toBlob((result) => resolve(result), 'image/png');
   });
 
@@ -92,7 +91,7 @@ async function canvasToPngBlob(canvas) {
   return blobFromDataUrl(canvas.toDataURL('image/png'));
 }
 
-export async function renderElementToImageBlob(element): Promise<ImageBlobResult> {
+export async function renderElementToImageBlob(element: HTMLElement): Promise<ImageBlobResult> {
   if (!element) throw new Error('missing_element');
 
   const rect = element.getBoundingClientRect();
@@ -103,8 +102,8 @@ export async function renderElementToImageBlob(element): Promise<ImageBlobResult
     await document.fonts.ready.catch(() => {});
   }
 
-  const clone = element.cloneNode(true);
-  clone.querySelectorAll('[data-screenshot-exclude="true"], .stop-location-actions').forEach((node) => node.remove());
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll('[data-screenshot-exclude="true"], .stop-location-actions').forEach((node: Element) => node.remove());
   clone.classList.add('screenshot-export-card');
   clone.style.width = `${width}px`;
 
@@ -153,6 +152,7 @@ export async function renderElementToImageBlob(element): Promise<ImageBlobResult
     canvas.width = Math.round(svgWidth * scale);
     canvas.height = Math.round(svgHeight * scale);
     const context = canvas.getContext('2d');
+    if (!context) throw new Error('canvas_context_unavailable');
     context.scale(scale, scale);
     context.drawImage(image, 0, 0, svgWidth, svgHeight);
 
@@ -166,22 +166,25 @@ export async function renderElementToImageBlob(element): Promise<ImageBlobResult
 
 export function shouldUseNativeImageShare() {
   if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  const nativeShare = (navigator as Navigator & { share?: unknown }).share;
   const isTouchPrimary = window.matchMedia?.('(pointer: coarse)').matches;
-  return Boolean(navigator.share && (navigator.maxTouchPoints > 0 || isTouchPrimary));
+  return Boolean(typeof nativeShare === 'function' && (navigator.maxTouchPoints > 0 || isTouchPrimary));
 }
 
-export async function copyImageBlobToClipboard(blob) {
+export async function copyImageBlobToClipboard(blob?: Blob | null) {
   if (
     blob?.type !== 'image/png'
-    || typeof ClipboardItem !== 'function'
+    || typeof window === 'undefined'
+    || !('ClipboardItem' in window)
     || !navigator.clipboard?.write
   ) {
     return false;
   }
 
   try {
+    const ClipboardItemCtor = window.ClipboardItem;
     await navigator.clipboard.write([
-      new ClipboardItem({ [blob.type]: blob }),
+      new ClipboardItemCtor({ [blob.type]: blob }),
     ]);
     return true;
   } catch (error) {

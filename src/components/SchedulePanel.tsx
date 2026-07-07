@@ -1,13 +1,24 @@
-// @ts-nocheck
 import { Fragment } from 'react';
+import type { RefObject, ReactNode } from 'react';
 import { MobileRiskPanel } from './RiskPanels';
 import { WeatherIcon } from './PlanContent';
+import type { DisplayTripDate } from '../domain/display';
+import type { NormalizedPlan } from '../domain/plan';
+import type { NormalizedSchedule } from '../domain/trip';
+import type { RiskGroup } from '../domain/risk';
+import type { TranslateFn } from '../types/ui';
+import type { WeatherDataMap } from '../types/weatherData';
 
 function MobileDayWorkspace({
   availableCandidateCount,
   renderCandidateGroups,
   selectedDate,
   t,
+}: {
+  availableCandidateCount: number;
+  renderCandidateGroups: (gridClassName?: string) => ReactNode;
+  selectedDate: DisplayTripDate | undefined;
+  t: TranslateFn;
 }) {
   return (
     <div className="mobile-workspace">
@@ -48,6 +59,35 @@ export function SchedulePanel({
   translateRiskTitle,
   tripDates,
   weatherData,
+}: {
+  availableCandidateCount: number;
+  dayTileRefs: RefObject<Map<string, HTMLButtonElement | null>>;
+  formatMiniDate: (dateId: string) => string;
+  getCalendarDayState: (plan: NormalizedPlan | null | undefined, insight: any, language: string) => { key: string; ariaLabel: string; label?: string };
+  getDayInsight: (
+    plan: NormalizedPlan | null | undefined,
+    dateId: string,
+    schedule: NormalizedSchedule,
+    plansById: Map<string, NormalizedPlan>,
+    weatherData: WeatherDataMap,
+    language: string,
+  ) => any;
+  getPriorityLabel: (priority: string, language: string) => string;
+  language: string;
+  mobileRisksOpen: boolean;
+  onEditLodging: () => void;
+  onToggleMobileRisks: () => void;
+  plansById: Map<string, NormalizedPlan>;
+  renderCandidateGroups: (gridClassName?: string) => ReactNode;
+  renderCurrentPlanCard: (className: string) => ReactNode;
+  riskGroups: RiskGroup[];
+  schedule: NormalizedSchedule;
+  selectScheduleDate: (dateId: string, options?: { scroll?: boolean }) => void;
+  selectedDate: DisplayTripDate | undefined;
+  t: TranslateFn;
+  translateRiskTitle: (title: string, language: string) => string;
+  tripDates: DisplayTripDate[];
+  weatherData: WeatherDataMap;
 }) {
   return (
     <aside className="side-panel schedule-panel">

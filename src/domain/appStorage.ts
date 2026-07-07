@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   isCompatibleAppSchemaVersion,
 } from './sync';
@@ -14,12 +13,14 @@ import {
 import {
   normalizeTripSnapshot,
   pruneEmptyTripDrafts,
+  type NormalizedTripSnapshot,
 } from './trip';
 import {
   DEFAULT_LANGUAGE,
   getSmartSelectedDate,
 } from './display';
 import { getTodayId } from './date';
+import type { WeatherDataMap } from '../types/weatherData';
 
 export const STORAGE_KEYS = {
   schemaVersion: 'pg_schemaVersion',
@@ -31,7 +32,22 @@ export const STORAGE_KEYS = {
   driveAutoSync: 'pg_driveAutoSync',
 };
 
-export function safeJsonRead(key, fallback) {
+export interface InitialAppState {
+  trips: NormalizedTripSnapshot[];
+  activeTripId: string;
+  tripName: string;
+  startDate: string;
+  tripDays: number;
+  plans: NormalizedTripSnapshot['plans'];
+  schedule: NormalizedTripSnapshot['schedule'];
+  lodgings: NormalizedTripSnapshot['lodgings'];
+  selectedDate: string;
+  weatherData: WeatherDataMap;
+  checklistText: string;
+  checklistState: NormalizedTripSnapshot['checklistState'];
+}
+
+export function safeJsonRead<T>(key: string, fallback: T): T {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
@@ -40,11 +56,11 @@ export function safeJsonRead(key, fallback) {
   }
 }
 
-export function loadInitialState() {
+export function loadInitialState(): InitialAppState {
   const currentVersion = localStorage.getItem(STORAGE_KEYS.schemaVersion);
-  const storedTrips = safeJsonRead(STORAGE_KEYS.trips, null);
+  const storedTrips = safeJsonRead<unknown>(STORAGE_KEYS.trips, null);
   const loadedTrips = isCompatibleAppSchemaVersion(currentVersion) && Array.isArray(storedTrips) && storedTrips.length > 0
-    ? storedTrips.map(normalizeTripSnapshot)
+    ? storedTrips.map((trip, index) => normalizeTripSnapshot(trip, index))
     : [createEmptyTripSnapshot('新旅行计划', getTodayId(), 'trip-default')];
 
   const requestedActiveTripId = localStorage.getItem(STORAGE_KEYS.currentTrip) || loadedTrips[0].id;
@@ -54,8 +70,8 @@ export function loadInitialState() {
   const visibleTrips = trips.filter((trip) => !trip.archived);
   const activeTrip = visibleTrips.find((trip) => trip.id === loadedActiveTrip.id) || visibleTrips[0] || trips[0];
   const storedChecklistText = localStorage.getItem(STORAGE_KEYS.checklistText);
-  const storedChecklistState = safeJsonRead(STORAGE_KEYS.checklistState, null);
-  const storedWeatherCache = safeJsonRead(STORAGE_KEYS.weatherCache, {});
+  const storedChecklistState = safeJsonRead<unknown>(STORAGE_KEYS.checklistState, null);
+  const storedWeatherCache = safeJsonRead<WeatherDataMap>(STORAGE_KEYS.weatherCache, {});
   const loadedChecklistText = storedChecklistText ?? activeTrip.checklistText;
   const loadedChecklistState = storedChecklistState ?? activeTrip.checklistState;
   const nextChecklistText = isUntouchedExampleChecklist(loadedChecklistText, loadedChecklistState)
@@ -85,19 +101,19 @@ export function loadInitialState() {
   };
 }
 
-export function parseImportJson(text) {
+export function parseImportJson(text: string) {
   const trimmed = text.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
   return JSON.parse(fenced ? fenced[1].trim() : trimmed);
 }
 
-export function getSinglePlanPayload(parsed) {
+export function getSinglePlanPayload(parsed: any) {
   if (Array.isArray(parsed?.plans)) return parsed.plans[0] || null;
   if (parsed?.plan && typeof parsed.plan === 'object' && !Array.isArray(parsed.plan)) return parsed.plan;
   return parsed;
 }
 
-export async function readImportFileText(file) {
+export async function readImportFileText(file: File | null | undefined) {
   if (!file) return '';
   return file.text();
 }

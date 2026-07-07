@@ -4,7 +4,7 @@ import en from './locales/en.json';
 import zh from './locales/zh.json';
 
 const urlLanguage = new URLSearchParams(window.location.search).get('lang');
-const initialLanguage = ['zh', 'en'].includes(urlLanguage) ? urlLanguage : 'zh';
+const initialLanguage: 'zh' | 'en' = urlLanguage === 'en' || urlLanguage === 'zh' ? urlLanguage : 'zh';
 
 i18n
   .use(initReactI18next)

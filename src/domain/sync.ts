@@ -19,6 +19,15 @@ export const COMPATIBLE_APP_SCHEMA_VERSIONS = new Set([APP_SCHEMA_VERSION, '13']
 type AnyRecord = Record<string, any>;
 type Language = 'zh' | 'en' | string;
 
+export interface AppSnapshot {
+  appSchemaVersion: string;
+  snapshotVersion: number;
+  activeTripId: string;
+  trips: AnyRecord[];
+  checklistText: string;
+  checklistState: AnyRecord;
+}
+
 export interface SyncMergeError extends Error {
   code: string;
   details: AnyRecord;

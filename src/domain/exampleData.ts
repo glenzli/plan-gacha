@@ -278,6 +278,8 @@ export function createEmptyTripSnapshot(name = '新旅行计划', startDate = ge
     plans: [],
     schedule: {},
     lodgings: [],
+    checklistText: '',
+    checklistState: {},
     archived: false,
   };
 }

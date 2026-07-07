@@ -1,15 +1,36 @@
-// @ts-nocheck
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { STORAGE_KEYS } from '../domain/appStorage';
 import { formatWeatherUpdateWarning } from '../domain/dayInsight';
-import { getPlanWeatherLocations } from '../domain/plan';
+import { getPlanWeatherLocations, type NormalizedPlan } from '../domain/plan';
 import {
   WEATHER_CACHE_HIT_KEY,
   WEATHER_ERRORS_KEY,
   fetchWeatherForPlans,
 } from '../domain/weatherService';
+import type { DisplayTripDate } from '../domain/display';
+import type { TranslateFn } from '../types/ui';
+import type { WeatherDataMap } from '../types/weatherData';
 
 const WEATHER_BATCH_TIMEOUT_MS = 60000;
+
+type WeatherFetchResult = WeatherDataMap & {
+  [WEATHER_ERRORS_KEY]?: string[];
+  [WEATHER_CACHE_HIT_KEY]?: boolean;
+};
+
+interface UseWeatherSyncOptions {
+  initialWeatherData: WeatherDataMap;
+  language: string;
+  normalizedPlans: NormalizedPlan[];
+  notify: (message: string) => void;
+  startDateStr: string;
+  t: TranslateFn;
+  tripDates: DisplayTripDate[];
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export function useWeatherSync({
   initialWeatherData,
@@ -19,12 +40,12 @@ export function useWeatherSync({
   startDateStr,
   t,
   tripDates,
-}) {
-  const [weatherData, setWeatherData] = useState(initialWeatherData);
+}: UseWeatherSyncOptions) {
+  const [weatherData, setWeatherData] = useState<WeatherDataMap>(initialWeatherData);
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState('');
   const autoWeatherKeyRef = useRef('');
-  const weatherDataRef = useRef(initialWeatherData);
+  const weatherDataRef = useRef<WeatherDataMap>(initialWeatherData);
 
   useEffect(() => {
     weatherDataRef.current = weatherData;
@@ -51,7 +72,7 @@ export function useWeatherSync({
         tripDates,
         startDateStr,
         weatherDataRef.current,
-      );
+      ) as WeatherFetchResult;
       if (!timedOut) {
         setWeatherData(nextWeatherData);
         const warning = formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || [], language);
@@ -64,8 +85,9 @@ export function useWeatherSync({
       }
     } catch (error) {
       if (!timedOut) {
-        setWeatherError(error.message);
-        notify(error.message);
+        const message = getErrorMessage(error);
+        setWeatherError(message);
+        notify(message);
       }
     } finally {
       window.clearTimeout(timeoutId);
@@ -107,12 +129,13 @@ export function useWeatherSync({
     fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherDataRef.current)
       .then((nextWeatherData) => {
         if (!cancelled && !timedOut) {
-          setWeatherData(nextWeatherData);
-          setWeatherError(formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || [], language));
+          const weatherResult = nextWeatherData as WeatherFetchResult;
+          setWeatherData(weatherResult);
+          setWeatherError(formatWeatherUpdateWarning(weatherResult[WEATHER_ERRORS_KEY] || [], language));
         }
       })
       .catch((error) => {
-        if (!cancelled && !timedOut) setWeatherError(t('autoWeatherFailed', { message: error.message }));
+        if (!cancelled && !timedOut) setWeatherError(t('autoWeatherFailed', { message: getErrorMessage(error) }));
       })
       .finally(() => {
         settled = true;

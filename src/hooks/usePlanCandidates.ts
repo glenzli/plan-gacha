@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useMemo } from 'react';
 import {
   buildAssignmentPreview,
@@ -10,7 +9,34 @@ import {
   getWeatherScore,
 } from '../domain/planning';
 import { evaluateWeather } from '../domain/dayInsight';
-import { uniq } from '../domain/display';
+import { uniq, type DisplayTripDate } from '../domain/display';
+import type { NormalizedPlan } from '../domain/plan';
+import type { RiskItem } from '../domain/risk';
+import type { NormalizedSchedule } from '../domain/trip';
+import type { PlanCandidate } from '../types/candidates';
+import type { TranslateFn } from '../types/ui';
+import type { WeatherDataMap } from '../types/weatherData';
+
+interface UsePlanCandidatesOptions {
+  aiPlannerOpen: boolean;
+  archivedViewTripId: string | null;
+  checklistImportOpen: boolean;
+  checklistOpen: boolean;
+  drivePanelOpen: boolean;
+  editorOpen: boolean;
+  importModalOpen: boolean;
+  language: string;
+  normalizedPlans: NormalizedPlan[];
+  planAssignments: Map<string, string>;
+  plansById: Map<string, NormalizedPlan>;
+  riskItems: RiskItem<NormalizedPlan>[];
+  schedule: NormalizedSchedule;
+  selectedDate: DisplayTripDate | undefined;
+  selectedPlan: NormalizedPlan | null | undefined;
+  t: TranslateFn;
+  tripDates: DisplayTripDate[];
+  weatherData: WeatherDataMap;
+}
 
 export function usePlanCandidates({
   aiPlannerOpen,
@@ -31,7 +57,7 @@ export function usePlanCandidates({
   t,
   tripDates,
   weatherData,
-}) {
+}: UsePlanCandidatesOptions) {
   const candidates = useMemo(() => {
     if (
       !selectedDate
@@ -43,14 +69,14 @@ export function usePlanCandidates({
       || drivePanelOpen
       || archivedViewTripId
     ) {
-      return [];
+      return [] as PlanCandidate[];
     }
     const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
 
     return normalizedPlans
       .map((plan) => {
-        const hardReasons = [];
-        const notes = [];
+        const hardReasons: string[] = [];
+        const notes: string[] = [];
         const isCurrent = selectedPlan?.id === plan.id;
         const assignedDateId = planAssignments.get(plan.id) || '';
         const weather = evaluateWeather(plan, selectedDate.id, weatherData, language);
@@ -85,7 +111,7 @@ export function usePlanCandidates({
           assignedDateId,
           weather,
           weatherOverride: weather.level === 'blocked',
-        };
+        } satisfies PlanCandidate;
       })
       .sort((a, b) => {
         if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
@@ -115,9 +141,9 @@ export function usePlanCandidates({
 
   return useMemo(() => {
     const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
-    const readyCandidates = [];
-    const scheduled = [];
-    const unavailable = [];
+    const readyCandidates: PlanCandidate[] = [];
+    const scheduled: PlanCandidate[] = [];
+    const unavailable: PlanCandidate[] = [];
 
     candidates.forEach((candidate) => {
       if (candidate.isCurrent) return;

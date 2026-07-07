@@ -1,33 +1,39 @@
-// @ts-nocheck
-import appI18n from '../i18n.js';
+import appI18n from '../i18n';
 import { addDays, getTodayId, parseDateId } from './date';
 import {
   BOOKING_TYPE_VALUES,
   toArray,
+  type NormalizedPlan,
+  type PlanBooking,
 } from './plan';
 import { clampTripDays } from './trip';
 
 export const DEFAULT_LANGUAGE = 'zh';
-export const SUPPORTED_LANGUAGES = ['zh', 'en'];
+export const SUPPORTED_LANGUAGES = ['zh', 'en'] as const;
+export type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
+type TranslationVars = Record<string, unknown>;
 
-export function normalizeLanguage(value) {
-  return SUPPORTED_LANGUAGES.includes(value) ? value : DEFAULT_LANGUAGE;
+export function normalizeLanguage(value: unknown): SupportedLanguage {
+  return typeof value === 'string' && (SUPPORTED_LANGUAGES as readonly string[]).includes(value)
+    ? value as SupportedLanguage
+    : DEFAULT_LANGUAGE;
 }
 
-export function getLocale(language) {
+export function getLocale(language: string = DEFAULT_LANGUAGE) {
   return language === 'en' ? 'en-US' : 'zh-CN';
 }
 
-export function translate(key, language = DEFAULT_LANGUAGE, vars = {}) {
+export function translate(key: string, language: string = DEFAULT_LANGUAGE, vars: TranslationVars = {}) {
   return appI18n.getFixedT(normalizeLanguage(language))(key, vars);
 }
 
-export function getPriorityLabel(priority, language = DEFAULT_LANGUAGE) {
+export function getPriorityLabel(priority: string, language: string = DEFAULT_LANGUAGE) {
   return translate(`priority.${priority}`, language, { defaultValue: priority });
 }
 
-export function getBookingTypeMeta(type, language = DEFAULT_LANGUAGE) {
-  const bookingType = BOOKING_TYPE_VALUES.has(type) ? type : 'reservation';
+export function getBookingTypeMeta(type: unknown, language: string = DEFAULT_LANGUAGE) {
+  const normalizedType = String(type || '');
+  const bookingType = BOOKING_TYPE_VALUES.has(normalizedType) ? normalizedType : 'reservation';
   return {
     pending: translate(`bookingTypes.${bookingType}.pending`, language),
     done: translate(`bookingTypes.${bookingType}.done`, language),
@@ -36,8 +42,8 @@ export function getBookingTypeMeta(type, language = DEFAULT_LANGUAGE) {
   };
 }
 
-export function getPlanBookingBadge(plan, language = DEFAULT_LANGUAGE) {
-  const actionableBookings = toArray(plan?.bookings).filter((booking) => booking.status !== 'none');
+export function getPlanBookingBadge(plan: Pick<NormalizedPlan, 'bookings'> | null | undefined, language: string = DEFAULT_LANGUAGE) {
+  const actionableBookings = toArray<PlanBooking>(plan?.bookings).filter((booking) => booking.status !== 'none');
   if (!actionableBookings.length) return null;
 
   const pendingBookings = actionableBookings.filter((booking) => booking.status !== 'done');
@@ -58,7 +64,7 @@ export function getPlanBookingBadge(plan, language = DEFAULT_LANGUAGE) {
   };
 }
 
-export function getAiModeText(mode, language = DEFAULT_LANGUAGE) {
+export function getAiModeText(mode: string, language: string = DEFAULT_LANGUAGE) {
   const modeKey = ['replan', 'generate'].includes(mode) ? mode : 'replan';
   return {
     label: translate(`aiPlannerModes.${modeKey}.label`, language),
@@ -67,8 +73,8 @@ export function getAiModeText(mode, language = DEFAULT_LANGUAGE) {
   };
 }
 
-export function translateIssue(issue, language = DEFAULT_LANGUAGE) {
-  const exactMap = {
+export function translateIssue(issue: string, language: string = DEFAULT_LANGUAGE) {
+  const exactMap: Record<string, string> = {
     不在可去日期: 'dateNotAllowed',
     '当天不可用/闭馆': 'closedOrUnavailable',
     当天已有安排: 'dayOccupied',
@@ -91,8 +97,8 @@ export function translateIssue(issue, language = DEFAULT_LANGUAGE) {
   return issue;
 }
 
-export function translateRiskTitle(title, language = DEFAULT_LANGUAGE) {
-  const titleMap = {
+export function translateRiskTitle(title: string, language: string = DEFAULT_LANGUAGE) {
+  const titleMap: Record<string, string> = {
     必去计划没有可安排日期: 'mustNoAvailableDate',
     必去未排: 'mustUnscheduled',
     '预约/订票未完成': 'bookingIncomplete',
@@ -109,14 +115,14 @@ export function translateRiskTitle(title, language = DEFAULT_LANGUAGE) {
   return titleMap[title] ? translate(titleMap[title], language) : title;
 }
 
-export function getInclusiveDateSpan(startDateId, endDateId) {
+export function getInclusiveDateSpan(startDateId: string, endDateId: string) {
   const start = parseDateId(startDateId);
   const end = parseDateId(endDateId);
   const diff = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
   return clampTripDays(diff);
 }
 
-export function formatTripRange(startDateStr, tripDays, language = DEFAULT_LANGUAGE) {
+export function formatTripRange(startDateStr: string, tripDays: number, language: string = DEFAULT_LANGUAGE) {
   const start = parseDateId(startDateStr);
   const endId = addDays(startDateStr, Math.max(tripDays - 1, 0));
   const end = parseDateId(endId);
@@ -126,7 +132,13 @@ export function formatTripRange(startDateStr, tripDays, language = DEFAULT_LANGU
   return `${startText} - ${endText}`;
 }
 
-export function createTripDates(startDateStr, tripDays, language = DEFAULT_LANGUAGE) {
+export interface DisplayTripDate {
+  id: string;
+  display: string;
+  dayNumber: number;
+}
+
+export function createTripDates(startDateStr: string, tripDays: number, language: string = DEFAULT_LANGUAGE): DisplayTripDate[] {
   if (!startDateStr || tripDays < 1) return [];
 
   return Array.from({ length: tripDays }, (_, index) => {
@@ -141,12 +153,12 @@ export function createTripDates(startDateStr, tripDays, language = DEFAULT_LANGU
   });
 }
 
-export function formatMiniDate(dateId) {
+export function formatMiniDate(dateId: string) {
   const date = parseDateId(dateId);
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-export function getSmartSelectedDate(startDate, tripDays) {
+export function getSmartSelectedDate(startDate: string, tripDays: number) {
   const tripDateIds = createTripDates(startDate, tripDays).map((date) => date.id);
   const today = getTodayId();
 
@@ -154,6 +166,6 @@ export function getSmartSelectedDate(startDate, tripDays) {
   return tripDateIds[0] || startDate;
 }
 
-export function uniq(values) {
+export function uniq<T>(values: T[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }

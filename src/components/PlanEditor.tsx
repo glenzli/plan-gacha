@@ -1,7 +1,33 @@
-// @ts-nocheck
 import { memo, useState } from 'react';
+import type { ReactNode } from 'react';
+import type { NormalizedPlan } from '../domain/plan';
+import type { TranslateFn } from '../types/ui';
 
-function PlanRawJsonEditor({ value, t, onChange }) {
+type PlanRenderer = (plan: NormalizedPlan, options?: { readOnly?: boolean }) => ReactNode;
+
+interface PlanRawJsonEditorProps {
+  value: string;
+  t: TranslateFn;
+  onChange: (value: string) => void;
+}
+
+interface PlanEditorPreviewProps {
+  isCreatingPlan: boolean;
+  editorPlan: NormalizedPlan | null | undefined;
+  t: TranslateFn;
+  renderPlanStops: PlanRenderer;
+  renderPlanBookings: PlanRenderer;
+  renderPlanNotes: PlanRenderer;
+}
+
+interface PlanEditorDetailProps extends PlanEditorPreviewProps {
+  initialDraftJson: string;
+  onBack: () => void;
+  onCopyPrompt: (question: string) => void;
+  onApplyDraft: (draftJson: string) => void;
+}
+
+function PlanRawJsonEditor({ value, t, onChange }: PlanRawJsonEditorProps) {
   return (
     <div className="plan-raw-json-editor">
       <div className="panel-header compact">
@@ -28,7 +54,7 @@ const PlanEditorPreview = memo(function PlanEditorPreview({
   renderPlanStops,
   renderPlanBookings,
   renderPlanNotes,
-}) {
+}: PlanEditorPreviewProps) {
   return (
     <section className="plan-editor-preview">
       <div className="plan-editor-current">
@@ -61,15 +87,15 @@ export function PlanEditorDetail({
   renderPlanStops,
   renderPlanBookings,
   renderPlanNotes,
-}) {
-  const [planEditorMode, setPlanEditorMode] = useState('ai');
+}: PlanEditorDetailProps) {
+  const [planEditorMode, setPlanEditorMode] = useState<'ai' | 'json'>('ai');
   const [questionDraft, setQuestionDraft] = useState('');
   const [manualDraftJson, setManualDraftJson] = useState(initialDraftJson || '');
   const [aiDraftJson, setAiDraftJson] = useState('');
   const hasAiDraft = aiDraftJson.trim().length > 0;
   const effectiveDraftJson = hasAiDraft ? aiDraftJson : manualDraftJson;
 
-  const updateEffectiveDraftJson = (nextDraft) => {
+  const updateEffectiveDraftJson = (nextDraft: string) => {
     if (hasAiDraft) {
       setAiDraftJson(nextDraft);
     } else {

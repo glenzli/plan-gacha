@@ -1,5 +1,4 @@
-// @ts-nocheck
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiPlannerModal } from './components/AiPlannerModal';
 import { ArchivedTripRows } from './components/ArchivedTripRows';
@@ -23,8 +22,8 @@ import { SchedulePanel } from './components/SchedulePanel';
 import { StatusPanel } from './components/StatusPanel';
 import { TripHeader } from './components/TripHeader';
 import { TripEditorModal } from './components/TripEditorModal';
-import { createPlanGachaDriveStorage, hasStoredDriveStorageFile } from './driveStorageAdapter.js';
 import { useChecklistController } from './hooks/useChecklistController';
+import { useDriveSyncController, type DriveSyncCallbacks } from './hooks/useDriveSyncController';
 import { usePlanImageShare } from './hooks/usePlanImageShare';
 import { usePlanCandidates } from './hooks/usePlanCandidates';
 import { useToast } from './hooks/useToast';
@@ -44,8 +43,7 @@ import {
 } from './domain/exampleData';
 import {
   APP_SCHEMA_VERSION,
-  mergeAppSnapshots,
-  remoteSnapshotMatchesLocal,
+  type AppSnapshot,
 } from './domain/sync';
 import {
   buildAssignmentPreview,
@@ -64,6 +62,11 @@ import { addDays, getTodayId } from './domain/date';
 import {
   BOOKING_STATUS_VALUES,
   BOOKING_TYPE_VALUES,
+  type BookingStatus,
+  type NormalizedPlan,
+  type PlanBooking,
+  type PlanReminder,
+  type PlanStop,
   normalizePlan,
   toArray,
 } from './domain/plan';
@@ -75,6 +78,9 @@ import {
   normalizeTripSnapshot,
   pruneEmptyTripDrafts,
   stripChecklistFromTripSnapshot,
+  type NormalizedLodging,
+  type NormalizedSchedule,
+  type NormalizedTripSnapshot,
 } from './domain/trip';
 import {
   DEFAULT_LANGUAGE,
@@ -91,6 +97,7 @@ import {
   translate,
   translateIssue,
   translateRiskTitle,
+  type DisplayTripDate,
 } from './domain/display';
 import {
   STORAGE_KEYS,
@@ -108,11 +115,9 @@ import {
   downloadBlob,
   sanitizeFileNamePart,
 } from './domain/browserExport';
+import type { RiskItem } from './domain/risk';
+import type { EditorTab, TranslateFn } from './types/ui';
 
-const DRIVE_AUTO_SYNC_MS = 5 * 60 * 1000;
-const DRIVE_STORAGE_EXPOSURE = normalizeDriveStorageExposure(
-  import.meta.env.VITE_DRIVE_STORAGE_EXPOSURE || 'url',
-);
 const NEW_PLAN_EDITOR_ID = '__new_plan__';
 const WEATHER_RULE_VALUES = new Set(Object.keys(WEATHER_LABELS.zh).filter((key) => key !== 'unknown'));
 
@@ -123,11 +128,25 @@ const PRIORITY_META = {
   optional: { rank: 1 },
 };
 
-function normalizeDriveStorageExposure(value) {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (['0', 'false', 'no', 'none'].includes(normalized)) return 'off';
-  if (normalized === 'off') return 'off';
-  return 'url';
+type AiPlannerMode = 'replan' | 'generate';
+type AnyRecord = Record<string, any>;
+
+interface PendingAssignment {
+  clears: unknown[];
+  nextSchedule: NormalizedSchedule;
+  nextRisks: RiskItem<NormalizedPlan>[];
+  targetPlan: NormalizedPlan;
+  dateId: string;
+}
+
+interface TripDisplay {
+  isEmpty: boolean;
+  name: string;
+  meta: string;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function getInitialLanguage() {
@@ -139,64 +158,60 @@ function getInitialLanguage() {
   }
 }
 
-function getDriveStorageEnabledFromUrl() {
-  try {
-    const params = new URLSearchParams(window.location.search);
-    return params.get('sync') === '1';
-  } catch {
-    return false;
-  }
-}
-
-function getDriveStorageFeatureEnabled() {
-  if (DRIVE_STORAGE_EXPOSURE === 'off') return false;
-  return getDriveStorageEnabledFromUrl() || hasStoredDriveStorageFile();
-}
-
 function App() {
   const { i18n } = useTranslation();
   const [, startUiTransition] = useTransition();
-  const [language, setLanguage] = useState(() => normalizeLanguage(i18n.language || getInitialLanguage()));
+  const [language, setLanguage] = useState<string>(() => normalizeLanguage(i18n.language || getInitialLanguage()));
   const [initial] = useState(loadInitialState);
   const [trips, setTrips] = useState(initial.trips);
   const [activeTripId, setActiveTripId] = useState(initial.activeTripId);
   const [tripName, setTripName] = useState(initial.tripName);
   const [startDateStr, setStartDateStr] = useState(initial.startDate);
   const [tripDays, setTripDays] = useState(initial.tripDays);
-  const [plans, setPlans] = useState(initial.plans);
-  const [schedule, setSchedule] = useState(initial.schedule);
-  const [lodgings, setLodgings] = useState(initial.lodgings);
+  const [plans, setPlans] = useState<any[]>(initial.plans);
+  const [schedule, setSchedule] = useState<NormalizedSchedule>(initial.schedule);
+  const [lodgings, setLodgings] = useState<NormalizedLodging[]>(initial.lodgings);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [editorPlanId, setEditorPlanId] = useState(null);
-  const [editorTab, setEditorTab] = useState('itinerary');
+  const [editorPlanId, setEditorPlanId] = useState<string | null>(null);
+  const [editorTab, setEditorTab] = useState<EditorTab>('itinerary');
   const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
-  const [aiPlannerMode, setAiPlannerMode] = useState('replan');
+  const [aiPlannerMode, setAiPlannerMode] = useState<AiPlannerMode>('replan');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
-  const [archivedViewTripId, setArchivedViewTripId] = useState(null);
-  const [pendingAssignment, setPendingAssignment] = useState(null);
-  const [driveFeatureEnabled, setDriveFeatureEnabled] = useState(getDriveStorageFeatureEnabled);
-  const [driveStorage, setDriveStorage] = useState(null);
-  const [driveStatus, setDriveStatus] = useState(null);
-  const [driveBusy, setDriveBusy] = useState('');
-  const [driveConflict, setDriveConflict] = useState(false);
-  const [drivePanelOpen, setDrivePanelOpen] = useState(false);
-  const [driveAutoSync, setDriveAutoSync] = useState(() => localStorage.getItem(STORAGE_KEYS.driveAutoSync) === 'true');
+  const [archivedViewTripId, setArchivedViewTripId] = useState<string | null>(null);
+  const [pendingAssignment, setPendingAssignment] = useState<PendingAssignment | null>(null);
 
-  const dayTileRefs = useRef(new Map());
-  const aiPlannerQuestionRef = useRef(null);
-  const aiPlannerResultRef = useRef(null);
-  const importTextRef = useRef(null);
-  const lodgingSectionRef = useRef(null);
-  const latestAppSnapshotRef = useRef(null);
-  const driveBusyRef = useRef('');
-  const driveConflictRef = useRef(false);
-  const notifyRef = useRef(null);
+  const dayTileRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+  const aiPlannerQuestionRef = useRef<HTMLTextAreaElement | null>(null);
+  const aiPlannerResultRef = useRef<HTMLTextAreaElement | null>(null);
+  const importTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const lodgingSectionRef = useRef<HTMLDivElement | null>(null);
+  const driveCallbacksRef = useRef<DriveSyncCallbacks | null>(null);
   const { toast, notify } = useToast();
-  const t = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
+  const t: TranslateFn = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
+  const {
+    driveFeatureEnabled,
+    driveStorage,
+    driveStatus,
+    driveBusy,
+    driveConflict,
+    drivePanelOpen,
+    setDrivePanelOpen,
+    driveAutoSync,
+    setDriveAutoSync,
+    loadDriveFile,
+    mergeDriveFile,
+    overwriteDriveFile,
+    syncDrive,
+  } = useDriveSyncController({
+    callbacksRef: driveCallbacksRef,
+    language,
+    notify,
+    t,
+  });
   const aiReplanText = getAiModeText('replan', language);
   const aiGenerateText = getAiModeText('generate', language);
 
@@ -411,7 +426,7 @@ function App() {
     }, null, 2);
   };
 
-  const changeLanguage = (nextLanguage) => {
+  const changeLanguage = (nextLanguage: string) => {
     const normalizedLanguage = normalizeLanguage(nextLanguage);
     setLanguage(normalizedLanguage);
     i18n.changeLanguage(normalizedLanguage);
@@ -434,10 +449,7 @@ function App() {
   useEffect(() => {
     const syncLanguageFromUrl = () => {
       const nextLanguage = getInitialLanguage();
-      const nextDriveFeatureEnabled = getDriveStorageFeatureEnabled();
       setLanguage(nextLanguage);
-      setDriveFeatureEnabled(nextDriveFeatureEnabled);
-      if (!nextDriveFeatureEnabled) setDrivePanelOpen(false);
       document.documentElement.lang = nextLanguage;
       if (i18n.language !== nextLanguage) i18n.changeLanguage(nextLanguage);
     };
@@ -445,22 +457,6 @@ function App() {
     window.addEventListener('popstate', syncLanguageFromUrl);
     return () => window.removeEventListener('popstate', syncLanguageFromUrl);
   }, [i18n]);
-
-  useEffect(() => {
-    if (!driveFeatureEnabled) return undefined;
-
-    let cancelled = false;
-
-    createPlanGachaDriveStorage().then((storage) => {
-      if (cancelled) return;
-      setDriveStorage(storage);
-      setDriveStatus(storage?.status() || null);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [driveFeatureEnabled]);
 
   useEffect(() => {
     const currentTrip = {
@@ -471,6 +467,8 @@ function App() {
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
       lodgings,
+      checklistText: '',
+      checklistState: {},
       archived: activeTripArchived,
     };
     const persistedTrips = pruneEmptyTripDrafts(
@@ -494,11 +492,7 @@ function App() {
     trips,
   ]);
 
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.driveAutoSync, driveAutoSync ? 'true' : 'false');
-  }, [driveAutoSync]);
-
-  const getCurrentTripSnapshot = () => ({
+  const getCurrentTripSnapshot = (): NormalizedTripSnapshot => ({
     id: activeTripId,
     name: tripName || t('unnamedTrip'),
     startDateStr,
@@ -506,10 +500,12 @@ function App() {
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
     lodgings,
+    checklistText: '',
+    checklistState: {},
     archived: activeTripArchived,
   });
 
-  const applyTripSnapshot = (trip) => {
+  const applyTripSnapshot = (trip: unknown) => {
     const normalizedTrip = normalizeTripSnapshot(trip);
     setActiveTripId(normalizedTrip.id);
     setTripName(normalizedTrip.name);
@@ -522,14 +518,13 @@ function App() {
     clearWeatherError();
   };
 
-  const saveCurrentTripInto = (tripList) => {
+  const saveCurrentTripInto = (tripList: NormalizedTripSnapshot[]): NormalizedTripSnapshot[] => {
     const currentTrip = getCurrentTripSnapshot();
     return tripList
-      .map((trip) => (trip.id === activeTripId ? currentTrip : trip))
-      .map(stripChecklistFromTripSnapshot);
+      .map((trip) => (trip.id === activeTripId ? currentTrip : trip));
   };
 
-  const exportAppSnapshot = () => ({
+  const exportAppSnapshot = (): AppSnapshot => ({
     appSchemaVersion: APP_SCHEMA_VERSION,
     snapshotVersion: 1,
     activeTripId,
@@ -538,42 +533,39 @@ function App() {
     checklistState: reconciledChecklistState,
   });
 
-  const isLocalWorkspaceEmpty = (snapshot = exportAppSnapshot()) => {
+  const isLocalWorkspaceEmpty = (snapshot: AppSnapshot = exportAppSnapshot()) => {
     const hasTripContent = snapshot.trips.some((trip) => (
       Array.isArray(trip.plans) && trip.plans.length > 0
     ) || (
       Array.isArray(trip.lodgings) && trip.lodgings.length > 0
-    ) || Object.values(trip.schedule || {}).some((entry) => entry?.planId));
+    ) || Object.values(trip.schedule || {}).some((entry) => Boolean((entry as NormalizedSchedule[string] | undefined)?.planId)));
     const hasChecklistContent = Boolean(snapshot.checklistText?.trim())
       || Object.keys(snapshot.checklistState || {}).length > 0;
 
     return !hasTripContent && !hasChecklistContent;
   };
 
-  useEffect(() => {
-    driveBusyRef.current = driveBusy;
-    driveConflictRef.current = driveConflict;
-    latestAppSnapshotRef.current = exportAppSnapshot;
-    notifyRef.current = notify;
-  });
+  const resetAiPlannerFields = () => {
+    if (aiPlannerQuestionRef.current) aiPlannerQuestionRef.current.value = '';
+    if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
+  };
 
-  const importAppSnapshot = (payload) => {
+  const importAppSnapshot = (payload: any) => {
     if (!payload || typeof payload !== 'object' || !Array.isArray(payload.trips)) {
       throw new Error(t('driveInvalidSnapshot'));
     }
 
     const importedTrips = payload.trips
-      .map(normalizeTripSnapshot)
-      .map(stripChecklistFromTripSnapshot);
+      .map((trip: unknown, index: number) => normalizeTripSnapshot(trip, index));
     if (!importedTrips.length) throw new Error(t('driveInvalidSnapshot'));
 
     const preferredTripId = payload.activeTripId || importedTrips[0].id;
-    const visibleImportedTrips = importedTrips.filter((trip) => !trip.archived);
-    const activeTrip = visibleImportedTrips.find((trip) => trip.id === preferredTripId)
+    const visibleImportedTrips = importedTrips.filter((trip: NormalizedTripSnapshot) => !trip.archived);
+    const activeTrip = visibleImportedTrips.find((trip: NormalizedTripSnapshot) => trip.id === preferredTripId)
       || visibleImportedTrips[0]
-      || importedTrips.find((trip) => trip.id === preferredTripId)
+      || importedTrips.find((trip: NormalizedTripSnapshot) => trip.id === preferredTripId)
       || importedTrips[0];
-    const nextTrips = pruneEmptyTripDrafts(importedTrips, activeTrip.id).map(stripChecklistFromTripSnapshot);
+    const nextTrips: NormalizedTripSnapshot[] = pruneEmptyTripDrafts(importedTrips, activeTrip.id);
     const nextActiveTrip = nextTrips.find((trip) => trip.id === activeTrip.id) || nextTrips[0];
 
     setTrips(nextTrips);
@@ -590,196 +582,15 @@ function App() {
     resetAiPlannerFields();
   };
 
-  const refreshDriveStatus = () => {
-    setDriveStatus(driveStorage?.status() || null);
-  };
-
-  const ensureDriveConnected = async () => {
-    if (!driveStorage?.status()?.connected) {
-      await driveStorage.connect({ prompt: 'consent' });
-    }
-  };
-
-  const formatDriveMergeError = (error) => {
-    if (error?.code === 'merge_invalid_snapshot') {
-      const source = error.details?.source || 'remote';
-      return t('driveMergeInvalidSnapshot', { source: t(`syncSource.${source}`, { defaultValue: source }) });
-    }
-    if (error?.code === 'merge_schema_mismatch') {
-      const source = error.details?.source || 'remote';
-      return t('driveMergeSchemaMismatch', {
-        source: t(`syncSource.${source}`, { defaultValue: source }),
-        version: error.details?.version || 'missing',
-      });
-    }
-    if (error?.code === 'merge_data_conflict') {
-      return t('driveMergeDataConflict', { path: error.details?.path || 'unknown' });
-    }
-    return error?.message || String(error);
-  };
-
-  const isDriveFileNotFoundError = (error) => (
-    error?.code === 'file_not_found' || error?.name === 'DriveStorageFileNotFoundError'
-  );
-
-  const isDriveInvalidJsonError = (error) => error?.code === 'invalid_json';
-
-  const assertRemoteSnapshotImportable = (payload) => {
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray(payload.trips)) {
-      throw new Error(t('driveInvalidSnapshot'));
-    }
-  };
-
-  const runDriveAction = async (busyKey, action) => {
-    if (!driveStorage) {
-      notify(t('driveActionFailed', { message: t('driveUnavailable') }));
-      return;
-    }
-
-    setDriveBusy(busyKey);
-    try {
-      await action();
-      refreshDriveStatus();
-    } catch (error) {
-      if (error?.name === 'DriveStorageAmbiguousFileError') {
-        notify(t('driveAmbiguousFile'));
-        refreshDriveStatus();
-        return;
-      }
-
-      if (isDriveFileNotFoundError(error)) {
-        setDriveConflict(false);
-        notify(t('driveFileMissing'));
-        refreshDriveStatus();
-        return;
-      }
-
-      if (isDriveInvalidJsonError(error)) {
-        setDriveConflict(false);
-        notify(t('driveInvalidJson'));
-        refreshDriveStatus();
-        return;
-      }
-
-      if (String(error?.code || '').startsWith('merge_')) {
-        notify(t('driveMergeFailed', { message: formatDriveMergeError(error) }));
-        refreshDriveStatus();
-        return;
-      }
-
-      if (error?.name === 'DriveStorageConflictError') {
-        setDriveConflict(true);
-        notify(t('driveConflictTitle'));
-        refreshDriveStatus();
-        return;
-      }
-
-      notify(t('driveActionFailed', { message: error?.message || String(error) }));
-      refreshDriveStatus();
-    } finally {
-      setDriveBusy('');
-    }
-  };
-
-  const syncDrive = () => runDriveAction('sync', async () => {
-    await ensureDriveConnected();
-    const localSnapshot = exportAppSnapshot();
-
-    if (driveStorage.status()?.file?.id) {
-      await driveStorage.save(localSnapshot);
-      setDriveConflict(false);
-      notify(t('driveSynced'));
-      return;
-    }
-
-    if (typeof driveStorage.findFile === 'function') {
-      const existing = await driveStorage.findFile();
-
-      if (existing?.file?.id) {
-        const remoteSnapshot = await driveStorage.load();
-        assertRemoteSnapshotImportable(remoteSnapshot);
-        if (remoteSnapshotMatchesLocal(remoteSnapshot, localSnapshot)) {
-          setDriveConflict(false);
-          notify(t('driveLinkedExisting'));
-        } else if (isLocalWorkspaceEmpty(localSnapshot)) {
-          importAppSnapshot(remoteSnapshot);
-          setDriveConflict(false);
-          notify(t('driveLoaded'));
-        } else {
-          setDriveConflict(true);
-          notify(t('driveRemoteFound'));
-        }
-        return;
-      }
-    }
-
-    await driveStorage.create(exportAppSnapshot());
-    setDriveConflict(false);
-    notify(t('driveSynced'));
-  });
-
-  const loadDriveFile = () => runDriveAction('load', async () => {
-    const remote = await driveStorage.load();
-    importAppSnapshot(remote);
-    setDriveConflict(false);
-    notify(t('driveLoaded'));
-  });
-
-  const mergeDriveFile = () => runDriveAction('merge', async () => {
-    await ensureDriveConnected();
-    const localSnapshot = exportAppSnapshot();
-    const remoteSnapshot = await driveStorage.load();
-    const mergedSnapshot = mergeAppSnapshots(localSnapshot, remoteSnapshot, language);
-    await driveStorage.save(mergedSnapshot, { force: true });
-    importAppSnapshot(mergedSnapshot);
-    setDriveConflict(false);
-    notify(t('driveMerged'));
-  });
-
-  const overwriteDriveFile = () => runDriveAction('overwrite', async () => {
-    await ensureDriveConnected();
-    await driveStorage.save(exportAppSnapshot(), { force: true });
-    setDriveConflict(false);
-    notify(t('driveSynced'));
-  });
-
   useEffect(() => {
-    const fileId = driveStatus?.file?.id;
-    if (!driveFeatureEnabled || !driveAutoSync || !driveStorage || driveStorage.available === false || !driveStatus?.connected || !fileId || driveConflict) {
-      return undefined;
-    }
+    driveCallbacksRef.current = {
+      exportAppSnapshot,
+      importAppSnapshot,
+      isLocalWorkspaceEmpty,
+    };
+  });
 
-    const timer = window.setInterval(async () => {
-      if (driveBusyRef.current || driveConflictRef.current) return;
-
-      setDriveBusy('auto');
-      try {
-        const snapshot = latestAppSnapshotRef.current?.();
-        if (snapshot) await driveStorage.save(snapshot);
-        setDriveStatus(driveStorage.status());
-      } catch (error) {
-        if (isDriveFileNotFoundError(error)) {
-          setDriveConflict(false);
-          notifyRef.current?.(t('driveFileMissing'));
-        } else if (isDriveInvalidJsonError(error)) {
-          setDriveConflict(false);
-          notifyRef.current?.(t('driveInvalidJson'));
-        } else if (error?.name === 'DriveStorageConflictError') {
-          setDriveConflict(true);
-          notifyRef.current?.(t('driveConflictTitle'));
-        } else {
-          notifyRef.current?.(t('driveActionFailed', { message: error?.message || String(error) }));
-        }
-        setDriveStatus(driveStorage.status());
-      } finally {
-        setDriveBusy('');
-      }
-    }, DRIVE_AUTO_SYNC_MS);
-
-    return () => window.clearInterval(timer);
-  }, [driveAutoSync, driveConflict, driveFeatureEnabled, driveStatus?.connected, driveStatus?.file?.id, driveStorage, t]);
-
-  const switchTrip = (nextTripId) => {
+  const switchTrip = (nextTripId: string) => {
     setTripMenuOpen(false);
     if (nextTripId === activeTripId) return;
     const nextTrip = visibleTrips.find((trip) => trip.id === nextTripId);
@@ -842,7 +653,7 @@ function App() {
     resetAiPlannerFields();
   };
 
-  const openAiPlanner = (mode = 'replan') => {
+  const openAiPlanner = (mode: AiPlannerMode = 'replan') => {
     if (mode === 'generate' || !hasInitializedPlans) {
       openBatchAiGenerator();
       return;
@@ -856,12 +667,7 @@ function App() {
     });
   };
 
-  const resetAiPlannerFields = () => {
-    if (aiPlannerQuestionRef.current) aiPlannerQuestionRef.current.value = '';
-    if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
-  };
-
-  const openPlanEditor = (planId = NEW_PLAN_EDITOR_ID) => {
+  const openPlanEditor = (planId: string = NEW_PLAN_EDITOR_ID) => {
     startUiTransition(() => {
       setEditorPlanId(planId);
       setEditorTab('itinerary');
@@ -888,7 +694,7 @@ function App() {
     setEditorPlanId(null);
   };
 
-  const removePlan = (planId) => {
+  const removePlan = (planId: string) => {
     const plan = plansById.get(planId);
     if (!plan || !window.confirm(t('deletePlanConfirm', { name: plan.name }))) return;
 
@@ -900,12 +706,12 @@ function App() {
     notify(t('planDeleted'));
   };
 
-  const saveLodgings = (nextLodgings) => {
+  const saveLodgings = (nextLodgings: unknown[]) => {
     setLodgings(normalizeTripLodgings(nextLodgings));
     notify(t('lodgingsSaved'));
   };
 
-  const updatePlanBookingStatus = (planId, bookingId, nextStatus) => {
+  const updatePlanBookingStatus = (planId: string, bookingId: string, nextStatus: BookingStatus) => {
     setPlans((current) => current.map((plan, index) => {
       const normalizedPlan = normalizePlan(plan, index, tripDates);
       if (normalizedPlan.id !== planId) return plan;
@@ -920,10 +726,10 @@ function App() {
     notify(nextStatus === 'done' ? t('bookingDone') : t('bookingPending'));
   };
 
-  const applyTripListAfterCurrentRemoved = (nextTrips, message) => {
-    const tripsWithContent = nextTrips.filter((trip) => !isEmptyTripDraft(trip));
-    const nextTrip = tripsWithContent.find((trip) => !trip.archived && trip.id !== activeTripId) || createEmptyTripSnapshot(language === 'en' ? `Trip ${tripsWithContent.length + 1}` : `旅行计划 ${tripsWithContent.length + 1}`, getTodayId());
-    const finalTrips = tripsWithContent.some((trip) => trip.id === nextTrip.id) ? tripsWithContent : [...tripsWithContent, nextTrip];
+  const applyTripListAfterCurrentRemoved = (nextTrips: NormalizedTripSnapshot[], message: string) => {
+    const tripsWithContent = nextTrips.filter((trip: NormalizedTripSnapshot) => !isEmptyTripDraft(trip));
+    const nextTrip = tripsWithContent.find((trip: NormalizedTripSnapshot) => !trip.archived && trip.id !== activeTripId) || createEmptyTripSnapshot(language === 'en' ? `Trip ${tripsWithContent.length + 1}` : `旅行计划 ${tripsWithContent.length + 1}`, getTodayId());
+    const finalTrips = tripsWithContent.some((trip: NormalizedTripSnapshot) => trip.id === nextTrip.id) ? tripsWithContent : [...tripsWithContent, nextTrip];
 
     setTrips(finalTrips);
     applyTripSnapshot(nextTrip);
@@ -947,7 +753,7 @@ function App() {
     applyTripListAfterCurrentRemoved(updatedTrips, t('tripDeleted'));
   };
 
-  const restoreArchivedTrip = (tripId) => {
+  const restoreArchivedTrip = (tripId: string) => {
     const restoredTrips = trips.map((trip) => (trip.id === tripId ? { ...trip, archived: false } : trip));
     const restoredTrip = restoredTrips.find((trip) => trip.id === tripId);
     if (!restoredTrip) return;
@@ -959,7 +765,7 @@ function App() {
     notify(t('archivedRestored'));
   };
 
-  const buildAssignmentImpact = (dateId, planId) => {
+  const buildAssignmentImpact = (dateId: string, planId: string) => {
     const targetPlan = plansById.get(planId);
     if (!targetPlan) return null;
 
@@ -980,12 +786,12 @@ function App() {
     return { clears, nextSchedule, nextRisks, targetPlan, dateId };
   };
 
-  const applySchedule = (nextSchedule, message = t('scheduleUpdated')) => {
+  const applySchedule = (nextSchedule: NormalizedSchedule, message = t('scheduleUpdated')) => {
     setSchedule(nextSchedule);
     notify(message);
   };
 
-  const requestAssignPlan = (dateId, planId) => {
+  const requestAssignPlan = (dateId: string, planId: string) => {
     const impact = buildAssignmentImpact(dateId, planId);
     if (!impact) return;
 
@@ -1003,7 +809,7 @@ function App() {
     setPendingAssignment(null);
   };
 
-  const clearDay = (dateId) => {
+  const clearDay = (dateId: string) => {
     setSchedule((current) => {
       const next = { ...current };
       delete next[dateId];
@@ -1012,13 +818,13 @@ function App() {
     notify(t('dayCleared'));
   };
 
-  const selectNeighborDate = (step) => {
+  const selectNeighborDate = (step: number) => {
     if (selectedIndex < 0) return;
     const next = tripDates[selectedIndex + step];
     if (next) setSelectedDateId(next.id);
   };
 
-  const scrollToScheduleDate = (dateId) => {
+  const scrollToScheduleDate = (dateId: string) => {
     if (!window.matchMedia('(max-width: 560px)').matches) return;
 
     window.requestAnimationFrame(() => {
@@ -1031,12 +837,12 @@ function App() {
     });
   };
 
-  const selectScheduleDate = (dateId, options = {}) => {
+  const selectScheduleDate = (dateId: string, options: { scroll?: boolean } = {}) => {
     setSelectedDateId(dateId);
     if (options.scroll) scrollToScheduleDate(dateId);
   };
 
-  const copyText = async (text, message) => {
+  const copyText = async (text: string, message: string) => {
     try {
       await navigator.clipboard.writeText(text);
       notify(message);
@@ -1045,7 +851,7 @@ function App() {
     }
   };
 
-  const downloadJson = (data, fileName, message) => {
+  const downloadJson = (data: unknown, fileName: string, message: string) => {
     try {
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
       downloadBlob(blob, fileName);
@@ -1055,7 +861,7 @@ function App() {
     }
   };
 
-  const buildAiPlanningPrompt = (mode = aiPlannerMode) => {
+  const buildAiPlanningPrompt = (mode: AiPlannerMode = aiPlannerMode) => {
     const planningStartDate = selectedDate || tripDates[0];
     const fixedDates = planningStartDate
       ? tripDates.filter((date) => date.id < planningStartDate.id)
@@ -1070,7 +876,7 @@ function App() {
     );
     const remainingPlans = normalizedPlans.filter((plan) => !completedPlanIds.has(plan.id));
 
-    const summarizeScheduleDate = (date) => {
+    const summarizeScheduleDate = (date: DisplayTripDate) => {
       const plan = schedule[date.id]?.planId ? plansById.get(schedule[date.id].planId) : null;
       const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, language);
       return {
@@ -1086,7 +892,7 @@ function App() {
       };
     };
 
-    const summarizePlan = (plan) => ({
+    const summarizePlan = (plan: NormalizedPlan) => ({
       plan_id: plan.id,
       name: plan.name,
       priority: getPriorityLabel(plan.priority, language),
@@ -1096,7 +902,7 @@ function App() {
       closed_dates: plan.closed_dates,
       weather_rules: plan.weather_rules,
       location: compactLocationForAi(plan.location),
-      stops: plan.stops.map((stop) => ({
+      stops: plan.stops.map((stop: PlanStop) => ({
         time: stop.time,
         title: stop.title,
         location: stop.location.label,
@@ -1105,7 +911,7 @@ function App() {
         opening_hours: stop.openingHours,
         note: stop.note,
       })),
-      bookings: plan.bookings.map((booking) => ({
+      bookings: plan.bookings.map((booking: PlanBooking) => ({
         title: booking.title,
         type: booking.type,
         status: booking.status,
@@ -1114,7 +920,7 @@ function App() {
         cancel_url: booking.cancelUrl,
         note: booking.note,
       })),
-      reminders: plan.reminders.map((item) => ({
+      reminders: plan.reminders.map((item: PlanReminder) => ({
         time: item.time,
         text: item.text,
         links: item.links || [],
@@ -1172,7 +978,7 @@ function App() {
     copyText(buildAiPlanningPrompt('generate'), t('aiPromptCopied', { label: aiGenerateText.label }));
   };
 
-  const applyImportedPayload = (parsed, message = t('jsonApplied')) => {
+  const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied')) => {
     let touched = false;
 
     if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
@@ -1187,7 +993,7 @@ function App() {
       touched = true;
       setPlans((current) => {
         const next = [...current];
-        parsed.plans.forEach((incomingPlan, index) => {
+        parsed.plans.forEach((incomingPlan: unknown, index: number) => {
           const normalized = normalizePlan(incomingPlan, index, tripDates);
           const existingIndex = next.findIndex((plan) => plan.id === normalized.id);
           if (existingIndex >= 0) {
@@ -1199,12 +1005,12 @@ function App() {
         return next;
       });
 
-      const assigned = parsed.plans.reduce((accumulator, plan) => {
+      const assigned = parsed.plans.reduce((accumulator: NormalizedSchedule, plan: AnyRecord) => {
         if (plan.assigned_day && plan.id) {
           accumulator[plan.assigned_day] = { planId: plan.id };
         }
         return accumulator;
-      }, {});
+      }, {} as NormalizedSchedule);
 
       if (Object.keys(assigned).length) {
         touched = true;
@@ -1213,12 +1019,12 @@ function App() {
     }
 
     if (Array.isArray(parsed.schedule)) {
-      const importedSchedule = parsed.schedule.reduce((accumulator, item) => {
+      const importedSchedule = parsed.schedule.reduce((accumulator: NormalizedSchedule, item: AnyRecord) => {
         const dateId = item.date || item.dateId || item.day;
         const planId = item.plan_id || item.planId || item.id;
         if (dateId && planId) accumulator[dateId] = { planId };
         return accumulator;
-      }, {});
+      }, {} as NormalizedSchedule);
 
       if (Object.keys(importedSchedule).length) {
         touched = true;
@@ -1243,12 +1049,12 @@ function App() {
       setAiPlannerOpen(false);
       setBatchAiOpen(false);
     } catch (error) {
-      notify(t('applyFailed', { message: error.message }));
+      notify(t('applyFailed', { message: getErrorMessage(error) }));
     }
   };
 
 
-  const buildPlanAiPrompt = (planQuestion = '') => {
+  const buildPlanAiPrompt = (planQuestion: string = '') => {
     const currentPlan = editorPlan
       ? compactPlanForAi(editorPlan, planAssignments.get(editorPlan.id) || null)
       : null;
@@ -1280,18 +1086,18 @@ function App() {
     });
   };
 
-  const copyPlanAiPrompt = (planQuestion = '') => {
+  const copyPlanAiPrompt = (planQuestion: string = '') => {
     copyText(buildPlanAiPrompt(planQuestion), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
   };
 
-  const assertPlanDraftOption = (value, allowedValues, path) => {
+  const assertPlanDraftOption = (value: unknown, allowedValues: Set<string>, path: string) => {
     const normalizedValue = String(value || '').trim();
     if (normalizedValue && !allowedValues.has(normalizedValue)) {
       throw new Error(t('invalidPlanField', { path, value: normalizedValue }));
     }
   };
 
-  const validatePlanDraftOptions = (payload) => {
+  const validatePlanDraftOptions = (payload: AnyRecord) => {
     if (!payload || typeof payload !== 'object') return;
 
     if (payload.priority) {
@@ -1322,7 +1128,7 @@ function App() {
     });
   };
 
-  const parseSinglePlanDraft = (text) => {
+  const parseSinglePlanDraft = (text: string) => {
     const parsed = parseImportJson(text);
     const payload = getSinglePlanPayload(parsed);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -1345,7 +1151,7 @@ function App() {
     };
   };
 
-  const applySinglePlanDraft = ({ plan, assignedDay }, message) => {
+  const applySinglePlanDraft = ({ plan, assignedDay }: { plan: NormalizedPlan; assignedDay: string }, message: string) => {
     const previousPlanId = isCreatingPlan ? '' : editorPlanId;
 
     setPlans((current) => {
@@ -1375,14 +1181,14 @@ function App() {
     closePlanEditor();
   };
 
-  const applyPlanEditDraft = (draftJson) => {
+  const applyPlanEditDraft = (draftJson: string) => {
     try {
       applySinglePlanDraft(
         parseSinglePlanDraft(draftJson),
         isCreatingPlan ? t('planCreated') : t('planUpdated'),
       );
     } catch (error) {
-      notify(t('applyFailed', { message: error.message }));
+      notify(t('applyFailed', { message: getErrorMessage(error) }));
     }
   };
 
@@ -1392,11 +1198,11 @@ function App() {
       setImportModalOpen(false);
       if (importTextRef.current) importTextRef.current.value = '';
     } catch (error) {
-      notify(t('importFailed', { message: error.message }));
+      notify(t('importFailed', { message: getErrorMessage(error) }));
     }
   };
 
-  const handleImportFile = async (event, onLoaded) => {
+  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>, onLoaded: (text: string) => void) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -1411,11 +1217,11 @@ function App() {
     }
   };
 
-  const handleTripImportFile = (event) => handleImportFile(event, (text) => {
+  const handleTripImportFile = (event: ChangeEvent<HTMLInputElement>) => handleImportFile(event, (text: string) => {
     if (importTextRef.current) importTextRef.current.value = text;
   });
 
-  const handleChecklistImportFile = (event) => handleImportFile(event, (text) => {
+  const handleChecklistImportFile = (event: ChangeEvent<HTMLInputElement>) => handleImportFile(event, (text: string) => {
     setChecklistImportText(text);
     setChecklistImportConflicts([]);
   });
@@ -1455,16 +1261,16 @@ function App() {
     );
   };
 
-  const renderPlanStops = (plan) => (
+  const renderPlanStops = (plan: NormalizedPlan | null | undefined) => plan ? (
     <PlanStops
       plan={plan}
       t={t}
       language={language}
       onCopyPlace={(copyValue) => copyText(copyValue, t('placeCopied'))}
     />
-  );
+  ) : null;
 
-  const renderPlanBookings = (plan, options = {}) => (
+  const renderPlanBookings = (plan: NormalizedPlan | null | undefined, options: { readOnly?: boolean } = {}) => plan ? (
     <PlanBookings
       plan={plan}
       t={t}
@@ -1473,13 +1279,13 @@ function App() {
       onUpdateBookingStatus={updatePlanBookingStatus}
       readOnly={options.readOnly}
     />
-  );
+  ) : null;
 
-  const renderPlanNotes = (plan) => (
+  const renderPlanNotes = (plan: NormalizedPlan | null | undefined) => plan ? (
     <PlanNotes plan={plan} t={t} />
-  );
+  ) : null;
 
-  const renderCandidateGroups = (gridClassName = 'plan-grid') => (
+  const renderCandidateGroups = (gridClassName: string = 'plan-grid') => (
     <CandidateGroups
       candidateGroups={candidateGroups}
       gridClassName={gridClassName}
@@ -1497,7 +1303,7 @@ function App() {
     />
   );
 
-  const renderCurrentPlanCard = (className) => (
+  const renderCurrentPlanCard = (className: string) => (
     <CurrentPlanCard
       className={className}
       selectedDate={selectedDate}
@@ -1540,17 +1346,17 @@ function App() {
     />
   );
 
-  const selectEditorTab = (tab) => {
+  const selectEditorTab = (tab: EditorTab) => {
     startUiTransition(() => setEditorTab(tab));
   };
 
-  const changeEditorStartDate = (nextStartDate) => {
+  const changeEditorStartDate = (nextStartDate: string) => {
     if (!nextStartDate) return;
     setStartDateStr(nextStartDate);
     setSelectedDateId(getSmartSelectedDate(nextStartDate, tripDays));
   };
 
-  const changeEditorEndDate = (nextEndDate) => {
+  const changeEditorEndDate = (nextEndDate: string) => {
     if (!nextEndDate) return;
     const nextTripDays = getInclusiveDateSpan(startDateStr, nextEndDate);
     setTripDays(nextTripDays);
@@ -1570,16 +1376,16 @@ function App() {
     });
   };
 
-  const getTripDisplay = (trip, isCurrentTrip = false) => {
+  const getTripDisplay = (trip: Partial<NormalizedTripSnapshot>, isCurrentTrip = false): TripDisplay => {
     const tripHasPlans = isCurrentTrip
       ? hasInitializedPlans
       : Array.isArray(trip.plans) && trip.plans.length > 0;
 
     return {
       isEmpty: !tripHasPlans,
-      name: tripHasPlans ? (isCurrentTrip ? tripName : trip.name) : t('emptyTripName'),
+      name: tripHasPlans ? (isCurrentTrip ? tripName : trip.name || t('unnamedTrip')) : t('emptyTripName'),
       meta: tripHasPlans
-        ? `${formatTripRange(isCurrentTrip ? startDateStr : trip.startDateStr, isCurrentTrip ? tripDays : trip.tripDays, language)} · ${t('daysCount', { count: isCurrentTrip ? tripDays : trip.tripDays })}`
+        ? `${formatTripRange(isCurrentTrip ? startDateStr : trip.startDateStr || startDateStr, isCurrentTrip ? tripDays : trip.tripDays || tripDays, language)} · ${t('daysCount', { count: isCurrentTrip ? tripDays : trip.tripDays || tripDays })}`
         : '',
     };
   };

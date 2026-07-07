@@ -1,5 +1,21 @@
-// @ts-nocheck
 import { Icon } from './Icon';
+import type { Dispatch, SetStateAction, ChangeEvent } from 'react';
+import type { ChecklistMergeConflict } from '../domain/checklist';
+import type { TranslateFn } from '../types/ui';
+
+interface ChecklistImportModalProps {
+  checklistImportConflicts: ChecklistMergeConflict[];
+  checklistImportText: string;
+  closeChecklistImport: () => void;
+  getChecklistConflictLabel: (type: string) => string;
+  getChecklistStatusLabel: (status: string) => string;
+  handleChecklistImportFile: (event: ChangeEvent<HTMLInputElement>) => void;
+  mergeChecklistFromImport: () => void;
+  replaceChecklistFromImport: () => void;
+  setChecklistImportConflicts: Dispatch<SetStateAction<ChecklistMergeConflict[]>>;
+  setChecklistImportText: Dispatch<SetStateAction<string>>;
+  t: TranslateFn;
+}
 
 export function ChecklistImportModal({
   checklistImportConflicts,
@@ -13,7 +29,7 @@ export function ChecklistImportModal({
   setChecklistImportConflicts,
   setChecklistImportText,
   t,
-}) {
+}: ChecklistImportModalProps) {
   return (
     <div className="modal-overlay" onClick={closeChecklistImport}>
       <div className="modal checklist-import-modal" onClick={(event) => event.stopPropagation()}>
@@ -56,7 +72,7 @@ export function ChecklistImportModal({
                   <em>
                     {conflict.currentGroup || '-'} → {conflict.incomingGroup || '-'}
                     {conflict.currentStatus || conflict.incomingStatus
-                      ? ` · ${getChecklistStatusLabel(conflict.currentStatus)} / ${getChecklistStatusLabel(conflict.incomingStatus)}`
+                      ? ` · ${getChecklistStatusLabel(conflict.currentStatus || '')} / ${getChecklistStatusLabel(conflict.incomingStatus || '')}`
                       : ''}
                   </em>
                 </div>
