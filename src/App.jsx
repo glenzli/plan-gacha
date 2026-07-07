@@ -146,10 +146,6 @@ const UI_TEXT = {
     editPlan: '编辑计划',
     noEditablePlan: '暂无可编辑计划',
     createOrImportFirst: '先新建或导入计划',
-    quickEdit: '快速编辑',
-    planNameLabel: '计划名称',
-    planPriorityLabel: '计划属性',
-    saveQuickEdit: '保存修改',
     createTrip: '新建旅行计划',
     tripSwitcher: '切换旅行计划',
     tripList: '旅行计划',
@@ -198,6 +194,16 @@ const UI_TEXT = {
     newPlanPlaceholder: '例如：新增一个雨天室内备用计划，下午半天，适合体力低的时候。',
     editPlanPlaceholder: '例如：把这个计划改成雨天可执行，减少户外路段，保留必去点。',
     planAiResultPlaceholder: '粘贴 AI 输出的单个计划 JSON，例如 {"id": "...", "name": "..."}',
+    editMode: '编辑方式',
+    aiEditTab: 'AI 辅助',
+    rawJsonTab: '手动编辑',
+    rawPlanJsonTitle: 'Raw JSON',
+    rawPlanJsonHelp: '适合结构化手工修正；应用后只替换当前计划。',
+    rawPlanJsonPlaceholder: '粘贴或修改单个计划 JSON',
+    applyJson: '应用 JSON',
+    applyPlanDraft: '应用修改',
+    duplicatePlanId: ({ id }) => `计划 id 已存在：${id}`,
+    invalidPlanField: ({ path, value }) => `${path} 的值不支持：${value}`,
     planName: '计划名称',
     dateRange: '日期范围',
     start: '开始',
@@ -302,6 +308,8 @@ const UI_TEXT = {
     noWeatherForPlace: '尚未获取地点天气，先更新天气',
     reminders: '特别提醒',
     bookingAndTickets: '预约和订票',
+    bookingNeededBadge: ({ count }) => `待预约 ${count}`,
+    bookingDoneBadge: '已预约',
     stopsAria: ({ name }) => `${name} 行程节点`,
     transferLabel: '交通',
     openingHours: '营业',
@@ -443,10 +451,6 @@ const UI_TEXT = {
     editPlan: 'Edit trip',
     noEditablePlan: 'No trip to edit',
     createOrImportFirst: 'Create or import a trip first',
-    quickEdit: 'Quick edit',
-    planNameLabel: 'Plan name',
-    planPriorityLabel: 'Plan type',
-    saveQuickEdit: 'Save changes',
     createTrip: 'Create trip',
     tripSwitcher: 'Switch trip',
     tripList: 'Trips',
@@ -495,6 +499,16 @@ const UI_TEXT = {
     newPlanPlaceholder: 'Example: add a rainy-day indoor backup for a low-energy afternoon.',
     editPlanPlaceholder: 'Example: make this plan workable in rain, reduce outdoor segments, keep the must-go stop.',
     planAiResultPlaceholder: 'Paste one plan JSON, for example {"id": "...", "name": "..."}',
+    editMode: 'Edit mode',
+    aiEditTab: 'AI assist',
+    rawJsonTab: 'Manual',
+    rawPlanJsonTitle: 'Raw JSON',
+    rawPlanJsonHelp: 'For structured manual fixes. Applying replaces only the current plan.',
+    rawPlanJsonPlaceholder: 'Paste or edit one plan JSON',
+    applyJson: 'Apply JSON',
+    applyPlanDraft: 'Apply changes',
+    duplicatePlanId: ({ id }) => `Plan id already exists: ${id}`,
+    invalidPlanField: ({ path, value }) => `${path} has unsupported value: ${value}`,
     planName: 'Trip name',
     dateRange: 'Date range',
     start: 'Start',
@@ -599,6 +613,8 @@ const UI_TEXT = {
     noWeatherForPlace: 'No location weather yet. Update weather first.',
     reminders: 'Reminders',
     bookingAndTickets: 'Bookings and tickets',
+    bookingNeededBadge: ({ count }) => `Booking ${count}`,
+    bookingDoneBadge: 'Booked',
     stopsAria: ({ name }) => `${name} itinerary stops`,
     transferLabel: 'Transit',
     openingHours: 'Hours',
@@ -650,11 +666,13 @@ const PRIORITY_LABELS = {
 const BOOKING_TYPE_LABELS = {
   zh: {
     reservation: { pending: '未预约', done: '已预约', link: '预约', doneAction: '标记已预约' },
+    restaurant_reservation: { pending: '餐厅未预约', done: '餐厅已预约', link: '预约', doneAction: '标记已预约' },
     ticket: { pending: '未订票', done: '已订票', link: '订票', doneAction: '标记已订票' },
     confirmation: { pending: '待确认', done: '已确认', link: '查看', doneAction: '标记已确认' },
   },
   en: {
     reservation: { pending: 'Not reserved', done: 'Reserved', link: 'Reserve', doneAction: 'Mark reserved' },
+    restaurant_reservation: { pending: 'Restaurant not reserved', done: 'Restaurant reserved', link: 'Reserve', doneAction: 'Mark reserved' },
     ticket: { pending: 'No ticket', done: 'Ticketed', link: 'Book', doneAction: 'Mark ticketed' },
     confirmation: { pending: 'To confirm', done: 'Confirmed', link: 'View', doneAction: 'Mark confirmed' },
   },
@@ -690,6 +708,61 @@ const WEATHER_LABELS = {
     windy: 'Windy',
   },
 };
+
+const WEATHER_RULE_VALUES = new Set(Object.keys(WEATHER_LABELS.zh).filter((key) => key !== 'unknown'));
+const BOOKING_TYPE_VALUES = new Set([
+  'reservation',
+  'ticket',
+  'confirmation',
+  'restaurant_reservation',
+  'restaurant',
+  'dining',
+  'meal',
+  'food',
+  '餐厅',
+  '餐厅预约',
+  '饭店',
+  '食事',
+  'train',
+  'flight',
+  'boat',
+  'ferry',
+  'pass',
+  '票',
+  '车票',
+  '门票',
+  'confirm',
+  'check',
+  'notice',
+  '确认',
+  '预约',
+  '预订',
+]);
+const BOOKING_STATUS_VALUES = new Set([
+  'pending',
+  'done',
+  'none',
+  'booked',
+  'reserved',
+  'purchased',
+  'confirmed',
+  'complete',
+  'completed',
+  'not_needed',
+  'optional',
+  '已预约',
+  '已订票',
+  '已确认',
+  '未预约',
+  '未订票',
+  '待确认',
+  '待预约',
+  '待订票',
+  '待处理',
+  '需预约',
+  '无需',
+  '无需预约',
+]);
 
 const WEATHER_STATUS_LABELS = {
   zh: {
@@ -745,12 +818,6 @@ const STORAGE_KEYS = {
   driveAutoSync: 'pg_driveAutoSync',
 };
 
-const INTENSITY_META = {
-  easy: { label: '轻松', rank: 1 },
-  normal: { label: '正常', rank: 2 },
-  hard: { label: '费体力', rank: 3 },
-};
-
 const PRIORITY_META = {
   must: { label: '必去', rank: 4 },
   preferred: { label: '想去', rank: 3 },
@@ -758,11 +825,6 @@ const PRIORITY_META = {
   optional: { label: '可放弃', rank: 1 },
 };
 
-const LEGACY_INTENSITY_MAP = {
-  relaxed: 'easy',
-  normal: 'normal',
-  full: 'hard',
-};
 const HARD_BLOCKED_WEATHER = ['storm'];
 const SEVERE_WEATHER = ['storm', 'heavy_rain'];
 const SOFT_RAIN_WEATHER = ['drizzle', 'rain'];
@@ -1094,6 +1156,28 @@ function getBookingTypeMeta(type, language = DEFAULT_LANGUAGE) {
   return BOOKING_TYPE_LABELS[normalizeLanguage(language)]?.[type] || BOOKING_TYPE_LABELS[DEFAULT_LANGUAGE].reservation;
 }
 
+function getPlanBookingBadge(plan, language = DEFAULT_LANGUAGE) {
+  const actionableBookings = toArray(plan?.bookings).filter((booking) => booking.status !== 'none');
+  if (!actionableBookings.length) return null;
+
+  const pendingBookings = actionableBookings.filter((booking) => booking.status !== 'done');
+  if (pendingBookings.length) {
+    return {
+      status: 'pending',
+      label: pendingBookings.length === 1
+        ? getBookingTypeMeta(pendingBookings[0].type, language).pending
+        : translate('bookingNeededBadge', language, { count: pendingBookings.length }),
+    };
+  }
+
+  return {
+    status: 'done',
+    label: actionableBookings.length === 1
+      ? getBookingTypeMeta(actionableBookings[0].type, language).done
+      : translate('bookingDoneBadge', language),
+  };
+}
+
 function getWeatherLabel(condition, language = DEFAULT_LANGUAGE) {
   return WEATHER_LABELS[normalizeLanguage(language)]?.[condition] || condition || translate('weatherUnknown', language);
 }
@@ -1288,6 +1372,7 @@ const WEATHER_LOCATION_FALLBACKS = {
   大阪市: { weatherLabel: '大阪市', latitude: 34.6937, longitude: 135.5023, timezone: 'Asia/Tokyo' },
   大阪市北区: { weatherLabel: '大阪市北区', latitude: 34.7054, longitude: 135.4983, timezone: 'Asia/Tokyo' },
   河内長野市: { weatherLabel: '河内長野市', latitude: 34.4587, longitude: 135.5642, timezone: 'Asia/Tokyo' },
+  kawachinagano: { weatherLabel: '河内長野市', latitude: 34.4587, longitude: 135.5642, timezone: 'Asia/Tokyo' },
   草津市: { weatherLabel: '草津市', latitude: 35.0131, longitude: 135.9598, timezone: 'Asia/Tokyo' },
   神戸市: { weatherLabel: '神戸市', latitude: 34.6901, longitude: 135.1955, timezone: 'Asia/Tokyo' },
   神戸市中央区: { weatherLabel: '神戸市中央区', latitude: 34.6951, longitude: 135.1979, timezone: 'Asia/Tokyo' },
@@ -1315,9 +1400,6 @@ function createExamplePlans(startDate) {
         { time: '09:00', title: '八大峡海岸散步', location: place(QINGDAO_LOCATION, '八大峡广场'), note: '慢慢走回酒店，上午结束前留休息时间' },
       ],
       available_dates: dates.slice(0, 2),
-      time_window: '05:00-11:00',
-      duration: '半天',
-      intensity: 'normal',
       weather_rules: {
         best: ['sunny', 'partly_cloudy'],
         ok: ['cloudy'],
@@ -1326,7 +1408,6 @@ function createExamplePlans(startDate) {
       conflicts: ['lazy-beach'],
       reminders: [{ time: '前一晚', text: '确认日出时间、潮汐和云量，太晚睡就不要硬上' }],
       tips: ['早市现金和纸巾提前备好'],
-      tags: ['户外', '清晨'],
     },
     {
       id: 'weihai-coast-day',
@@ -1343,9 +1424,6 @@ function createExamplePlans(startDate) {
         { time: '18:20', title: '威海站返程', location: place(WEIHAI_LOCATION, '威海站'), note: '返程后不再叠加夜市，避免当天过载' },
       ],
       available_dates: dates.slice(1, 4),
-      time_window: '07:20-21:00',
-      duration: '全天跨城',
-      intensity: 'hard',
       weather_rules: {
         best: ['sunny', 'partly_cloudy'],
         ok: ['cloudy'],
@@ -1369,7 +1447,6 @@ function createExamplePlans(startDate) {
         },
       ],
       tips: ['跨城当天不要再叠加夜市或高体力计划'],
-      tags: ['跨城', '高铁', '户外多点'],
     },
     {
       id: 'museum-day',
@@ -1384,9 +1461,6 @@ function createExamplePlans(startDate) {
       ],
       available_dates: dates,
       closed_dates: museumClosed,
-      time_window: '10:00-16:00',
-      duration: '半天',
-      intensity: 'easy',
       weather_rules: {
         best: ['rain', 'drizzle', 'hot', 'cold'],
         ok: ['cloudy', 'partly_cloudy', 'sunny'],
@@ -1405,7 +1479,6 @@ function createExamplePlans(startDate) {
           note: '闭馆日和临时展预约入口可能变化，出发前再确认',
         },
       ],
-      tags: ['室内', museumClosed.length ? '周一闭馆' : '闭馆日留意'],
     },
     {
       id: 'old-town-walk',
@@ -1419,9 +1492,6 @@ function createExamplePlans(startDate) {
         { time: '18:30', title: '黄县路晚餐', location: place(QINGDAO_LOCATION, '黄县路'), note: '晚饭后可以顺路散步回酒店' },
       ],
       available_dates: dates.slice(2, 5),
-      time_window: '15:00-20:00',
-      duration: '半天',
-      intensity: 'hard',
       weather_rules: {
         best: ['partly_cloudy', 'cloudy'],
         ok: ['sunny'],
@@ -1429,7 +1499,6 @@ function createExamplePlans(startDate) {
       },
       conflicts: [],
       tips: ['信号山有坡，鞋子不舒服时直接跳过'],
-      tags: ['步行', '街区'],
     },
     {
       id: 'night-market',
@@ -1442,9 +1511,6 @@ function createExamplePlans(startDate) {
         { time: '20:00', title: '啤酒街烤肉', location: place(QINGDAO_LOCATION, '登州路啤酒街'), note: '雨不大也能执行，暴雨就换室内' },
       ],
       available_dates: dates.slice(3, 5),
-      time_window: '18:00-22:00',
-      duration: '晚上',
-      intensity: 'normal',
       weather_rules: {
         best: ['cloudy', 'partly_cloudy', 'sunny'],
         ok: ['hot', 'drizzle'],
@@ -1452,7 +1518,6 @@ function createExamplePlans(startDate) {
       },
       conflicts: [],
       reminders: [{ time: '21:00', text: '控制收尾时间，第二天有早起计划就别拖太晚' }],
-      tags: ['美食', '夜间'],
     },
     {
       id: 'lazy-beach',
@@ -1465,16 +1530,12 @@ function createExamplePlans(startDate) {
         { time: '17:00', title: '小麦岛看落日', location: place(QINGDAO_LOCATION, '小麦岛公园'), note: '适合晴天或少云，大风就取消' },
       ],
       available_dates: dates.slice(1, 5),
-      time_window: '14:00-19:00',
-      duration: '半天',
-      intensity: 'easy',
       weather_rules: {
         best: ['sunny', 'partly_cloudy'],
         ok: ['cloudy', 'hot'],
         blocked: ['rain', 'heavy_rain', 'storm', 'windy'],
       },
       conflicts: ['sunrise-sea'],
-      tags: ['低体力', '户外'],
     },
     {
       id: 'rainy-cafe',
@@ -1487,16 +1548,12 @@ function createExamplePlans(startDate) {
         { time: '16:00', title: '商场补给', location: place(QINGDAO_LOCATION, '青岛万象城'), note: '买伞、防晒、药品等旅行补给' },
       ],
       available_dates: dates,
-      time_window: '13:00-18:00',
-      duration: '半天',
-      intensity: 'easy',
       weather_rules: {
         best: ['rain', 'drizzle', 'cold'],
         ok: ['cloudy', 'hot', 'heavy_rain'],
         blocked: [],
       },
       conflicts: [],
-      tags: ['室内', '恢复'],
     },
     {
       id: 'yantai-penglai-backup',
@@ -1512,9 +1569,6 @@ function createExamplePlans(startDate) {
         { time: '17:40', title: '返程回青岛', location: place(YANTAI_LOCATION, '烟台南站'), note: '当天结束较晚，后续计划需要降强度' },
       ],
       available_dates: dates.slice(2, 5),
-      time_window: '07:00-22:00',
-      duration: '全天跨城',
-      intensity: 'hard',
       weather_rules: {
         best: ['sunny'],
         ok: ['partly_cloudy'],
@@ -1533,7 +1587,6 @@ function createExamplePlans(startDate) {
           note: '备用跨城线，确定执行后再订，避免退改',
         },
       ],
-      tags: ['跨城备用', '交通约束', '高体力'],
     },
     {
       id: 'seafood-market',
@@ -1546,16 +1599,12 @@ function createExamplePlans(startDate) {
         { time: '12:30', title: '附近加工店午餐', location: place(QINGDAO_LOCATION, '团岛市场周边'), note: '用餐时间可压缩，作为插入型计划' },
       ],
       available_dates: dates,
-      time_window: '11:00-14:00',
-      duration: '2小时',
-      intensity: 'easy',
       weather_rules: {
         best: ['cloudy', 'rain', 'hot'],
         ok: ['sunny', 'partly_cloudy', 'drizzle'],
         blocked: ['heavy_rain', 'storm'],
       },
       conflicts: [],
-      tags: ['美食', '可插入'],
     },
   ];
 }
@@ -1619,8 +1668,8 @@ function normalizeLodging(lodging, index = 0) {
     checkIn: lodging.checkIn || lodging.check_in || lodging.startDate || lodging.start_date || lodging.from || '',
     checkOut: lodging.checkOut || lodging.check_out || lodging.endDate || lodging.end_date || lodging.to || '',
     note: lodging.note || lodging.description || '',
-    bookingUrl: lodging.bookingUrl || lodging.booking_url || lodging.url || '',
-    mapUrl: lodging.mapUrl || lodging.map_url || '',
+    bookingUrl: normalizeExternalLinkUrl(lodging.bookingUrl || lodging.booking_url || lodging.url),
+    mapUrl: normalizeExternalLinkUrl(lodging.mapUrl || lodging.map_url),
   };
 }
 
@@ -1682,13 +1731,16 @@ function normalizeLodgingDrafts(drafts) {
 function normalizeTripSnapshot(trip, index = 0) {
   const startDate = trip.startDateStr || trip.startDate || getTodayId();
   const tripDays = clampTripDays(trip.tripDays || trip.days || DEFAULT_TRIP_DAYS);
+  const tripDates = createTripDates(startDate, tripDays);
 
   return {
     id: trip.id || `trip-${index + 1}`,
     name: trip.name || trip.title || `旅行计划 ${index + 1}`,
     startDateStr: startDate,
     tripDays,
-    plans: Array.isArray(trip.plans) ? trip.plans : [],
+    plans: Array.isArray(trip.plans)
+      ? trip.plans.map((plan, planIndex) => normalizePlan(plan, planIndex, tripDates))
+      : [],
     schedule: normalizeSchedule(trip.schedule || {}),
     lodgings: normalizeTripLodgings(trip.lodgings || trip.hotels || trip.accommodations || trip.stays),
     checklistText: normalizeChecklistText(
@@ -1705,7 +1757,7 @@ function inferWeatherLabel(location) {
   const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
   if (typeof weatherLocation === 'string') return weatherLocation;
   if (weatherLocation && typeof weatherLocation === 'object') {
-    return inferWeatherLabel(weatherLocation) || weatherLocation.label || weatherLocation.name || weatherLocation.query;
+    return inferWeatherLabel(weatherLocation) || weatherLocation.query || weatherLocation.label || weatherLocation.name;
   }
 
   if (location.weatherLabel || location.weather_label || location.city || location.district || location.area) {
@@ -1719,6 +1771,35 @@ function inferWeatherLabel(location) {
     (Math.abs(latitude - QINGDAO_LOCATION.latitude) < 0.01 && Math.abs(longitude - QINGDAO_LOCATION.longitude) < 0.01);
 
   return isQingdao ? QINGDAO_LOCATION.weatherLabel : undefined;
+}
+
+function normalizeCoordinate(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function normalizeCountryCode(value) {
+  const normalized = String(value || '').trim().toUpperCase();
+  const countryMap = {
+    JAPAN: 'JP',
+    日本: 'JP',
+    CHINA: 'CN',
+    中国: 'CN',
+    SOUTH_KOREA: 'KR',
+    'SOUTH KOREA': 'KR',
+    韩国: 'KR',
+    韓國: 'KR',
+    TAIWAN: 'TW',
+    台湾: 'TW',
+    臺灣: 'TW',
+    THAILAND: 'TH',
+    泰国: 'TH',
+    SINGAPORE: 'SG',
+    新加坡: 'SG',
+  };
+
+  if (/^[A-Z]{2}$/.test(normalized)) return normalized;
+  return countryMap[normalized] || normalized;
 }
 
 function normalizeLocation(location, area) {
@@ -1735,6 +1816,39 @@ function normalizeLocation(location, area) {
     const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
     const weatherLocationObject = weatherLocation && typeof weatherLocation === 'object' ? weatherLocation : null;
     const weatherLocationText = typeof weatherLocation === 'string' ? weatherLocation : '';
+    const latitude = normalizeCoordinate(
+      weatherLocationObject?.latitude ?? weatherLocationObject?.lat ?? location.latitude ?? location.lat,
+    );
+    const longitude = normalizeCoordinate(
+      weatherLocationObject?.longitude ?? weatherLocationObject?.lon ?? weatherLocationObject?.lng ?? location.longitude ?? location.lon ?? location.lng,
+    );
+    const countryCode = normalizeCountryCode(
+      weatherLocationObject?.countryCode ||
+        weatherLocationObject?.country_code ||
+        weatherLocationObject?.country ||
+        location.countryCode ||
+        location.country_code ||
+        location.country ||
+        '',
+    );
+    const admin1 =
+      weatherLocationObject?.admin1 ||
+      weatherLocationObject?.prefecture ||
+      weatherLocationObject?.province ||
+      weatherLocationObject?.state ||
+      location.admin1 ||
+      location.prefecture ||
+      location.province ||
+      location.state ||
+      '';
+    const admin2 =
+      weatherLocationObject?.admin2 ||
+      weatherLocationObject?.county ||
+      weatherLocationObject?.city ||
+      location.admin2 ||
+      location.county ||
+      location.city ||
+      '';
     const weatherLabel = inferWeatherLabel(location);
     const query =
       location.weatherQuery ||
@@ -1754,8 +1868,11 @@ function normalizeLocation(location, area) {
       label: location.label || location.name || location.query || area || '待定地点',
       query,
       weatherLabel,
-      latitude: weatherLocationObject?.latitude ?? location.latitude,
-      longitude: weatherLocationObject?.longitude ?? location.longitude,
+      latitude,
+      longitude,
+      countryCode,
+      admin1,
+      admin2,
       address: location.address || location.addr || location.full_address || '',
     };
   }
@@ -1764,12 +1881,12 @@ function normalizeLocation(location, area) {
 }
 
 function hasCoordinates(location) {
-  return location.latitude !== undefined && location.latitude !== null && location.longitude !== undefined && location.longitude !== null;
+  return normalizeCoordinate(location.latitude) !== undefined && normalizeCoordinate(location.longitude) !== undefined;
 }
 
 function getWeatherLocationKey(location) {
+  if (hasCoordinates(location)) return `${normalizeCoordinate(location.latitude)},${normalizeCoordinate(location.longitude)}`;
   if (location.query) return location.query;
-  if (hasCoordinates(location)) return `${location.latitude},${location.longitude}`;
   return location.label;
 }
 
@@ -1780,11 +1897,46 @@ function getWeatherLocationLabel(location) {
 function normalizeWeatherSearchText(value) {
   return String(value || '')
     .trim()
-    .replace(/\s+/g, '')
+    .toLowerCase()
+    .replace(/[\s\-_]+/g, '')
     .replace(/[，、,].*$/, '')
     .replace(/[區]/g, '区')
     .replace(/[県]/g, '県')
     .replace(/[长户广岛滨泽龟德黑乡]/g, (char) => WEATHER_QUERY_CHAR_ALIASES[char] || char);
+}
+
+function getCountryNameFromCode(countryCode) {
+  const normalized = String(countryCode || '').trim().toUpperCase();
+  if (normalized === 'JP') return 'Japan';
+  if (normalized === 'CN') return 'China';
+  if (normalized === 'KR') return 'South Korea';
+  if (normalized === 'TW') return 'Taiwan';
+  if (normalized === 'TH') return 'Thailand';
+  if (normalized === 'SG') return 'Singapore';
+  return normalized;
+}
+
+function expandWeatherSearchTerm(term, location = {}) {
+  const value = String(term || '').trim();
+  if (!value) return [];
+
+  const countryName = getCountryNameFromCode(location.countryCode);
+  const variants = [
+    value,
+    value.split(',')[0],
+  ];
+
+  if (location.admin1) {
+    variants.push(`${value}, ${location.admin1}`);
+    if (countryName) variants.push(`${value}, ${location.admin1}, ${countryName}`);
+  }
+
+  if (countryName) variants.push(`${value}, ${countryName}`);
+
+  const normalized = normalizeWeatherSearchText(value);
+  if (normalized && normalized !== value) variants.push(normalized);
+
+  return variants;
 }
 
 function getWeatherSearchTerms(location) {
@@ -1792,13 +1944,17 @@ function getWeatherSearchTerms(location) {
   const rawTerms = uniq([
     location.query,
     label,
+    location.admin2,
+    location.admin1 && label ? `${label}, ${location.admin1}` : '',
+    location.admin1 && location.countryCode ? `${label}, ${location.admin1}, ${getCountryNameFromCode(location.countryCode)}` : '',
+    location.address,
     location.query?.split(',')[0],
   ]).filter(Boolean);
 
   const terms = [];
   rawTerms.forEach((term) => {
     const normalized = normalizeWeatherSearchText(term);
-    terms.push(term, normalized);
+    terms.push(...expandWeatherSearchTerm(term, location), normalized);
 
     const cityMatch = normalized.match(/^(.+?市).+区$/);
     if (cityMatch) terms.push(cityMatch[1]);
@@ -1995,20 +2151,145 @@ function normalizePlanStops(stops, fallbackLocation) {
     });
 }
 
+const MARKDOWN_LINK_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/gi;
+const MARKDOWN_LINK_EXTRACT_PATTERN = /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/i;
+const BARE_URL_PATTERN = /https?:\/\/[^\s)）\]]+/gi;
+const BARE_URL_EXTRACT_PATTERN = /https?:\/\/[^\s)）\]]+/i;
+const URL_TRAILING_PUNCTUATION_PATTERN = /[.,，。；;!！?？、)）\]]+$/;
+
+function normalizeHttpUrlToken(value, allowSearchUnwrap = true) {
+  const raw = String(value || '').trim().replace(URL_TRAILING_PUNCTUATION_PATTERN, '');
+  if (!raw) return '';
+
+  try {
+    const url = new URL(raw);
+    if (!['http:', 'https:'].includes(url.protocol)) return '';
+
+    if (allowSearchUnwrap && /(^|\.)google\./i.test(url.hostname)) {
+      const searchTarget = url.searchParams.get('q') || url.searchParams.get('url');
+      const normalizedSearchTarget = normalizeHttpUrlToken(searchTarget, false);
+      if (normalizedSearchTarget) return normalizedSearchTarget;
+    }
+
+    return url.toString();
+  } catch {
+    return '';
+  }
+}
+
+function normalizeExternalLinkUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+
+  const markdownMatch = raw.match(MARKDOWN_LINK_EXTRACT_PATTERN);
+  if (markdownMatch) {
+    return normalizeHttpUrlToken(markdownMatch[1]) || normalizeHttpUrlToken(markdownMatch[2]);
+  }
+
+  return normalizeHttpUrlToken(raw) || normalizeHttpUrlToken(raw.match(BARE_URL_EXTRACT_PATTERN)?.[0]);
+}
+
+function getExternalLinkFallbackLabel(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '');
+  } catch {
+    return url;
+  }
+}
+
+function normalizeReminderLinkLabel(label, url) {
+  const text = String(label || '').trim();
+  if (!text || /^https?:\/\//i.test(text)) return getExternalLinkFallbackLabel(url);
+  return text;
+}
+
+function collectReminderLinksFromText(text) {
+  const links = [];
+  const seen = new Set();
+  const addLink = (label, url) => {
+    const normalizedUrl = normalizeExternalLinkUrl(url);
+    if (!normalizedUrl || seen.has(normalizedUrl)) return;
+    seen.add(normalizedUrl);
+    links.push({
+      label: normalizeReminderLinkLabel(label, normalizedUrl),
+      url: normalizedUrl,
+    });
+  };
+
+  String(text || '').replace(MARKDOWN_LINK_PATTERN, (_, label, url) => {
+    addLink(label, url);
+    return '';
+  });
+  String(text || '').replace(BARE_URL_PATTERN, (url) => {
+    addLink('', url);
+    return '';
+  });
+
+  return links;
+}
+
+function stripLinksFromReminderText(text) {
+  return String(text || '')
+    .replace(MARKDOWN_LINK_PATTERN, (_, label, url) => (normalizeExternalLinkUrl(url) ? label : ''))
+    .replace(BARE_URL_PATTERN, '')
+    .replace(/（\s*）/g, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([，。；、,.!?])/g, '$1')
+    .trim();
+}
+
+function normalizeReminderLinks(item, text) {
+  const source = item && typeof item === 'object' ? item : {};
+  const explicitLinks = [
+    ...toArray(source.links),
+    ...toArray(source.urls),
+    ...toArray(source.url || source.link),
+  ];
+  const seen = new Set();
+
+  return [
+    ...explicitLinks.map((link) => {
+      if (typeof link === 'string') {
+        const url = normalizeExternalLinkUrl(link);
+        return url ? { label: getExternalLinkFallbackLabel(url), url } : null;
+      }
+
+      const url = normalizeExternalLinkUrl(link.url || link.href || link.link);
+      if (!url) return null;
+
+      return {
+        label: normalizeReminderLinkLabel(link.label || link.title || link.name, url),
+        url,
+      };
+    }).filter(Boolean),
+    ...collectReminderLinksFromText(text),
+  ].filter((link) => {
+    if (seen.has(link.url)) return false;
+    seen.add(link.url);
+    return true;
+  });
+}
+
 function normalizePlanReminders(value) {
   return toArray(value)
     .map((item, index) => {
+      const rawText = typeof item === 'string' ? item : item.text || item.title || item.note || item.description || '';
+      const links = normalizeReminderLinks(item, rawText);
+      const text = stripLinksFromReminderText(rawText) || links[0]?.label || rawText;
+
       if (typeof item === 'string') {
-        return { id: `reminder-${index + 1}`, time: '', text: item };
+        return { id: `reminder-${index + 1}`, time: '', text, links };
       }
 
       return {
         id: item.id || `reminder-${index + 1}`,
         time: item.time || item.at || '',
-        text: item.text || item.title || item.note || item.description || '',
+        text,
+        links,
       };
     })
-    .filter((item) => item.text);
+    .filter((item) => item.text || item.links.length);
 }
 
 function normalizePlanTips(value) {
@@ -2019,6 +2300,9 @@ function normalizePlanTips(value) {
 
 function normalizeBookingType(value) {
   const type = String(value || '').toLowerCase();
+  if (['restaurant_reservation', 'restaurant', 'dining', 'meal', 'food', '餐厅', '餐厅预约', '饭店', '食事'].includes(type)) {
+    return 'restaurant_reservation';
+  }
   if (['ticket', 'train', 'flight', 'boat', 'ferry', 'pass', '票', '车票', '门票'].includes(type)) return 'ticket';
   if (['confirm', 'confirmation', 'check', 'notice', '确认'].includes(type)) return 'confirmation';
   return 'reservation';
@@ -2058,8 +2342,8 @@ function normalizeBookingItem(item, index, fallbackType = 'reservation') {
     title: item.title || item.name || item.label || (type === 'ticket' ? '订票' : '预约'),
     status: normalizeBookingStatus(item.status, item),
     address: item.address || item.addr || location?.address || item.place || location?.label || '',
-    url: item.url || item.link || item.booking_url || item.bookingUrl || item.reserve_url || item.reserveUrl || '',
-    cancelUrl: item.cancel_url || item.cancelUrl || item.refund_url || item.refundUrl || item.manage_url || item.manageUrl || '',
+    url: normalizeExternalLinkUrl(item.url || item.link || item.booking_url || item.bookingUrl || item.reserve_url || item.reserveUrl),
+    cancelUrl: normalizeExternalLinkUrl(item.cancel_url || item.cancelUrl || item.refund_url || item.refundUrl || item.manage_url || item.manageUrl),
     note: item.note || item.description || item.text || '',
   };
 }
@@ -2133,8 +2417,6 @@ function normalizePlan(plan, index = 0, tripDates = []) {
   const tripDateIds = tripDates.map((date) => date.id);
   const availableDates = toArray(plan.available_dates || plan.suitable_days);
   const priority = plan.must_go || plan.must ? 'must' : plan.priority || 'preferred';
-  const rawIntensity = plan.intensity || LEGACY_INTENSITY_MAP[plan.pace] || plan.pace;
-  const intensity = INTENSITY_META[rawIntensity] ? rawIntensity : 'normal';
   const rawStops = Array.isArray(plan.stops) ? plan.stops : plan.itinerary;
   const firstStopWithLocation = Array.isArray(rawStops)
     ? rawStops.find((stop) => stop?.location || stop?.place)
@@ -2153,15 +2435,11 @@ function normalizePlan(plan, index = 0, tripDates = []) {
     stops,
     available_dates: availableDates.length ? availableDates : tripDateIds,
     closed_dates: toArray(plan.closed_dates || plan.unavailable_days),
-    time_window: plan.time_window || plan.window || '弹性',
-    duration: plan.duration || '半天',
-    intensity,
     weather_rules: normalizeWeatherRules(plan),
     conflicts: toArray(plan.conflicts || plan.mutually_exclusive_with),
     reminders: normalizePlanReminders(plan.reminders || plan.special_reminders || plan.alerts),
     tips: normalizePlanTips(plan.tips || plan.hints),
     bookings: normalizePlanBookings(plan),
-    tags: toArray(plan.tags),
   };
 }
 
@@ -2517,6 +2795,12 @@ function parseImportJson(text) {
   return JSON.parse(fenced ? fenced[1].trim() : trimmed);
 }
 
+function getSinglePlanPayload(parsed) {
+  if (Array.isArray(parsed?.plans)) return parsed.plans[0] || null;
+  if (parsed?.plan && typeof parsed.plan === 'object' && !Array.isArray(parsed.plan)) return parsed.plan;
+  return parsed;
+}
+
 async function readImportFileText(file) {
   if (!file) return '';
   return file.text();
@@ -2668,7 +2952,7 @@ function includesAnyKeyword(text, keywords) {
 }
 
 function getPlanWeatherExposure(plan) {
-  const headlineText = [plan.name, plan.description, ...plan.tags].join(' ');
+  const headlineText = [plan.name, plan.description].join(' ');
   const detailText = [...plan.tips, ...plan.stops.flatMap((stop) => [stop.title, stop.note, stop.location.label])].join(' ');
   const stopTexts = plan.stops.map((stop) => [stop.title, stop.note, stop.location.label].join(' '));
   const outdoorScore = (
@@ -3129,52 +3413,116 @@ async function translateWeatherSearchTerm(term) {
   return result;
 }
 
-async function geocodeWeatherSearchTerms(searchTerms, resolvedLabel) {
-  const languages = ['zh', 'ja', 'en'];
+function scoreGeocodeResult(result, term, location = {}) {
+  const normalizedTerm = normalizeWeatherSearchText(term);
+  const name = normalizeWeatherSearchText(result.name);
+  const admin1 = normalizeWeatherSearchText(result.admin1);
+  const admin2 = normalizeWeatherSearchText(result.admin2 || result.admin3);
+  const countryCode = String(location.countryCode || '').trim().toUpperCase();
+  let score = 0;
 
-  for (const term of searchTerms) {
-    for (const geoLanguage of languages) {
-      const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
-      geoUrl.searchParams.set('name', term);
-      geoUrl.searchParams.set('count', '1');
-      geoUrl.searchParams.set('language', geoLanguage);
-      geoUrl.searchParams.set('format', 'json');
-      const geoData = await fetchJson(geoUrl, `地点查询：${resolvedLabel}`);
-      const first = geoData.results?.[0] || null;
-      if (first) return first;
+  if (name && normalizedTerm) {
+    if (name === normalizedTerm) score += 90;
+    else if (normalizedTerm.includes(name) || name.includes(normalizedTerm)) score += 55;
+  }
+
+  if (countryCode) {
+    score += String(result.country_code || '').toUpperCase() === countryCode ? 80 : -80;
+  }
+
+  if (location.admin1) {
+    const expectedAdmin1 = normalizeWeatherSearchText(location.admin1);
+    if (expectedAdmin1 && admin1) {
+      if (admin1 === expectedAdmin1) score += 55;
+      else if (admin1.includes(expectedAdmin1) || expectedAdmin1.includes(admin1)) score += 30;
     }
   }
 
-  return null;
+  if (location.admin2) {
+    const expectedAdmin2 = normalizeWeatherSearchText(location.admin2);
+    if (expectedAdmin2 && admin2) {
+      if (admin2 === expectedAdmin2) score += 35;
+      else if (admin2.includes(expectedAdmin2) || expectedAdmin2.includes(admin2)) score += 18;
+    }
+  }
+
+  return score;
+}
+
+async function geocodeWeatherSearchTerms(searchTerms, resolvedLabel, location = {}) {
+  const languages = uniq(['zh', 'ja', 'en']);
+  let best = null;
+
+  for (const term of searchTerms) {
+    if (!String(term || '').trim()) continue;
+    for (const geoLanguage of languages) {
+      const geoUrl = new URL('https://geocoding-api.open-meteo.com/v1/search');
+      geoUrl.searchParams.set('name', term);
+      geoUrl.searchParams.set('count', '10');
+      geoUrl.searchParams.set('language', geoLanguage);
+      geoUrl.searchParams.set('format', 'json');
+      const countryCode = String(location.countryCode || '').trim().toUpperCase();
+      if (/^[A-Z]{2}$/.test(countryCode)) {
+        geoUrl.searchParams.set('countryCode', countryCode);
+      }
+      const geoData = await fetchJson(geoUrl, `地点查询：${resolvedLabel}`);
+      const results = geoData.results || [];
+      results.forEach((result) => {
+        const score = scoreGeocodeResult(result, term, location);
+        if (!best || score > best.score) {
+          best = { result, score };
+        }
+      });
+
+      if (best?.score >= 135) return best.result;
+    }
+  }
+
+  return best && best.score >= 20 ? best.result : null;
 }
 
 async function fetchWeatherForLocation(location, startDateStr, endDate) {
   let resolved = location;
   if (!hasCoordinates(resolved)) {
     const resolvedLabel = getWeatherLocationLabel(resolved);
-    const fallback = getWeatherLocationFallback(resolved);
-    if (fallback) {
-      resolved = fallback;
-    } else {
-      const searchTerms = getWeatherSearchTerms(resolved);
-      let first = await geocodeWeatherSearchTerms(searchTerms, resolvedLabel);
+    const searchTerms = getWeatherSearchTerms(resolved);
+    let first = null;
+    let geocodeError = null;
+
+    try {
+      first = await geocodeWeatherSearchTerms(searchTerms, resolvedLabel, resolved);
 
       if (!first) {
         const translatedTerms = [];
         for (const term of searchTerms.slice(0, 3)) {
           translatedTerms.push(...await translateWeatherSearchTerm(term));
         }
-        first = await geocodeWeatherSearchTerms(uniq(translatedTerms), resolvedLabel);
+        first = await geocodeWeatherSearchTerms(uniq(translatedTerms), resolvedLabel, resolved);
       }
+    } catch (error) {
+      geocodeError = error;
+    }
 
-      if (!first) throw new Error(`找不到地点：${resolvedLabel}`);
+    if (first) {
       resolved = {
         ...resolved,
         weatherLabel: resolved.weatherLabel || `${first.name}${first.admin1 ? `, ${first.admin1}` : ''}`,
         latitude: first.latitude,
         longitude: first.longitude,
         timezone: first.timezone,
+        countryCode: resolved.countryCode || first.country_code,
+        admin1: resolved.admin1 || first.admin1,
+        admin2: resolved.admin2 || first.admin2,
       };
+    } else {
+      const fallback = getWeatherLocationFallback(resolved);
+      if (fallback) {
+        resolved = fallback;
+      } else if (geocodeError) {
+        throw geocodeError;
+      } else {
+        throw new Error(`找不到地点：${resolvedLabel}`);
+      }
     }
   }
 
@@ -3322,13 +3670,13 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "name": "Short title",
       "description": "What to do and when this plan is suitable",
       "priority": "must | preferred | backup | optional",
-      "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": "English city name or coordinates preferred for weather API" },
+      "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": { "query": "City/Ward, Prefecture, Country for weather lookup", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
       "stops": [
         {
           "time": "09:30",
           "title": "Stop title",
-          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": "Fill only when crossing city/district; English city name or coordinates preferred" },
-          "transfer_from_previous": { "depart_at": "09:00", "arrive_at": "09:30", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car", "note": "" },
+          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": { "query": "City/Ward, Prefecture, Country; empty if same as plan location", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
+          "transfer_from_previous": { "depart_at": "09:00", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "note": "Default to walk for normal point-to-point walking. Use sightseeing_walk only when the walk itself is a planned scenic activity." },
           "opening_hours": "Only the opening/business hours relevant to the planned arrival time, e.g. 10:00-17:00; leave empty if unknown or unreliable",
           "note": "What happens at this stop",
           "weather_relevant": true
@@ -3336,9 +3684,6 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       ],
       "available_dates": ["YYYY-MM-DD"],
       "closed_dates": ["YYYY-MM-DD"],
-      "time_window": "10:00-16:00",
-      "duration": "half day",
-      "intensity": "easy | normal | hard",
       "weather_rules": {
         "best": ["sunny", "partly_cloudy"],
         "ok": ["cloudy", "drizzle"],
@@ -3348,18 +3693,17 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "bookings": [
         {
           "id": "booking_id",
-          "type": "reservation | ticket | confirmation",
+          "type": "reservation | ticket | confirmation | restaurant_reservation",
           "title": "Reservation/ticket item",
           "status": "pending | done | none",
           "address": "Service or arrival address",
           "url": "Reservation or booking link, optional",
           "cancel_url": "Cancellation/change/manage link, optional",
-          "note": "Lead time, ID requirements, cancellation rules, etc."
+          "note": "Lead time, ID requirements, cancellation rules, restaurant reservation or queue notes, etc."
         }
       ],
-      "reminders": [{"time": "HH:mm or text time", "text": "Important reminder"}],
+      "reminders": [{"time": "HH:mm or text time", "text": "Important reminder", "links": [{"label": "Official site", "url": "https://example.com"}]}],
       "tips": ["General tip"],
-      "tags": ["tag"],
       "assigned_day": "YYYY-MM-DD"
     }
   ]
@@ -3373,13 +3717,13 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "name": "短标题",
       "description": "当天做什么，适合什么情况",
       "priority": "must | preferred | backup | optional",
-      "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": "天气查询用，优先英文城市名或坐标" },
+      "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": { "query": "天气查询用行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
       "stops": [
         {
           "time": "09:30",
           "title": "节点标题",
-          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": "跨城或不同区县时填写；优先英文城市名或坐标" },
-          "transfer_from_previous": { "depart_at": "09:00", "arrive_at": "09:30", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾", "note": "" },
+          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": { "query": "跨城或不同区县时填写行政地点；同计划地点可留空", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
+          "transfer_from_previous": { "depart_at": "09:00", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "note": "普通点到点步行默认写步行。只有这段步行本身就是独立观景/逛街/散步项目时，才写游玩型步行。" },
           "opening_hours": "只写和计划到达时间相关的开放/营业时间，例如 10:00-17:00；不确定或不可靠时留空",
           "note": "这个节点做什么",
           "weather_relevant": true
@@ -3387,9 +3731,6 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       ],
       "available_dates": ["YYYY-MM-DD"],
       "closed_dates": ["YYYY-MM-DD"],
-      "time_window": "10:00-16:00",
-      "duration": "半天",
-      "intensity": "easy | normal | hard",
       "weather_rules": {
         "best": ["sunny", "partly_cloudy"],
         "ok": ["cloudy", "drizzle"],
@@ -3399,18 +3740,17 @@ function getPlanJsonSchema(language = DEFAULT_LANGUAGE) {
       "bookings": [
         {
           "id": "booking_id",
-          "type": "reservation | ticket | confirmation",
+          "type": "reservation | ticket | confirmation | restaurant_reservation",
           "title": "需要预约/订票的项目",
           "status": "pending | done | none",
           "address": "办理或到达地址",
           "url": "预约或订票链接，可空",
           "cancel_url": "退订/改签/管理链接，可空",
-          "note": "提前多久、证件要求、退改规则等"
+          "note": "提前多久、证件要求、退改规则、餐厅预约或排队说明等"
         }
       ],
-      "reminders": [{"time": "HH:mm 或文字时间", "text": "必须注意的事项"}],
+      "reminders": [{"time": "HH:mm 或文字时间", "text": "必须注意的事项", "links": [{"label": "官网", "url": "https://example.com"}]}],
       "tips": ["普通提示"],
-      "tags": ["标签"],
       "assigned_day": "YYYY-MM-DD"
     }
   ]
@@ -3424,23 +3764,19 @@ function getSinglePlanJsonSchema(language = DEFAULT_LANGUAGE) {
   "name": "Short title",
   "description": "What to do",
   "priority": "must | preferred | backup | optional",
-  "location": { "label": "Display place", "address": "", "weather_location": "English city name or coordinates preferred" },
-  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": "" }, "transfer_from_previous": { "depart_at": "", "arrive_at": "", "duration": "", "mode": "", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
+  "location": { "label": "Display place", "address": "", "weather_location": { "query": "City/Ward, Prefecture, Country", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
+  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": { "query": "", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
-  "time_window": "10:00-16:00",
-  "duration": "half day",
-  "intensity": "easy | normal | hard",
   "weather_rules": {
     "best": ["sunny", "partly_cloudy"],
     "ok": ["cloudy", "drizzle"],
     "blocked": ["heavy_rain", "storm"]
   },
   "conflicts": ["other_plan_id"],
-  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
-  "reminders": [{ "time": "", "text": "" }],
+  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation | restaurant_reservation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
+  "reminders": [{ "time": "", "text": "", "links": [{ "label": "", "url": "" }] }],
   "tips": [],
-  "tags": [],
   "assigned_day": "YYYY-MM-DD"
 }`;
   }
@@ -3450,23 +3786,19 @@ function getSinglePlanJsonSchema(language = DEFAULT_LANGUAGE) {
   "name": "短标题",
   "description": "当天做什么",
   "priority": "must | preferred | backup | optional",
-  "location": { "label": "地点展示名", "address": "", "weather_location": "优先英文城市名或坐标" },
-  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": "" }, "transfer_from_previous": { "depart_at": "", "arrive_at": "", "duration": "", "mode": "", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
+  "location": { "label": "地点展示名", "address": "", "weather_location": { "query": "行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
+  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": { "query": "", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
-  "time_window": "10:00-16:00",
-  "duration": "半天",
-  "intensity": "easy | normal | hard",
   "weather_rules": {
     "best": ["sunny", "partly_cloudy"],
     "ok": ["cloudy", "drizzle"],
     "blocked": ["heavy_rain", "storm"]
   },
   "conflicts": ["other_plan_id"],
-  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
-  "reminders": [{ "time": "", "text": "" }],
+  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation | restaurant_reservation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
+  "reminders": [{ "time": "", "text": "", "links": [{ "label": "", "url": "" }] }],
   "tips": [],
-  "tags": [],
   "assigned_day": "YYYY-MM-DD"
 }`;
 }
@@ -3496,7 +3828,14 @@ function compactLocationForAi(location) {
   return pruneEmptyAiValue({
     label: location.label,
     address: location.address,
-    weather_location: getWeatherLocationLabel(location),
+    weather_location: {
+      query: location.query || getWeatherLocationLabel(location),
+      country_code: location.countryCode,
+      admin1: location.admin1,
+      admin2: location.admin2,
+      latitude: location.latitude,
+      longitude: location.longitude,
+    },
   });
 }
 
@@ -3523,7 +3862,6 @@ function compactTransferForAi(transfer) {
 
   return pruneEmptyAiValue({
     depart_at: transfer.departAt,
-    arrive_at: transfer.arriveAt,
     mode: transfer.mode,
     duration: transfer.duration,
     note: transfer.note,
@@ -3564,9 +3902,6 @@ function compactPlanForAi(plan, assignedDay) {
     })),
     available_dates: plan.available_dates,
     closed_dates: plan.closed_dates,
-    time_window: plan.time_window,
-    duration: plan.duration,
-    intensity: plan.intensity,
     weather_rules: plan.weather_rules,
     conflicts: plan.conflicts,
     bookings: plan.bookings.map((booking) => ({
@@ -3579,9 +3914,8 @@ function compactPlanForAi(plan, assignedDay) {
       cancel_url: booking.cancelUrl,
       note: booking.note,
     })),
-    reminders: plan.reminders.map((item) => ({ time: item.time, text: item.text })),
+    reminders: plan.reminders.map((item) => ({ time: item.time, text: item.text, links: item.links || [] })),
     tips: plan.tips,
-    tags: plan.tags,
     assigned_day: assignedDay,
   });
 }
@@ -3919,55 +4253,22 @@ function BufferedTripNameField({ value, t, onCommit }) {
   );
 }
 
-function PlanQuickEditor({ plan, language, t, onSave }) {
-  const [draft, setDraft] = useState(() => ({
-    name: plan.name,
-    priority: plan.priority,
-  }));
-
+function PlanRawJsonEditor({ value, t, onChange }) {
   return (
-    <div className="plan-quick-editor">
+    <div className="plan-raw-json-editor">
       <div className="panel-header compact">
-        <h3>{t('quickEdit')}</h3>
+        <div>
+          <h3>{t('rawPlanJsonTitle')}</h3>
+          <p>{t('rawPlanJsonHelp')}</p>
+        </div>
       </div>
-      <div className="plan-quick-fields">
-        <label>
-          <span>{t('planNameLabel')}</span>
-          <input
-            className="input"
-            value={draft.name}
-            onChange={(event) => setDraft((current) => ({
-              ...current,
-              name: event.target.value,
-            }))}
-          />
-        </label>
-        <label>
-          <span>{t('planPriorityLabel')}</span>
-          <select
-            className="input"
-            value={draft.priority}
-            onChange={(event) => setDraft((current) => ({
-              ...current,
-              priority: event.target.value,
-            }))}
-          >
-            {Object.keys(PRIORITY_META).map((priority) => (
-              <option key={priority} value={priority}>
-                {getPriorityLabel(priority, language)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button
-          className="btn btn-primary"
-          type="button"
-          onClick={() => onSave(draft)}
-          disabled={!draft.name.trim()}
-        >
-          {t('saveQuickEdit')}
-        </button>
-      </div>
+      <textarea
+        className="textarea plan-raw-json"
+        value={value}
+        spellCheck={false}
+        placeholder={t('rawPlanJsonPlaceholder')}
+        onChange={(event) => onChange(event.target.value)}
+      />
     </div>
   );
 }
@@ -4122,6 +4423,9 @@ function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPlanId, setEditorPlanId] = useState(null);
   const [editorTab, setEditorTab] = useState('itinerary');
+  const [planEditorMode, setPlanEditorMode] = useState('ai');
+  const [planManualDraftJson, setPlanManualDraftJson] = useState('');
+  const [planAiDraftJson, setPlanAiDraftJson] = useState('');
   const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
   const [aiPlannerMode, setAiPlannerMode] = useState('replan');
@@ -4146,13 +4450,13 @@ function App() {
   const aiPlannerQuestionRef = useRef(null);
   const aiPlannerResultRef = useRef(null);
   const planAiQuestionRef = useRef(null);
-  const planAiResultRef = useRef(null);
   const importTextRef = useRef(null);
   const lodgingSectionRef = useRef(null);
   const latestAppSnapshotRef = useRef(null);
   const driveBusyRef = useRef('');
   const driveConflictRef = useRef(false);
   const notifyRef = useRef(null);
+  const weatherDataRef = useRef(initial.weatherData);
   const t = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
   const aiReplanText = getAiModeText('replan', language);
   const aiGenerateText = getAiModeText('generate', language);
@@ -4249,7 +4553,7 @@ function App() {
   }, [schedule]);
 
   const candidates = useMemo(() => {
-    if (!selectedDate) return [];
+    if (!selectedDate || editorOpen || aiPlannerOpen || importModalOpen || checklistOpen || checklistImportOpen || drivePanelOpen || archivedViewTripId) return [];
     const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
 
     return normalizedPlans
@@ -4298,6 +4602,13 @@ function App() {
     schedule,
     selectedDate,
     selectedPlan,
+    editorOpen,
+    aiPlannerOpen,
+    importModalOpen,
+    checklistOpen,
+    checklistImportOpen,
+    drivePanelOpen,
+    archivedViewTripId,
     language,
     t,
     tripDates,
@@ -4337,6 +4648,39 @@ function App() {
   const availableCandidateCount = readyCandidates.length;
   const isCreatingPlan = editorPlanId === NEW_PLAN_EDITOR_ID;
   const editorPlan = editorPlanId && !isCreatingPlan ? plansById.get(editorPlanId) : null;
+  const hasPlanAiDraft = planAiDraftJson.trim().length > 0;
+  const planEffectiveDraftJson = hasPlanAiDraft ? planAiDraftJson : planManualDraftJson;
+  const updatePlanEffectiveDraftJson = (nextDraft) => {
+    if (hasPlanAiDraft) {
+      setPlanAiDraftJson(nextDraft);
+    } else {
+      setPlanManualDraftJson(nextDraft);
+    }
+  };
+  const getPlanEditorDraftJson = (planId = NEW_PLAN_EDITOR_ID) => {
+    const plan = planId && planId !== NEW_PLAN_EDITOR_ID ? plansById.get(planId) : null;
+    if (plan) return JSON.stringify(compactPlanForAi(plan, planAssignments.get(plan.id) || null), null, 2);
+
+    return JSON.stringify({
+      id: '',
+      name: language === 'en' ? 'New plan' : '新计划',
+      description: '',
+      priority: 'preferred',
+      location: {
+        label: '',
+        address: '',
+        weather_location: { query: '', country_code: '', admin1: '', latitude: '', longitude: '' },
+      },
+      stops: [],
+      available_dates: tripDates.map((date) => date.id),
+      closed_dates: [],
+      weather_rules: { best: [], ok: [], blocked: ['heavy_rain', 'storm'] },
+      conflicts: [],
+      bookings: [],
+      reminders: [],
+      tips: [],
+    }, null, 2);
+  };
 
   const changeLanguage = (nextLanguage) => {
     const normalizedLanguage = normalizeLanguage(nextLanguage);
@@ -4425,6 +4769,10 @@ function App() {
     localStorage.setItem(STORAGE_KEYS.checklistText, checklistText);
     localStorage.setItem(STORAGE_KEYS.checklistState, JSON.stringify(checklistState));
   }, [checklistState, checklistText]);
+
+  useEffect(() => {
+    weatherDataRef.current = weatherData;
+  }, [weatherData]);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.weatherCache, JSON.stringify(weatherData));
@@ -4812,20 +5160,28 @@ function App() {
     if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
   };
 
-  const resetPlanAiFields = () => {
+  const resetPlanAiQuestion = () => {
     if (planAiQuestionRef.current) planAiQuestionRef.current.value = '';
-    if (planAiResultRef.current) planAiResultRef.current.value = '';
+  };
+
+  const resetPlanAiFields = () => {
+    resetPlanAiQuestion();
+    setPlanManualDraftJson('');
+    setPlanAiDraftJson('');
   };
 
   const openPlanEditor = (planId = NEW_PLAN_EDITOR_ID) => {
     startUiTransition(() => {
       setEditorPlanId(planId);
       setEditorTab('itinerary');
+      setPlanEditorMode('ai');
+      setPlanManualDraftJson(getPlanEditorDraftJson(planId));
+      setPlanAiDraftJson('');
       setEditorOpen(true);
       setBatchAiOpen(false);
       setAiPlannerOpen(false);
     });
-    resetPlanAiFields();
+    resetPlanAiQuestion();
   };
 
   const openLodgingEditor = () => {
@@ -4843,6 +5199,7 @@ function App() {
 
   const closePlanEditor = () => {
     setEditorPlanId(null);
+    setPlanEditorMode('ai');
     resetPlanAiFields();
   };
 
@@ -4858,30 +5215,8 @@ function App() {
     notify(t('planDeleted'));
   };
 
-  const savePlanQuickEdit = (draft) => {
-    if (!editorPlan) return;
-
-    const nextName = String(draft?.name || '').trim();
-    const nextPriority = PRIORITY_META[draft?.priority] ? draft.priority : editorPlan.priority;
-    if (!nextName) return;
-
-    setPlans((current) => current.map((plan, index) => {
-      const normalizedPlan = normalizePlan(plan, index, tripDates);
-      if (normalizedPlan.id !== editorPlan.id) return plan;
-
-      return {
-        ...plan,
-        name: nextName,
-        priority: nextPriority,
-        must: nextPriority === 'must',
-        must_go: nextPriority === 'must',
-      };
-    }));
-    notify(t('planUpdated'));
-  };
-
   const saveLodgings = (nextLodgings) => {
-    setLodgings(nextLodgings);
+    setLodgings(normalizeTripLodgings(nextLodgings));
     notify(t('lodgingsSaved'));
   };
 
@@ -5237,7 +5572,7 @@ function App() {
     }, WEATHER_BATCH_TIMEOUT_MS);
 
     try {
-      const nextWeatherData = await fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherData);
+      const nextWeatherData = await fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherDataRef.current);
       if (!timedOut) {
         setWeatherData(nextWeatherData);
         const warning = formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || [], language);
@@ -5282,7 +5617,7 @@ function App() {
       }
     }, WEATHER_BATCH_TIMEOUT_MS);
 
-    fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherData)
+    fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherDataRef.current)
       .then((nextWeatherData) => {
         if (!cancelled && !timedOut) {
           setWeatherData(nextWeatherData);
@@ -5304,7 +5639,7 @@ function App() {
       if (!settled && autoWeatherKeyRef.current === autoWeatherKey) autoWeatherKeyRef.current = '';
       setWeatherLoading(false);
     };
-  }, [language, normalizedPlans, startDateStr, t, tripDates, weatherData]);
+  }, [language, normalizedPlans, startDateStr, t, tripDates]);
 
   const buildAiPlanningPrompt = (mode = aiPlannerMode) => {
     const planningStartDate = selectedDate || tripDates[0];
@@ -5346,12 +5681,7 @@ function App() {
       available_dates: plan.available_dates,
       closed_dates: plan.closed_dates,
       weather_rules: plan.weather_rules,
-      location: {
-        label: plan.location.label,
-        weather_location: getWeatherLocationLabel(plan.location),
-        address: plan.location.address || '',
-      },
-      time_window: plan.time_window,
+      location: compactLocationForAi(plan.location),
       stops: plan.stops.map((stop) => ({
         time: stop.time,
         title: stop.title,
@@ -5370,7 +5700,11 @@ function App() {
         cancel_url: booking.cancelUrl,
         note: booking.note,
       })),
-      reminders: plan.reminders.map((item) => `${item.time ? `${item.time} ` : ''}${item.text}`),
+      reminders: plan.reminders.map((item) => ({
+        time: item.time,
+        text: item.text,
+        links: item.links || [],
+      })),
       tips: plan.tips,
       conflicts: plan.conflicts,
       weather_by_adjustable_date: adjustableDates.map((date) => {
@@ -5431,18 +5765,22 @@ Output rules:
 1. Only output importable JSON, with no Markdown or explanation.
 2. Follow the JSON format below. Use empty arrays for optional list fields when absent.
 3. Fill available_dates, closed_dates, weather_rules and conflicts from the trip constraints and the user request.
-4. Prefer an English city name or coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
+4. Fill location.weather_location as an administrative weather lookup object, not a scenic spot. For Japan, use query like "Kawachi-Nagano, Osaka, Japan", country_code "JP", and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". Fill latitude/longitude only when you are confident.
 5. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
-6. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
+6. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links. For restaurants that require or strongly benefit from reservation, add a restaurant_reservation booking with status pending unless already booked, plus a short note about when/why to reserve.
 7. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
 8. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
-9. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. Fill arrive_at when known; it should usually match the current stop time. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later.
+9. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
 10. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
 11. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
-12. If lodgings are provided, use them as day start/end and hotel-transfer constraints.
-13. Add reminders and tips only when useful; otherwise use empty arrays.
-14. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
-15. If a plan should be scheduled, write assigned_day on that plan.
+12. Do not call a plan a "loop" just because it starts and ends at lodging. Use loop only for a real circular sightseeing route.
+13. If lodgings are provided, use them as day start/end and hotel-transfer constraints.
+14. Avoid repeating the same point across description, reminders and tips. Use description for the day summary and why the flow works; use reminders only for time-sensitive or must-check actions; use tips only for optional general advice.
+15. URL fields such as bookings.url, bookings.cancel_url, reminders[].links[].url, lodging booking/map URLs must be plain https URLs, never Markdown links.
+16. For official sites, realtime status pages, live cameras, booking pages or other URLs in reminders, put them in reminders[].links. Do not put Markdown links or raw URLs inside reminder text.
+17. Add reminders and tips only when useful; otherwise use empty arrays.
+18. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
+19. If a plan should be scheduled, write assigned_day on that plan.
 
 JSON format:
 ${planSchema}`;
@@ -5466,26 +5804,30 @@ ${JSON.stringify({
 1. 只输出可导入 JSON，不要 Markdown 或解释。
 2. 严格按下面格式补齐字段；可选数组没有内容时用空数组。
 3. 根据旅行限制和用户需求填写 available_dates、closed_dates、weather_rules、conflicts。
-4. location.weather_location 优先写英文城市名或坐标，不要用景点名做天气查询。
+4. location.weather_location 写成天气查询用行政地点对象，不要用景点名。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 country_code "JP"、admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。只有确定坐标时才填 latitude/longitude。
 5. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
-6. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
+6. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。餐厅如果需要预约，或强烈建议预约/排队风险较高，也写 restaurant_reservation 类型的 booking；除非已订好，否则 status 用 pending，并在 note 简要说明何时/为什么要预约。
 7. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
 8. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
-9. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间；arrive_at 可在明确时填写，通常应和当前 stop.time 对齐。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。
+9. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间。stops.time 已经是到达/开始当前 stop 的时间，不要在 transfer_from_previous 里重复。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是一个明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
 10. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
 11. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
-12. 如果提供了 lodgings，把住宿作为每天出发、返回和换酒店约束。
-13. 有特别提醒和 tips 就写，没有就留空数组。
-14. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
-15. 需要安排日期时，在对应 plan 上写 assigned_day。
+12. 不要因为从酒店出发、回酒店结束，就把计划命名为“环线”；只有真实闭环游览路线才可以叫环线。
+13. 如果提供了 lodgings，把住宿作为每天出发、返回和换酒店约束。
+14. 避免在 description、reminders、tips 里反复写同一件事。description 只写当天概览和动线为什么成立；reminders 只写有时间点、必须确认、必须执行的动作；tips 只写额外建议。
+15. bookings.url、bookings.cancel_url、reminders[].links[].url、住宿 booking/map URL 等 URL 字段只能填写纯 https URL，不要写 Markdown 链接。
+16. 提醒里如果涉及官网、实时状态、实时摄像头、预约页或其他 URL，放到 reminders[].links；不要把 Markdown 链接或裸 URL 写进 text。
+17. 有特别提醒和 tips 就写，没有就留空数组。
+18. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
+19. 需要安排日期时，在对应 plan 上写 assigned_day。
 
 JSON 格式：
 ${planSchema}`;
     }
 
     const replanRequest = plannerQuestion.trim() || (language === 'en'
-      ? 'Replan the remaining dates based on current weather, date limits, must-go priority and itinerary intensity.'
-      : '请根据当前天气、日期限制、必去优先级和行程强度，重排剩余日期。');
+      ? 'Replan the remaining dates based on current weather, date limits, must-go priority and day flow.'
+      : '请根据当前天气、日期限制、必去优先级和当天动线，重排剩余日期。');
     const context = {
       ...tripContext,
       fixed_dates_do_not_change: fixedDates.map(summarizeScheduleDate),
@@ -5589,7 +5931,7 @@ ${JSON.stringify(context, null, 2)}
           const normalized = normalizePlan(incomingPlan, index, tripDates);
           const existingIndex = next.findIndex((plan) => plan.id === normalized.id);
           if (existingIndex >= 0) {
-            next[existingIndex] = { ...next[existingIndex], ...normalized };
+            next[existingIndex] = normalized;
           } else {
             next.push(normalized);
           }
@@ -5686,32 +6028,40 @@ ${planUserRequest}
 
 ${language === 'en' ? `Requirements:
 1. ${isCreatingPlan ? 'The new plan id must not duplicate existing_plan_ids.' : 'Keep the current plan id unless the user explicitly asks to change it.'}
-2. Prefer an English city name or coordinates in location.weather_location. Do not use scenic spot names for weather lookup.
+2. Fill location.weather_location as an administrative weather lookup object, not a scenic spot. For Japan, use query like "Kawachi-Nagano, Osaka, Japan", country_code "JP", and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". Fill latitude/longitude only when you are confident.
 3. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
-4. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links.
+4. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links. For restaurants that require or strongly benefit from reservation, add a restaurant_reservation booking with status pending unless already booked, plus a short note about when/why to reserve.
 5. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
 6. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
-7. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. Fill arrive_at when known; it should usually match the current stop time. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later.
+7. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
 8. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
 9. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
-10. If lodgings are provided, account for day start/end and hotel-transfer constraints.
-11. If the plan fits a specific day, include assigned_day.
-12. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
+10. Do not call a plan a "loop" just because it starts and ends at lodging. Use loop only for a real circular sightseeing route.
+11. If lodgings are provided, account for day start/end and hotel-transfer constraints.
+12. Avoid repeating the same point across description, reminders and tips. Use description for the day summary and why the flow works; use reminders only for time-sensitive or must-check actions; use tips only for optional general advice.
+13. URL fields such as bookings.url, bookings.cancel_url, reminders[].links[].url, lodging booking/map URLs must be plain https URLs, never Markdown links.
+14. For official sites, realtime status pages, live cameras, booking pages or other URLs in reminders, put them in reminders[].links. Do not put Markdown links or raw URLs inside reminder text.
+15. If the plan fits a specific day, include assigned_day.
+16. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
 
 Single plan JSON format:
 ${schema}` : `要求：
 1. ${isCreatingPlan ? '新增计划 id 不要和 existing_plan_ids 重复。' : '除非用户明确要求，否则保留当前计划 id。'}
-2. location.weather_location 优先写英文城市名或坐标，不要用景点名做天气查询。
+2. location.weather_location 写成天气查询用行政地点对象，不要用景点名。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 country_code "JP"、admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。只有确定坐标时才填 latitude/longitude。
 3. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
-4. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。
+4. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。餐厅如果需要预约，或强烈建议预约/排队风险较高，也写 restaurant_reservation 类型的 booking；除非已订好，否则 status 用 pending，并在 note 简要说明何时/为什么要预约。
 5. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
 6. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
-7. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间；arrive_at 可在明确时填写，通常应和当前 stop.time 对齐。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。
+7. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间。stops.time 已经是到达/开始当前 stop 的时间，不要在 transfer_from_previous 里重复。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是一个明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
 8. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
 9. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
-10. 如果提供了 lodgings，把住宿作为当天出发、返回和换酒店约束。
-11. 如果计划适合安排到某一天，可以写 assigned_day。
-12. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
+10. 不要因为从酒店出发、回酒店结束，就把计划命名为“环线”；只有真实闭环游览路线才可以叫环线。
+11. 如果提供了 lodgings，把住宿作为当天出发、返回和换酒店约束。
+12. 避免在 description、reminders、tips 里反复写同一件事。description 只写当天概览和动线为什么成立；reminders 只写有时间点、必须确认、必须执行的动作；tips 只写额外建议。
+13. bookings.url、bookings.cancel_url、reminders[].links[].url、住宿 booking/map URL 等 URL 字段只能填写纯 https URL，不要写 Markdown 链接。
+14. 提醒里如果涉及官网、实时状态、实时摄像头、预约页或其他 URL，放到 reminders[].links；不要把 Markdown 链接或裸 URL 写进 text。
+15. 如果计划适合安排到某一天，可以写 assigned_day。
+16. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
 
 单个计划 JSON 格式：
 ${schema}`}
@@ -5722,23 +6072,103 @@ ${schema}`}
     copyText(buildPlanAiPrompt(), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
   };
 
-  const applyPlanAiResult = () => {
-    try {
-      const parsed = parseImportJson(planAiResultRef.current?.value || '');
-      const normalizedPayload = Array.isArray(parsed.plans)
-        ? parsed
-        : parsed.id || parsed.name
-          ? { plans: [parsed] }
-          : parsed;
+  const assertPlanDraftOption = (value, allowedValues, path) => {
+    const normalizedValue = String(value || '').trim();
+    if (normalizedValue && !allowedValues.has(normalizedValue)) {
+      throw new Error(t('invalidPlanField', { path, value: normalizedValue }));
+    }
+  };
 
-      if (!isCreatingPlan && Array.isArray(normalizedPayload.plans)) {
-        normalizedPayload.plans = normalizedPayload.plans.map((plan, index) => (
-          index === 0 ? { ...plan, id: plan.id || editorPlanId } : plan
-        ));
+  const validatePlanDraftOptions = (payload) => {
+    if (!payload || typeof payload !== 'object') return;
+
+    if (payload.priority) {
+      assertPlanDraftOption(payload.priority, new Set(Object.keys(PRIORITY_META)), 'priority');
+    }
+
+    if (payload.weather_rules && typeof payload.weather_rules === 'object') {
+      ['best', 'ok', 'blocked'].forEach((ruleKey) => {
+        toArray(payload.weather_rules[ruleKey]).forEach((value) => {
+          assertPlanDraftOption(value, WEATHER_RULE_VALUES, `weather_rules.${ruleKey}`);
+        });
+      });
+    }
+
+    [
+      ...toArray(payload.bookings),
+      ...toArray(payload.reservations),
+      ...toArray(payload.appointments),
+      ...toArray(payload.tickets),
+    ].forEach((booking, index) => {
+      if (!booking || typeof booking !== 'object') return;
+      if (booking.type || booking.kind) {
+        assertPlanDraftOption(booking.type || booking.kind, BOOKING_TYPE_VALUES, `bookings[${index}].type`);
       }
+      if (booking.status) {
+        assertPlanDraftOption(booking.status, BOOKING_STATUS_VALUES, `bookings[${index}].status`);
+      }
+    });
+  };
 
-      applyImportedPayload(normalizedPayload, isCreatingPlan ? t('planCreated') : t('planUpdated'));
-      closePlanEditor();
+  const parseSinglePlanDraft = (text) => {
+    const parsed = parseImportJson(text);
+    const payload = getSinglePlanPayload(parsed);
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(t('noApplicableJson'));
+    }
+    validatePlanDraftOptions(payload);
+
+    const payloadWithFallbackId = isCreatingPlan
+      ? payload
+      : { ...payload, id: payload.id || editorPlanId };
+    const normalizedPlan = normalizePlan(payloadWithFallbackId, 0, tripDates);
+    const duplicatePlan = normalizedPlans.find((plan) => (
+      plan.id === normalizedPlan.id && (isCreatingPlan || plan.id !== editorPlanId)
+    ));
+    if (duplicatePlan) throw new Error(t('duplicatePlanId', { id: normalizedPlan.id }));
+
+    return {
+      plan: normalizedPlan,
+      assignedDay: payload.assigned_day || payload.assignedDay || '',
+    };
+  };
+
+  const applySinglePlanDraft = ({ plan, assignedDay }, message) => {
+    const previousPlanId = isCreatingPlan ? '' : editorPlanId;
+
+    setPlans((current) => {
+      if (isCreatingPlan) return [...current, plan];
+
+      return current.map((item, index) => {
+        const normalizedPlan = normalizePlan(item, index, tripDates);
+        return normalizedPlan.id === previousPlanId ? plan : item;
+      });
+    });
+
+    if (assignedDay || (previousPlanId && previousPlanId !== plan.id)) {
+      setSchedule((current) => {
+        const next = Object.fromEntries(
+          Object.entries(current).map(([dateId, entry]) => [
+            dateId,
+            entry?.planId === previousPlanId ? { ...entry, planId: plan.id } : entry,
+          ]),
+        );
+
+        if (assignedDay) next[assignedDay] = { planId: plan.id };
+        return next;
+      });
+    }
+
+    notify(message);
+    closePlanEditor();
+  };
+
+  const applyPlanEditDraft = () => {
+    try {
+      applySinglePlanDraft(
+        parseSinglePlanDraft(planEffectiveDraftJson),
+        isCreatingPlan ? t('planCreated') : t('planUpdated'),
+      );
     } catch (error) {
       notify(t('applyFailed', { message: error.message }));
     }
@@ -6037,8 +6467,19 @@ ${schema}`}
             <ul>
               {plan.reminders.map((item) => (
                 <li key={item.id}>
-                  {item.time && <span>{item.time}</span>}
-                  <em>{item.text}</em>
+                  {item.time && <span className="plan-note-time">{item.time}</span>}
+                  <span className="plan-note-content">
+                    {item.text && <em>{item.text}</em>}
+                    {item.links?.length > 0 && (
+                      <span className="plan-note-links">
+                        {item.links.map((link) => (
+                          <a key={link.url} className="plan-note-link" href={link.url} target="_blank" rel="noreferrer">
+                            {link.label}
+                          </a>
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -6149,6 +6590,17 @@ ${schema}`}
     </div>
   );
 
+  const renderPlanBookingBadge = (plan) => {
+    const bookingBadge = getPlanBookingBadge(plan, language);
+    if (!bookingBadge) return null;
+
+    return (
+      <span className={`booking-badge status-${bookingBadge.status}`}>
+        {bookingBadge.label}
+      </span>
+    );
+  };
+
   const renderCandidateCard = (candidate) => {
     const { plan, canAssign, assignedDateId, weatherOverride } = candidate;
 
@@ -6162,6 +6614,7 @@ ${schema}`}
             <div className="title-row">
               <h3>{plan.name}</h3>
               <span className={`priority-badge ${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>
+              {renderPlanBookingBadge(plan)}
               {assignedDateId && (
                 <span className="assigned-badge">
                   {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
@@ -6206,6 +6659,7 @@ ${schema}`}
             {getPriorityLabel(selectedPlan.priority, language)}
           </span>
         )}
+        {renderPlanBookingBadge(selectedPlan)}
       </div>
       <p className="current-plan-summary">{selectedPlan?.description || t('currentPlanHelp')}</p>
       {renderPlanStops(selectedPlan)}
@@ -6911,57 +7365,90 @@ ${schema}`}
                     {t('backToList')}
                   </button>
 
-                  <div className="plan-editor-current">
-                    <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
-                    <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
-                    {!isCreatingPlan && editorPlan && (
-                      <>
-                        <p>{editorPlan.description}</p>
-                        {renderPlanStops(editorPlan)}
-                        {renderPlanBookings(editorPlan)}
-                        {renderPlanNotes(editorPlan)}
-                      </>
-                    )}
-                    {isCreatingPlan && (
-                      <p>{t('newPlanHelp')}</p>
-                    )}
-                  </div>
+                  <div className="plan-editor-split">
+                    <section className="plan-editor-preview">
+                      <div className="plan-editor-current">
+                        <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
+                        <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
+                        {!isCreatingPlan && editorPlan && (
+                          <>
+                            <p>{editorPlan.description}</p>
+                            {renderPlanStops(editorPlan)}
+                            {renderPlanBookings(editorPlan)}
+                            {renderPlanNotes(editorPlan)}
+                          </>
+                        )}
+                        {isCreatingPlan && (
+                          <p>{t('newPlanHelp')}</p>
+                        )}
+                      </div>
+                    </section>
 
-                  {!isCreatingPlan && editorPlan && (
-                    <PlanQuickEditor
-                      key={`${editorPlan.id}-${editorPlan.name}-${editorPlan.priority}`}
-                      plan={editorPlan}
-                      language={language}
-                      t={t}
-                      onSave={savePlanQuickEdit}
-                    />
-                  )}
+                    <section className="plan-editor-workspace">
+                      <div className="plan-editor-mode">
+                        <span>{t('editMode')}</span>
+                        <div className="editor-tabs plan-editor-mode-tabs" role="tablist" aria-label={t('editSinglePlan')}>
+                          <button
+                            className={planEditorMode === 'ai' ? 'is-active' : ''}
+                            type="button"
+                            role="tab"
+                            aria-selected={planEditorMode === 'ai'}
+                            onClick={() => startUiTransition(() => setPlanEditorMode('ai'))}
+                          >
+                            {t('aiEditTab')}
+                          </button>
+                          <button
+                            className={planEditorMode === 'json' ? 'is-active' : ''}
+                            type="button"
+                            role="tab"
+                            aria-selected={planEditorMode === 'json'}
+                            onClick={() => startUiTransition(() => setPlanEditorMode('json'))}
+                          >
+                            {t('rawJsonTab')}
+                          </button>
+                        </div>
+                      </div>
 
-                  <label>
-                    <span>{t('yourRequest')}</span>
-                    <textarea
-                      className="textarea plan-ai-question"
-                      ref={planAiQuestionRef}
-                      placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
-                    />
-                  </label>
+                      <div className="plan-editor-ai-pane" hidden={planEditorMode !== 'ai'}>
+                        <label className="plan-ai-question-field">
+                          <span>{t('yourRequest')}</span>
+                          <textarea
+                            className="textarea plan-ai-question"
+                            ref={planAiQuestionRef}
+                            placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
+                          />
+                        </label>
+                        <div className="plan-ai-copy-row">
+                          <button className="btn btn-outline" type="button" onClick={copyPlanAiPrompt}>
+                            {t('copyToAi')}
+                          </button>
+                        </div>
 
-                  <label>
-                    <span>{t('aiResult')}</span>
-                    <textarea
-                      className="textarea plan-ai-result"
-                      ref={planAiResultRef}
-                      placeholder={t('planAiResultPlaceholder')}
-                    />
-                  </label>
+                        <label>
+                          <span>{t('aiResult')}</span>
+                          <textarea
+                            className="textarea plan-ai-result"
+                            value={planAiDraftJson}
+                            placeholder={t('planAiResultPlaceholder')}
+                            spellCheck={false}
+                            onChange={(event) => setPlanAiDraftJson(event.target.value)}
+                          />
+                        </label>
+                      </div>
 
-                  <div className="modal-actions">
-                    <button className="btn btn-outline" type="button" onClick={copyPlanAiPrompt}>
-                      {t('copyToAi')}
-                    </button>
-                    <button className="btn btn-primary" type="button" onClick={applyPlanAiResult}>
-                      {t('applyResult')}
-                    </button>
+                      <div className="plan-editor-manual-pane" hidden={planEditorMode !== 'json'}>
+                        <PlanRawJsonEditor
+                          value={planEffectiveDraftJson}
+                          t={t}
+                          onChange={updatePlanEffectiveDraftJson}
+                        />
+                      </div>
+                      <div className="modal-actions plan-editor-actions">
+                        <button className="btn btn-primary" type="button" onClick={applyPlanEditDraft}>
+                          {t('applyPlanDraft')}
+                        </button>
+                      </div>
+                    </section>
                   </div>
                 </div>
               ) : editorTab === 'lodging' ? (
