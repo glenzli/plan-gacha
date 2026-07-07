@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { Fragment, memo, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { createPlanGachaDriveStorage, hasStoredDriveStorageFile } from './driveStorageAdapter.js';
 
@@ -4273,6 +4273,149 @@ function PlanRawJsonEditor({ value, t, onChange }) {
   );
 }
 
+const PlanEditorPreview = memo(function PlanEditorPreview({
+  isCreatingPlan,
+  editorPlan,
+  t,
+  renderPlanStops,
+  renderPlanBookings,
+  renderPlanNotes,
+}) {
+  return (
+    <section className="plan-editor-preview">
+      <div className="plan-editor-current">
+        <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
+        <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
+        {!isCreatingPlan && editorPlan && (
+          <>
+            <p>{editorPlan.description}</p>
+            {renderPlanStops(editorPlan)}
+            {renderPlanBookings(editorPlan)}
+            {renderPlanNotes(editorPlan)}
+          </>
+        )}
+        {isCreatingPlan && (
+          <p>{t('newPlanHelp')}</p>
+        )}
+      </div>
+    </section>
+  );
+});
+
+function PlanEditorDetail({
+  isCreatingPlan,
+  editorPlan,
+  initialDraftJson,
+  t,
+  onBack,
+  onCopyPrompt,
+  onApplyDraft,
+  renderPlanStops,
+  renderPlanBookings,
+  renderPlanNotes,
+}) {
+  const [planEditorMode, setPlanEditorMode] = useState('ai');
+  const [questionDraft, setQuestionDraft] = useState('');
+  const [manualDraftJson, setManualDraftJson] = useState(initialDraftJson || '');
+  const [aiDraftJson, setAiDraftJson] = useState('');
+  const hasAiDraft = aiDraftJson.trim().length > 0;
+  const effectiveDraftJson = hasAiDraft ? aiDraftJson : manualDraftJson;
+
+  const updateEffectiveDraftJson = (nextDraft) => {
+    if (hasAiDraft) {
+      setAiDraftJson(nextDraft);
+    } else {
+      setManualDraftJson(nextDraft);
+    }
+  };
+
+  return (
+    <div className="plan-editor-detail">
+      <button className="btn btn-small btn-outline plan-back-btn" type="button" onClick={onBack}>
+        {t('backToList')}
+      </button>
+
+      <div className="plan-editor-split">
+        <PlanEditorPreview
+          isCreatingPlan={isCreatingPlan}
+          editorPlan={editorPlan}
+          t={t}
+          renderPlanStops={renderPlanStops}
+          renderPlanBookings={renderPlanBookings}
+          renderPlanNotes={renderPlanNotes}
+        />
+
+        <section className="plan-editor-workspace">
+          <div className="plan-editor-mode">
+            <span>{t('editMode')}</span>
+            <div className="editor-tabs plan-editor-mode-tabs" role="tablist" aria-label={t('editSinglePlan')}>
+              <button
+                className={planEditorMode === 'ai' ? 'is-active' : ''}
+                type="button"
+                role="tab"
+                aria-selected={planEditorMode === 'ai'}
+                onClick={() => setPlanEditorMode('ai')}
+              >
+                {t('aiEditTab')}
+              </button>
+              <button
+                className={planEditorMode === 'json' ? 'is-active' : ''}
+                type="button"
+                role="tab"
+                aria-selected={planEditorMode === 'json'}
+                onClick={() => setPlanEditorMode('json')}
+              >
+                {t('rawJsonTab')}
+              </button>
+            </div>
+          </div>
+
+          <div className="plan-editor-ai-pane" hidden={planEditorMode !== 'ai'}>
+            <label className="plan-ai-question-field">
+              <span>{t('yourRequest')}</span>
+              <textarea
+                className="textarea plan-ai-question"
+                value={questionDraft}
+                placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
+                onChange={(event) => setQuestionDraft(event.target.value)}
+              />
+            </label>
+            <div className="plan-ai-copy-row">
+              <button className="btn btn-outline" type="button" onClick={() => onCopyPrompt(questionDraft)}>
+                {t('copyToAi')}
+              </button>
+            </div>
+
+            <label>
+              <span>{t('aiResult')}</span>
+              <textarea
+                className="textarea plan-ai-result"
+                value={aiDraftJson}
+                placeholder={t('planAiResultPlaceholder')}
+                spellCheck={false}
+                onChange={(event) => setAiDraftJson(event.target.value)}
+              />
+            </label>
+          </div>
+
+          <div className="plan-editor-manual-pane" hidden={planEditorMode !== 'json'}>
+            <PlanRawJsonEditor
+              value={effectiveDraftJson}
+              t={t}
+              onChange={updateEffectiveDraftJson}
+            />
+          </div>
+          <div className="modal-actions plan-editor-actions">
+            <button className="btn btn-primary" type="button" onClick={() => onApplyDraft(effectiveDraftJson)}>
+              {t('applyPlanDraft')}
+            </button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }) {
   const [drafts, setDrafts] = useState(() => (
     lodgings.length
@@ -4413,7 +4556,6 @@ function App() {
   const [checklistState, setChecklistState] = useState(initial.checklistState);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [checklistEditing, setChecklistEditing] = useState(false);
-  const [checklistDraft, setChecklistDraft] = useState(initial.checklistText);
   const [checklistImportOpen, setChecklistImportOpen] = useState(false);
   const [checklistImportText, setChecklistImportText] = useState('');
   const [checklistImportConflicts, setChecklistImportConflicts] = useState([]);
@@ -4423,9 +4565,6 @@ function App() {
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPlanId, setEditorPlanId] = useState(null);
   const [editorTab, setEditorTab] = useState('itinerary');
-  const [planEditorMode, setPlanEditorMode] = useState('ai');
-  const [planManualDraftJson, setPlanManualDraftJson] = useState('');
-  const [planAiDraftJson, setPlanAiDraftJson] = useState('');
   const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
   const [aiPlannerMode, setAiPlannerMode] = useState('replan');
@@ -4449,8 +4588,8 @@ function App() {
   const planImageBusyRef = useRef(false);
   const aiPlannerQuestionRef = useRef(null);
   const aiPlannerResultRef = useRef(null);
-  const planAiQuestionRef = useRef(null);
   const importTextRef = useRef(null);
+  const checklistDraftRef = useRef(null);
   const lodgingSectionRef = useRef(null);
   const latestAppSnapshotRef = useRef(null);
   const driveBusyRef = useRef('');
@@ -4648,15 +4787,6 @@ function App() {
   const availableCandidateCount = readyCandidates.length;
   const isCreatingPlan = editorPlanId === NEW_PLAN_EDITOR_ID;
   const editorPlan = editorPlanId && !isCreatingPlan ? plansById.get(editorPlanId) : null;
-  const hasPlanAiDraft = planAiDraftJson.trim().length > 0;
-  const planEffectiveDraftJson = hasPlanAiDraft ? planAiDraftJson : planManualDraftJson;
-  const updatePlanEffectiveDraftJson = (nextDraft) => {
-    if (hasPlanAiDraft) {
-      setPlanAiDraftJson(nextDraft);
-    } else {
-      setPlanManualDraftJson(nextDraft);
-    }
-  };
   const getPlanEditorDraftJson = (planId = NEW_PLAN_EDITOR_ID) => {
     const plan = planId && planId !== NEW_PLAN_EDITOR_ID ? plansById.get(planId) : null;
     if (plan) return JSON.stringify(compactPlanForAi(plan, planAssignments.get(plan.id) || null), null, 2);
@@ -4878,7 +5008,6 @@ function App() {
     setTrips(nextTrips);
     applyTripSnapshot(nextActiveTrip);
     setChecklistText(nextChecklistText);
-    setChecklistDraft(nextChecklistText);
     setChecklistState(reconcileChecklistStateForGroups(payload.checklistState || payload.checklistStatus || {}, nextChecklistGroups));
     setChecklistEditing(false);
     setChecklistImportOpen(false);
@@ -5160,28 +5289,14 @@ function App() {
     if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
   };
 
-  const resetPlanAiQuestion = () => {
-    if (planAiQuestionRef.current) planAiQuestionRef.current.value = '';
-  };
-
-  const resetPlanAiFields = () => {
-    resetPlanAiQuestion();
-    setPlanManualDraftJson('');
-    setPlanAiDraftJson('');
-  };
-
   const openPlanEditor = (planId = NEW_PLAN_EDITOR_ID) => {
     startUiTransition(() => {
       setEditorPlanId(planId);
       setEditorTab('itinerary');
-      setPlanEditorMode('ai');
-      setPlanManualDraftJson(getPlanEditorDraftJson(planId));
-      setPlanAiDraftJson('');
       setEditorOpen(true);
       setBatchAiOpen(false);
       setAiPlannerOpen(false);
     });
-    resetPlanAiQuestion();
   };
 
   const openLodgingEditor = () => {
@@ -5199,8 +5314,6 @@ function App() {
 
   const closePlanEditor = () => {
     setEditorPlanId(null);
-    setPlanEditorMode('ai');
-    resetPlanAiFields();
   };
 
   const removePlan = (planId) => {
@@ -5322,7 +5435,6 @@ function App() {
 
   const openChecklist = () => {
     startUiTransition(() => {
-      setChecklistDraft(checklistText);
       setChecklistEditing(false);
       setChecklistOpen(true);
     });
@@ -5357,12 +5469,11 @@ function App() {
   };
 
   const saveChecklistText = () => {
-    const nextChecklistText = normalizeChecklistText(checklistDraft);
+    const nextChecklistText = normalizeChecklistText(checklistDraftRef.current?.value ?? checklistText);
     const nextGroups = parseChecklistText(nextChecklistText, language);
 
     setChecklistText(nextChecklistText);
     setChecklistState((current) => reconcileChecklistStateForGroups(current, nextGroups));
-    setChecklistDraft(nextChecklistText);
     setChecklistEditing(false);
     notify(t('checklistSaved'));
   };
@@ -5370,7 +5481,6 @@ function App() {
   const loadChecklistExample = () => {
     const nextChecklistText = normalizeChecklistText(EXAMPLE_CHECKLIST_TEXT);
     setChecklistText(nextChecklistText);
-    setChecklistDraft(nextChecklistText);
     setChecklistState({});
     setChecklistEditing(false);
     notify(t('checklistExampleLoaded'));
@@ -5402,7 +5512,6 @@ function App() {
     try {
       const payload = getChecklistImportPayload();
       setChecklistText(payload.checklistText);
-      setChecklistDraft(payload.checklistText);
       setChecklistState(payload.checklistState);
       setChecklistEditing(false);
       setChecklistImportText('');
@@ -5425,7 +5534,6 @@ function App() {
       );
 
       setChecklistText(merged.checklistText);
-      setChecklistDraft(merged.checklistText);
       setChecklistState(merged.checklistState);
       setChecklistEditing(false);
       setChecklistImportConflicts(merged.conflicts);
@@ -5987,12 +6095,11 @@ ${JSON.stringify(context, null, 2)}
     }
   };
 
-  const buildPlanAiPrompt = () => {
+  const buildPlanAiPrompt = (planQuestion = '') => {
     const schema = getSinglePlanJsonSchema(language);
     const currentPlan = editorPlan
       ? compactPlanForAi(editorPlan, planAssignments.get(editorPlan.id) || null)
       : null;
-    const planQuestion = planAiQuestionRef.current?.value || '';
     const planUserRequest = planQuestion.trim() || (isCreatingPlan
       ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
       : (language === 'en' ? 'Improve the current plan.' : '请优化当前计划。'));
@@ -6068,8 +6175,8 @@ ${schema}`}
 `;
   };
 
-  const copyPlanAiPrompt = () => {
-    copyText(buildPlanAiPrompt(), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
+  const copyPlanAiPrompt = (planQuestion = '') => {
+    copyText(buildPlanAiPrompt(planQuestion), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
   };
 
   const assertPlanDraftOption = (value, allowedValues, path) => {
@@ -6163,10 +6270,10 @@ ${schema}`}
     closePlanEditor();
   };
 
-  const applyPlanEditDraft = () => {
+  const applyPlanEditDraft = (draftJson) => {
     try {
       applySinglePlanDraft(
-        parseSinglePlanDraft(planEffectiveDraftJson),
+        parseSinglePlanDraft(draftJson),
         isCreatingPlan ? t('planCreated') : t('planUpdated'),
       );
     } catch (error) {
@@ -7360,97 +7467,19 @@ ${schema}`}
 
             <div className="trip-editor-body">
               {editorPlanId ? (
-                <div className="plan-editor-detail">
-                  <button className="btn btn-small btn-outline plan-back-btn" type="button" onClick={closePlanEditor}>
-                    {t('backToList')}
-                  </button>
-
-                  <div className="plan-editor-split">
-                    <section className="plan-editor-preview">
-                      <div className="plan-editor-current">
-                        <p className="eyebrow">{isCreatingPlan ? t('newPlan') : t('currentPlan')}</p>
-                        <h2>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h2>
-                        {!isCreatingPlan && editorPlan && (
-                          <>
-                            <p>{editorPlan.description}</p>
-                            {renderPlanStops(editorPlan)}
-                            {renderPlanBookings(editorPlan)}
-                            {renderPlanNotes(editorPlan)}
-                          </>
-                        )}
-                        {isCreatingPlan && (
-                          <p>{t('newPlanHelp')}</p>
-                        )}
-                      </div>
-                    </section>
-
-                    <section className="plan-editor-workspace">
-                      <div className="plan-editor-mode">
-                        <span>{t('editMode')}</span>
-                        <div className="editor-tabs plan-editor-mode-tabs" role="tablist" aria-label={t('editSinglePlan')}>
-                          <button
-                            className={planEditorMode === 'ai' ? 'is-active' : ''}
-                            type="button"
-                            role="tab"
-                            aria-selected={planEditorMode === 'ai'}
-                            onClick={() => startUiTransition(() => setPlanEditorMode('ai'))}
-                          >
-                            {t('aiEditTab')}
-                          </button>
-                          <button
-                            className={planEditorMode === 'json' ? 'is-active' : ''}
-                            type="button"
-                            role="tab"
-                            aria-selected={planEditorMode === 'json'}
-                            onClick={() => startUiTransition(() => setPlanEditorMode('json'))}
-                          >
-                            {t('rawJsonTab')}
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="plan-editor-ai-pane" hidden={planEditorMode !== 'ai'}>
-                        <label className="plan-ai-question-field">
-                          <span>{t('yourRequest')}</span>
-                          <textarea
-                            className="textarea plan-ai-question"
-                            ref={planAiQuestionRef}
-                            placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')}
-                          />
-                        </label>
-                        <div className="plan-ai-copy-row">
-                          <button className="btn btn-outline" type="button" onClick={copyPlanAiPrompt}>
-                            {t('copyToAi')}
-                          </button>
-                        </div>
-
-                        <label>
-                          <span>{t('aiResult')}</span>
-                          <textarea
-                            className="textarea plan-ai-result"
-                            value={planAiDraftJson}
-                            placeholder={t('planAiResultPlaceholder')}
-                            spellCheck={false}
-                            onChange={(event) => setPlanAiDraftJson(event.target.value)}
-                          />
-                        </label>
-                      </div>
-
-                      <div className="plan-editor-manual-pane" hidden={planEditorMode !== 'json'}>
-                        <PlanRawJsonEditor
-                          value={planEffectiveDraftJson}
-                          t={t}
-                          onChange={updatePlanEffectiveDraftJson}
-                        />
-                      </div>
-                      <div className="modal-actions plan-editor-actions">
-                        <button className="btn btn-primary" type="button" onClick={applyPlanEditDraft}>
-                          {t('applyPlanDraft')}
-                        </button>
-                      </div>
-                    </section>
-                  </div>
-                </div>
+                <PlanEditorDetail
+                  key={editorPlanId}
+                  isCreatingPlan={isCreatingPlan}
+                  editorPlan={editorPlan}
+                  initialDraftJson={getPlanEditorDraftJson(editorPlanId)}
+                  t={t}
+                  onBack={closePlanEditor}
+                  onCopyPrompt={copyPlanAiPrompt}
+                  onApplyDraft={applyPlanEditDraft}
+                  renderPlanStops={renderPlanStops}
+                  renderPlanBookings={renderPlanBookings}
+                  renderPlanNotes={renderPlanNotes}
+                />
               ) : editorTab === 'lodging' ? (
                 <div className="editor-section" ref={lodgingSectionRef}>
                   <LodgingEditor
@@ -7652,9 +7681,10 @@ ${schema}`}
                   <label>
                     <span>{t('checklistTextLabel')}</span>
                     <textarea
+                      key={checklistText}
                       className="textarea checklist-textarea"
-                      value={checklistDraft}
-                      onChange={(event) => setChecklistDraft(event.target.value)}
+                      ref={checklistDraftRef}
+                      defaultValue={checklistText}
                     />
                   </label>
                 </div>
@@ -7670,7 +7700,6 @@ ${schema}`}
                     className="btn btn-outline"
                     type="button"
                     onClick={() => {
-                      setChecklistDraft(checklistText);
                       setChecklistEditing(false);
                     }}
                   >
