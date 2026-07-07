@@ -554,7 +554,7 @@ label {
 
 .day-tile.is-selected {
   border-color: rgba(79, 70, 229, 0.34);
-  background: linear-gradient(135deg, #ffffff 0%, rgba(79, 70, 229, 0.045) 100%);
+  background: var(--surface);
   box-shadow: var(--shadow-md), inset 0 0 0 1px rgba(79, 70, 229, 0.06);
 }
 
@@ -744,6 +744,18 @@ label {
   line-height: 1.25;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.day-weather {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+}
+
+.day-weather > span:not(.weather-icon) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .day-tile:not(:has(.day-status)) .day-weather,
@@ -1874,14 +1886,90 @@ label {
 }
 
 .weather-line strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   font-size: 0.82rem;
   font-weight: 650;
 }
 
-.weather-line span {
+.weather-line .weather-summary {
   color: var(--muted);
   font-family: var(--mono);
   font-size: 0.78rem;
+}
+
+.weather-icon {
+  width: auto;
+  min-width: 1.52rem;
+  height: 1.22rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.28rem;
+  border-radius: 0.36rem;
+  background: var(--surface-soft);
+  color: var(--muted);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 0.64rem;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1px rgba(161, 161, 170, 0.26);
+}
+
+.day-weather .weather-icon {
+  min-width: 1.38rem;
+  height: 1.02rem;
+  padding: 0 0.22rem;
+  border-radius: 0.3rem;
+  font-size: 0.52rem;
+}
+
+.weather-icon.condition-sunny,
+.weather-icon.condition-hot,
+.weather-icon.condition-partly_cloudy {
+  background: #fff7ed;
+  color: #ea580c;
+  box-shadow: inset 0 0 0 1px rgba(249, 115, 22, 0.24);
+}
+
+.weather-icon.condition-drizzle,
+.weather-icon.condition-rain,
+.weather-icon.condition-cold {
+  background: #eff6ff;
+  color: #2563eb;
+  box-shadow: inset 0 0 0 1px rgba(37, 99, 235, 0.2);
+}
+
+.weather-icon.condition-heavy_rain,
+.weather-icon.condition-storm {
+  background: var(--signal-critical-soft);
+  color: var(--signal-critical);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.22);
+}
+
+.weather-icon.condition-cloudy,
+.weather-icon.condition-fog,
+.weather-icon.condition-windy,
+.weather-icon.condition-unknown {
+  background: #f8fafc;
+  color: #64748b;
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.28);
+}
+
+.weather-icon.level-best:not(.condition-heavy_rain):not(.condition-storm):not(.condition-drizzle):not(.condition-rain):not(.condition-cold) {
+  background: var(--signal-good-soft);
+  color: var(--signal-good);
+  box-shadow: inset 0 0 0 1px rgba(5, 150, 105, 0.22);
+}
+
+.weather-icon.level-ok:not(.condition-sunny):not(.condition-hot):not(.condition-partly_cloudy):not(.condition-drizzle):not(.condition-rain):not(.condition-cold):not(.condition-heavy_rain):not(.condition-storm) {
+  background: #eef2ff;
+  color: #4f46e5;
+  box-shadow: inset 0 0 0 1px rgba(79, 70, 229, 0.18);
 }
 
 .weather-line.best {
@@ -1943,6 +2031,10 @@ label {
   gap: 1.18rem;
 }
 
+.status-panel .panel-header h2 {
+  font-size: 0.94rem;
+}
+
 .mobile-risk-panel {
   display: none;
 }
@@ -1966,12 +2058,13 @@ label {
 }
 
 .risk-item {
-  padding: 0.62rem 0.72rem 0.62rem 0.78rem;
+  padding: 0;
   border: 0;
-  border-left: 3px solid var(--faint);
+  border-left: 2px solid var(--faint);
   border-radius: 0;
-  background: var(--surface-soft);
+  background: var(--surface);
   box-shadow: 0 1px 2px rgba(9, 9, 11, 0.035);
+  overflow: hidden;
 }
 
 .risk-item div {
@@ -1984,6 +2077,8 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
+  padding: 0.48rem 0.62rem;
+  background: var(--surface-soft);
 }
 
 .risk-group-head .btn {
@@ -1998,6 +2093,10 @@ label {
   line-height: 1.35;
 }
 
+.status-panel .risk-item strong {
+  font-size: 0.84rem;
+}
+
 .risk-item span,
 .risk-item p,
 .empty-state,
@@ -2008,13 +2107,25 @@ label {
   line-height: 1.45;
 }
 
+.status-panel .risk-item span,
+.status-panel .risk-item p,
+.status-panel .empty-state,
+.status-panel .weather-source-empty,
+.status-panel .weather-source-list span {
+  font-size: 0.76rem;
+}
+
 .risk-item ul {
   display: grid;
   gap: 0.32rem;
   margin: 0;
-  padding-left: 1rem;
+  padding: 0.5rem 0.65rem 0.58rem 1.55rem;
   color: var(--muted);
   font-size: 0.82rem;
+}
+
+.status-panel .risk-item ul {
+  font-size: 0.76rem;
 }
 
 .risk-item li {
@@ -2023,11 +2134,17 @@ label {
 
 .risk-item.critical {
   border-left-color: var(--signal-critical);
-  background: var(--signal-critical-soft);
 }
 
 .risk-item.warning {
   border-left-color: var(--signal-warning);
+}
+
+.risk-item.critical .risk-group-head {
+  background: var(--signal-critical-soft);
+}
+
+.risk-item.warning .risk-group-head {
   background: var(--signal-warning-soft);
 }
 
@@ -2041,7 +2158,6 @@ label {
 
 .risk-item.info {
   border-left-color: var(--faint);
-  background: var(--surface-soft);
 }
 
 .weather-refresh-btn {
@@ -2058,6 +2174,18 @@ label {
 .weather-source-empty {
   margin: 0;
   padding-top: 0.05rem;
+}
+
+.weather-overview {
+  display: grid;
+  gap: 0.58rem;
+}
+
+.weather-overview > p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
 }
 
 .weather-source-panel {
@@ -2077,6 +2205,10 @@ label {
   font-weight: 850;
   line-height: 1.4;
   list-style: none;
+}
+
+.status-panel .weather-source-panel summary {
+  font-size: 0.78rem;
 }
 
 .weather-source-panel summary::-webkit-details-marker {

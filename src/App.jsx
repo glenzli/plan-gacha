@@ -1186,6 +1186,55 @@ function getWeatherStatusLabel(level, language = DEFAULT_LANGUAGE) {
   return WEATHER_STATUS_LABELS[normalizeLanguage(language)]?.[level] || level;
 }
 
+const WEATHER_ICON_SYMBOLS = {
+  sunny: '晴',
+  partly_cloudy: '多云',
+  cloudy: '阴',
+  drizzle: '小雨',
+  rain: '雨',
+  heavy_rain: '大雨',
+  storm: '雷雨',
+  fog: '雾',
+  hot: '高温',
+  cold: '低温',
+  windy: '风',
+  unknown: '?',
+};
+
+const WEATHER_ICON_PRIORITY = [
+  'storm',
+  'heavy_rain',
+  'rain',
+  'drizzle',
+  'windy',
+  'fog',
+  'hot',
+  'cold',
+  'sunny',
+  'partly_cloudy',
+  'cloudy',
+];
+
+function getWeatherIconCondition(snapshot) {
+  if (!snapshot) return 'unknown';
+  if (Array.isArray(snapshot.entries) && snapshot.entries.length) {
+    const conditions = snapshot.entries.map((entry) => getWeatherIconCondition(entry.snapshot));
+    return WEATHER_ICON_PRIORITY.find((condition) => conditions.includes(condition)) || conditions[0] || 'unknown';
+  }
+
+  return snapshot.primary || 'unknown';
+}
+
+function WeatherIcon({ condition = 'unknown', level = 'unknown' }) {
+  const normalizedCondition = WEATHER_ICON_SYMBOLS[condition] ? condition : 'unknown';
+
+  return (
+    <span className={`weather-icon condition-${normalizedCondition} level-${level}`} aria-hidden="true">
+      {WEATHER_ICON_SYMBOLS[normalizedCondition]}
+    </span>
+  );
+}
+
 function getAiModeText(mode, language = DEFAULT_LANGUAGE) {
   return AI_PLANNER_MODE_TEXT[normalizeLanguage(language)]?.[mode] || AI_PLANNER_MODE_TEXT[DEFAULT_LANGUAGE][mode];
 }
@@ -2807,9 +2856,13 @@ async function readImportFileText(file) {
 }
 
 function formatWeatherMetrics(primary, tempMin, tempMax, precipitationProbability, windMax, language = DEFAULT_LANGUAGE) {
+  return `${getWeatherLabel(primary, language)} ${formatWeatherDataMetrics(tempMin, tempMax, precipitationProbability, windMax, language)}`;
+}
+
+function formatWeatherDataMetrics(tempMin, tempMax, precipitationProbability, windMax, language = DEFAULT_LANGUAGE) {
   const precipLabel = language === 'en' ? 'Rain ' : '降水';
   const windLabel = language === 'en' ? 'Wind ' : '风';
-  return `${getWeatherLabel(primary, language)} ${Math.round(tempMin)}-${Math.round(tempMax)}°C / ${precipLabel}${Math.round(precipitationProbability || 0)}% / ${windLabel}${Math.round(windMax || 0)}km/h`;
+  return `${Math.round(tempMin)}-${Math.round(tempMax)}°C / ${precipLabel}${Math.round(precipitationProbability || 0)}% / ${windLabel}${Math.round(windMax || 0)}km/h`;
 }
 
 function formatWeatherSummary(snapshot, language = DEFAULT_LANGUAGE) {
@@ -2822,6 +2875,21 @@ function formatWeatherSummary(snapshot, language = DEFAULT_LANGUAGE) {
 
   if (Number.isFinite(snapshot.tempMin) && Number.isFinite(snapshot.tempMax)) {
     return formatWeatherMetrics(snapshot.primary, snapshot.tempMin, snapshot.tempMax, snapshot.precipitationProbability, snapshot.windMax, language);
+  }
+
+  return snapshot.summary || '';
+}
+
+function formatWeatherDataSummary(snapshot, language = DEFAULT_LANGUAGE) {
+  if (!snapshot) return '';
+  if (Array.isArray(snapshot.entries) && snapshot.entries.length) {
+    return snapshot.entries
+      .map((entry) => `${getWeatherLocationLabel(entry.location)} ${formatWeatherDataSummary(entry.snapshot, language)}`)
+      .join(language === 'en' ? '; ' : '；');
+  }
+
+  if (Number.isFinite(snapshot.tempMin) && Number.isFinite(snapshot.tempMax)) {
+    return formatWeatherDataMetrics(snapshot.tempMin, snapshot.tempMax, snapshot.precipitationProbability, snapshot.windMax, language);
   }
 
   return snapshot.summary || '';
@@ -3052,12 +3120,14 @@ function getDayInsight(plan, dateId, schedule, plansById, weatherData, language 
   });
   const hasHardIssue = issues.length > 0;
   const isCritical = hasHardIssue && plan.priority === 'must';
-  const weatherText = weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : translate('noWeather', language);
+  const weatherText = weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : translate('noWeather', language);
+  const weatherCondition = getWeatherIconCondition(weather.snapshot);
 
   return {
     level: isCritical ? 'critical' : hasHardIssue ? 'danger' : weather.level,
     label: hasHardIssue ? translate('adjustRecommended', language) : '',
     weatherText,
+    weatherCondition,
     riskText: issues[0] ? translateIssue(issues[0], language) : (weather.level === 'mismatch' ? translate('weatherNotIdeal', language) : weather.level === 'unknown' ? translate('confirmWeather', language) : ''),
     riskTone: issues.length ? 'danger' : weather.level === 'mismatch' || weather.level === 'unknown' ? 'notice' : '',
     issueCount: issues.length,
@@ -3266,9 +3336,10 @@ function getRiskGroupLabel(risk, tripDates) {
 
 function buildRiskGroups(riskItems, tripDates) {
   const levelRank = { critical: 3, warning: 2, info: 1 };
+  const dateOrder = new Map(tripDates.map((date, index) => [date.id, index]));
   const groupsByTitle = new Map();
 
-  riskItems.forEach((risk) => {
+  riskItems.forEach((risk, inputOrder) => {
     const title = getRiskGroupTitle(risk.title);
     const existing = groupsByTitle.get(title) || {
       title,
@@ -3279,14 +3350,30 @@ function buildRiskGroups(riskItems, tripDates) {
 
     if (levelRank[risk.level] > levelRank[existing.level]) existing.level = risk.level;
     if (risk.dateId) existing.unit = '天';
-    existing.items.push(getRiskGroupLabel(risk, tripDates));
+    existing.items.push({
+      label: getRiskGroupLabel(risk, tripDates),
+      dateId: risk.dateId || '',
+      sortIndex: risk.dateId ? dateOrder.get(risk.dateId) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER,
+      inputOrder,
+    });
     groupsByTitle.set(title, existing);
   });
 
   return Array.from(groupsByTitle.values())
     .map((group) => ({
       ...group,
-      items: uniq(group.items),
+      items: Array.from(
+        group.items.reduce((itemsByLabel, item) => {
+          if (!itemsByLabel.has(item.label)) itemsByLabel.set(item.label, item);
+          return itemsByLabel;
+        }, new Map()).values(),
+      )
+        .sort((a, b) => {
+          const dateDiff = a.sortIndex - b.sortIndex;
+          if (dateDiff) return dateDiff;
+          return a.inputOrder - b.inputOrder;
+        })
+        .map((item) => item.label),
     }))
     .sort((a, b) => {
       const levelDiff = levelRank[b.level] - levelRank[a.level];
@@ -3327,6 +3414,132 @@ function buildLodgingRiskGroup(lodgings, hasTripContent, language = DEFAULT_LANG
     items: [translate('lodgingMissingHelp', language)],
     unit: '项',
   };
+}
+
+function getWeatherOverviewGroup(condition) {
+  if (condition === 'sunny' || condition === 'partly_cloudy') return 'clear';
+  if (condition === 'drizzle' || condition === 'rain' || condition === 'heavy_rain') return 'rain';
+  if (condition === 'storm') return 'storm';
+  if (condition === 'cloudy') return 'cloudy';
+  if (condition === 'hot') return 'hot';
+  if (condition === 'cold') return 'cold';
+  if (condition === 'fog') return 'fog';
+  if (condition === 'windy') return 'wind';
+  return 'unknown';
+}
+
+function formatWeatherOverviewPart(group, rows, language = DEFAULT_LANGUAGE) {
+  const count = rows.length;
+  const dayLabels = rows.map((row) => `D${row.date.dayNumber}`);
+  const shouldListDays = count <= 3 || ['rain', 'storm', 'hot', 'cold', 'fog', 'wind', 'unknown'].includes(group);
+
+  if (language === 'en') {
+    const labels = {
+      clear: 'clear/cloudy',
+      cloudy: 'overcast',
+      rain: 'rain',
+      storm: 'storm',
+      hot: 'hot',
+      cold: 'cold',
+      fog: 'fog',
+      wind: 'windy',
+      unknown: 'unknown',
+    };
+    if (shouldListDays) return `${dayLabels.join(', ')} ${labels[group] || group}`;
+    return `${count} ${count === 1 ? 'day' : 'days'} ${labels[group] || group}`;
+  }
+
+  const labels = {
+    clear: '晴/多云',
+    cloudy: '阴天',
+    rain: '有雨',
+    storm: '雷雨',
+    hot: '高温',
+    cold: '低温',
+    fog: '有雾',
+    wind: '风大',
+    unknown: '待确认',
+  };
+  if (shouldListDays) return `${dayLabels.join('、')} ${labels[group] || group}`;
+  return `${count} 天${labels[group] || group}`;
+}
+
+function formatWeatherOverviewStatus(rows, language = DEFAULT_LANGUAGE) {
+  const suitable = rows.filter((row) => row.level === 'best' || row.level === 'ok').length;
+  const notice = rows.filter((row) => row.level === 'mismatch').length;
+  const blocked = rows.filter((row) => row.level === 'blocked').length;
+  const unknown = rows.filter((row) => row.level === 'unknown').length;
+
+  if (language === 'en') {
+    return [
+      suitable ? `${suitable} usable` : '',
+      notice ? `${notice} not ideal` : '',
+      blocked ? `${blocked} unsuitable` : '',
+      unknown ? `${unknown} unknown` : '',
+    ].filter(Boolean).join(', ');
+  }
+
+  return [
+    suitable ? `${suitable} 天可用` : '',
+    notice ? `${notice} 天一般` : '',
+    blocked ? `${blocked} 天不合适` : '',
+    unknown ? `${unknown} 天待确认` : '',
+  ].filter(Boolean).join('，');
+}
+
+function buildWeatherOverview(tripDates, schedule, plansById, weatherData, language = DEFAULT_LANGUAGE) {
+  const scheduledRows = tripDates
+    .map((date) => {
+      const plan = plansById.get(schedule[date.id]?.planId);
+      if (!plan) return null;
+      const weather = evaluateWeather(plan, date.id, weatherData, language);
+      const condition = getWeatherIconCondition(weather.snapshot);
+      return {
+        date,
+        plan,
+        level: weather.level,
+        condition,
+        snapshot: weather.snapshot,
+        metrics: weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : translate('noWeather', language),
+      };
+    })
+    .filter(Boolean);
+
+  if (!scheduledRows.length) {
+    return {
+      summary: language === 'en'
+        ? 'No scheduled days yet. Weather overview will appear after days are assigned.'
+        : '还没有已安排日期，安排后会按地点生成天气概览。',
+    };
+  }
+
+  const rowsWithWeather = scheduledRows.filter((row) => row.snapshot);
+  if (!rowsWithWeather.length) {
+    return {
+      summary: language === 'en'
+        ? `${scheduledRows.length}/${tripDates.length} days scheduled. No weather fetched yet.`
+        : `已排 ${scheduledRows.length}/${tripDates.length} 天，尚未获取天气。`,
+    };
+  }
+
+  const groupRows = rowsWithWeather.reduce((rowsByGroup, row) => {
+    const group = getWeatherOverviewGroup(row.condition);
+    rowsByGroup.set(group, [...(rowsByGroup.get(group) || []), row]);
+    return rowsByGroup;
+  }, new Map());
+  const conditionSummary = ['clear', 'cloudy', 'rain', 'storm', 'hot', 'cold', 'fog', 'wind', 'unknown']
+    .map((group) => {
+      const rows = groupRows.get(group);
+      return rows?.length ? formatWeatherOverviewPart(group, rows, language) : '';
+    })
+    .filter(Boolean)
+    .join(language === 'en' ? ', ' : '，');
+  const statusSummary = formatWeatherOverviewStatus(scheduledRows, language);
+  const summary = language === 'en'
+    ? `${scheduledRows.length}/${tripDates.length} days scheduled: ${conditionSummary || 'weather available'}.${statusSummary ? ` ${statusSummary}.` : ''}`
+    : `已排 ${scheduledRows.length}/${tripDates.length} 天：${conditionSummary || '已获取天气'}。${statusSummary ? `${statusSummary}。` : ''}`;
+
+  return { summary };
 }
 
 function parseForecastDaily(data) {
@@ -4670,6 +4883,10 @@ function App() {
       ...(checklistRiskGroup ? [checklistRiskGroup] : []),
     ],
     [checklistRiskGroup, lodgingRiskGroup, scheduleRiskGroups],
+  );
+  const weatherOverview = useMemo(
+    () => buildWeatherOverview(tripDates, schedule, plansById, weatherData, language),
+    [language, plansById, schedule, tripDates, weatherData],
   );
 
   const visibleTrips = useMemo(
@@ -6617,8 +6834,11 @@ ${schema}`}
     return (
       <>
         <div className={`weather-line ${weather.level}`}>
-          <strong>{weather.label}</strong>
-          <span>{weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('noWeatherForPlace')}</span>
+          <strong>
+            <WeatherIcon condition={getWeatherIconCondition(weather.snapshot)} level={weather.level} />
+            <span>{weather.label}</span>
+          </strong>
+          <span className="weather-summary">{weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : t('noWeatherForPlace')}</span>
         </div>
 
         {(visibleHardReasons.length > 0 || notes.length > 0) && (
@@ -6947,8 +7167,11 @@ ${schema}`}
                   {renderPlanNotes(plan)}
                   {weather && (
                     <div className={`weather-line ${weather.level}`}>
-                      <strong>{weather.label}</strong>
-                      <span>{weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('noWeatherForPlace')}</span>
+                      <strong>
+                        <WeatherIcon condition={getWeatherIconCondition(weather.snapshot)} level={weather.level} />
+                        <span>{weather.label}</span>
+                      </strong>
+                      <span className="weather-summary">{weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : t('noWeatherForPlace')}</span>
                     </div>
                   )}
                 </>
@@ -7225,7 +7448,10 @@ ${schema}`}
                         {insight.label}
                       </span>
                     )}
-                    <span className="day-weather">{insight.weatherText}</span>
+                    <span className="day-weather">
+                      <WeatherIcon condition={insight.weatherCondition} level={insight.level} />
+                      <span>{insight.weatherText}</span>
+                    </span>
                     {insight.riskText && <span className={`day-risk ${insight.riskTone}`}>{insight.riskText}</span>}
                   </button>
                   {selected && (
@@ -7304,9 +7530,9 @@ ${schema}`}
                 <Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />
               </button>
             </div>
-            <p className="helper-text">
-              {t('weatherHelper')}
-            </p>
+            <div className="weather-overview">
+              <p>{weatherOverview.summary}</p>
+            </div>
             {weatherError && <div className="risk-item warning"><p>{weatherError}</p></div>}
             {Object.entries(weatherData).length === 0 ? (
               <p className="weather-source-empty">{t('noWeather')}</p>
