@@ -15,6 +15,17 @@ type WeatherEvaluator = (
   language?: string,
 ) => WeatherEvaluation;
 
+export interface AssignmentClearItem {
+  dateId: string;
+  plan: NormalizedPlan;
+  reason: string;
+}
+
+export interface AssignmentPreview {
+  clears: AssignmentClearItem[];
+  nextSchedule: NormalizedSchedule;
+}
+
 const PRIORITY_RANK: Record<string, number> = {
   must: 4,
   preferred: 3,
@@ -189,9 +200,9 @@ export function buildAssignmentPreview(
   dateId: string,
   targetPlan: NormalizedPlan,
   plansById: Map<string, NormalizedPlan>,
-) {
+): AssignmentPreview {
   const nextSchedule = { ...schedule };
-  const clearsByDate = new Map();
+  const clearsByDate = new Map<string, AssignmentClearItem>();
 
   Object.entries(schedule).forEach(([otherDateId, entry]) => {
     if (!entry?.planId || otherDateId === dateId) return;

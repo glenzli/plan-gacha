@@ -1,5 +1,7 @@
 import type { NormalizedPlan, PlanPriority } from '../domain/plan';
+import type { AssignmentClearItem } from '../domain/planning';
 import type { TripDateLike } from '../domain/risk';
+import type { RiskItem } from '../domain/risk';
 import type { WeatherEvaluation } from '../domain/weather';
 
 export interface PlanBookingBadgeData {
@@ -12,8 +14,8 @@ export interface PlanCandidate {
   canAssign: boolean;
   hardReasons: string[];
   notes: string[];
-  clears: unknown[];
-  newRisks: unknown[];
+  clears: AssignmentClearItem[];
+  newRisks: RiskItem<NormalizedPlan>[];
   score: number;
   isCurrent: boolean;
   assignedDateId: string;

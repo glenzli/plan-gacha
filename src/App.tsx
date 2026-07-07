@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, useTransition, type ChangeEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiPlannerModal } from './components/AiPlannerModal';
 import { ArchivedTripRows } from './components/ArchivedTripRows';
@@ -24,18 +24,15 @@ import { TripHeader } from './components/TripHeader';
 import { TripEditorModal } from './components/TripEditorModal';
 import { useChecklistController } from './hooks/useChecklistController';
 import { useDriveSyncController, type DriveSyncCallbacks } from './hooks/useDriveSyncController';
+import { useAiPromptController } from './hooks/useAiPromptController';
 import { usePlanImageShare } from './hooks/usePlanImageShare';
 import { usePlanCandidates } from './hooks/usePlanCandidates';
+import { useJsonPayloadController } from './hooks/useJsonPayloadController';
+import { useScheduleAssignmentController } from './hooks/useScheduleAssignmentController';
 import { useToast } from './hooks/useToast';
 import { useWeatherSync } from './hooks/useWeatherSync';
 import {
-  buildAiPlanningPrompt as buildAiPlanningPromptText,
-  buildSinglePlanPrompt,
-  compactLocationForAi,
-  compactLodgingForAi,
   compactPlanForAi,
-  compactTransferForAi,
-  getLodgingContextForDate,
 } from './domain/aiPrompts';
 import {
   createEmptyTripSnapshot,
@@ -46,32 +43,21 @@ import {
   type AppSnapshot,
 } from './domain/sync';
 import {
-  buildAssignmentPreview,
   buildChecklistRiskGroup,
   buildLodgingRiskGroup,
   buildRiskItems,
-  getRiskIdentity,
 } from './domain/planning';
 import {
-  WEATHER_LABELS,
   buildWeatherOverview,
-  formatWeatherSummary,
 } from './domain/weather';
 import { buildRiskGroups } from './domain/risk';
 import { addDays, getTodayId } from './domain/date';
 import {
-  BOOKING_STATUS_VALUES,
-  BOOKING_TYPE_VALUES,
   type BookingStatus,
   type NormalizedPlan,
-  type PlanBooking,
-  type PlanReminder,
-  type PlanStop,
   normalizePlan,
-  toArray,
 } from './domain/plan';
 import {
-  clampTripDays,
   isEmptyTripDraft,
   normalizeSchedule,
   normalizeTripLodgings,
@@ -97,56 +83,26 @@ import {
   translate,
   translateIssue,
   translateRiskTitle,
-  type DisplayTripDate,
 } from './domain/display';
 import {
   STORAGE_KEYS,
-  getSinglePlanPayload,
   loadInitialState,
-  parseImportJson,
-  readImportFileText,
 } from './domain/appStorage';
 import {
   evaluateWeather,
   getCalendarDayState,
   getDayInsight,
 } from './domain/dayInsight';
-import {
-  downloadBlob,
-  sanitizeFileNamePart,
-} from './domain/browserExport';
-import type { RiskItem } from './domain/risk';
 import type { EditorTab, TranslateFn } from './types/ui';
 
 const NEW_PLAN_EDITOR_ID = '__new_plan__';
-const WEATHER_RULE_VALUES = new Set(Object.keys(WEATHER_LABELS.zh).filter((key) => key !== 'unknown'));
-
-const PRIORITY_META = {
-  must: { rank: 4 },
-  preferred: { rank: 3 },
-  backup: { rank: 2 },
-  optional: { rank: 1 },
-};
 
 type AiPlannerMode = 'replan' | 'generate';
-type AnyRecord = Record<string, any>;
-
-interface PendingAssignment {
-  clears: unknown[];
-  nextSchedule: NormalizedSchedule;
-  nextRisks: RiskItem<NormalizedPlan>[];
-  targetPlan: NormalizedPlan;
-  dateId: string;
-}
 
 interface TripDisplay {
   isEmpty: boolean;
   name: string;
   meta: string;
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function getInitialLanguage() {
@@ -182,7 +138,6 @@ function App() {
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState<string | null>(null);
-  const [pendingAssignment, setPendingAssignment] = useState<PendingAssignment | null>(null);
 
   const dayTileRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const aiPlannerQuestionRef = useRef<HTMLTextAreaElement | null>(null);
@@ -355,6 +310,26 @@ function App() {
     }),
     [language, plansById, schedule, tripDates, weatherData],
   );
+  const {
+    clearDay,
+    confirmPendingAssignment,
+    pendingAssignment,
+    requestAssignPlan,
+    selectNeighborDate,
+    setPendingAssignment,
+  } = useScheduleAssignmentController({
+    normalizedPlans,
+    notify,
+    plansById,
+    riskItems,
+    schedule,
+    selectedIndex,
+    setSchedule,
+    setSelectedDateId,
+    t,
+    tripDates,
+    weatherData,
+  });
 
   const visibleTrips = useMemo(
     () => pruneEmptyTripDrafts(trips, activeTripId).filter((trip) => !trip.archived),
@@ -694,6 +669,44 @@ function App() {
     setEditorPlanId(null);
   };
 
+  const {
+    applyAiPlannerResult,
+    applyPlanEditDraft,
+    handleChecklistImportFile,
+    handleExportChecklist,
+    handleExportState,
+    handleImport,
+    handleTripImportFile,
+  } = useJsonPayloadController({
+    aiPlannerResultRef,
+    checklistState,
+    checklistText,
+    closePlanEditor,
+    editorPlanId,
+    importTextRef,
+    isCreatingPlan,
+    lodgings,
+    normalizedPlans,
+    notify,
+    resetAiPlannerFields,
+    schedule,
+    setAiPlannerOpen,
+    setBatchAiOpen,
+    setChecklistImportConflicts,
+    setChecklistImportText,
+    setImportModalOpen,
+    setLodgings,
+    setPlans,
+    setSchedule,
+    setStartDateStr,
+    setTripDays,
+    startDateStr,
+    t,
+    tripDates,
+    tripDays,
+    tripName,
+  });
+
   const removePlan = (planId: string) => {
     const plan = plansById.get(planId);
     if (!plan || !window.confirm(t('deletePlanConfirm', { name: plan.name }))) return;
@@ -765,65 +778,6 @@ function App() {
     notify(t('archivedRestored'));
   };
 
-  const buildAssignmentImpact = (dateId: string, planId: string) => {
-    const targetPlan = plansById.get(planId);
-    if (!targetPlan) return null;
-
-    const { clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
-    const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
-
-    const nextRisks = buildRiskItems({
-      plans: normalizedPlans,
-      tripDates,
-      schedule: nextSchedule,
-      plansById,
-      weatherData,
-      evaluateWeather,
-    })
-      .filter((risk) => risk.level !== 'info')
-      .filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
-
-    return { clears, nextSchedule, nextRisks, targetPlan, dateId };
-  };
-
-  const applySchedule = (nextSchedule: NormalizedSchedule, message = t('scheduleUpdated')) => {
-    setSchedule(nextSchedule);
-    notify(message);
-  };
-
-  const requestAssignPlan = (dateId: string, planId: string) => {
-    const impact = buildAssignmentImpact(dateId, planId);
-    if (!impact) return;
-
-    if (impact.clears.length || impact.nextRisks.length) {
-      setPendingAssignment(impact);
-      return;
-    }
-
-    applySchedule(impact.nextSchedule, t('dayPlanUpdated'));
-  };
-
-  const confirmPendingAssignment = () => {
-    if (!pendingAssignment) return;
-    applySchedule(pendingAssignment.nextSchedule, pendingAssignment.clears.length ? t('impactedDatesCleared') : t('dayPlanUpdated'));
-    setPendingAssignment(null);
-  };
-
-  const clearDay = (dateId: string) => {
-    setSchedule((current) => {
-      const next = { ...current };
-      delete next[dateId];
-      return next;
-    });
-    notify(t('dayCleared'));
-  };
-
-  const selectNeighborDate = (step: number) => {
-    if (selectedIndex < 0) return;
-    const next = tripDates[selectedIndex + step];
-    if (next) setSelectedDateId(next.id);
-  };
-
   const scrollToScheduleDate = (dateId: string) => {
     if (!window.matchMedia('(max-width: 560px)').matches) return;
 
@@ -851,396 +805,33 @@ function App() {
     }
   };
 
-  const downloadJson = (data: unknown, fileName: string, message: string) => {
-    try {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
-      downloadBlob(blob, fileName);
-      notify(message);
-    } catch {
-      notify(t('downloadFailed'));
-    }
-  };
-
-  const buildAiPlanningPrompt = (mode: AiPlannerMode = aiPlannerMode) => {
-    const planningStartDate = selectedDate || tripDates[0];
-    const fixedDates = planningStartDate
-      ? tripDates.filter((date) => date.id < planningStartDate.id)
-      : [];
-    const adjustableDates = planningStartDate
-      ? tripDates.filter((date) => date.id >= planningStartDate.id)
-      : tripDates;
-    const completedPlanIds = new Set(
-      fixedDates
-        .map((date) => schedule[date.id]?.planId)
-        .filter(Boolean),
-    );
-    const remainingPlans = normalizedPlans.filter((plan) => !completedPlanIds.has(plan.id));
-
-    const summarizeScheduleDate = (date: DisplayTripDate) => {
-      const plan = schedule[date.id]?.planId ? plansById.get(schedule[date.id].planId) : null;
-      const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, language);
-      return {
-        date: date.id,
-        day: 'D' + date.dayNumber,
-        display: date.display,
-        plan_id: plan?.id || null,
-        plan_name: plan?.name || null,
-        status: insight.label || t('normal'),
-        weather: insight.weatherText || '',
-        note: insight.riskText || '',
-        lodging: getLodgingContextForDate(lodgings, date.id),
-      };
-    };
-
-    const summarizePlan = (plan: NormalizedPlan) => ({
-      plan_id: plan.id,
-      name: plan.name,
-      priority: getPriorityLabel(plan.priority, language),
-      description: plan.description,
-      current_assigned_date: planAssignments.get(plan.id) || null,
-      available_dates: plan.available_dates,
-      closed_dates: plan.closed_dates,
-      weather_rules: plan.weather_rules,
-      location: compactLocationForAi(plan.location),
-      stops: plan.stops.map((stop: PlanStop) => ({
-        time: stop.time,
-        title: stop.title,
-        location: stop.location.label,
-        address: stop.location.address || '',
-        transfer_from_previous: compactTransferForAi(stop.transferFromPrevious),
-        opening_hours: stop.openingHours,
-        note: stop.note,
-      })),
-      bookings: plan.bookings.map((booking: PlanBooking) => ({
-        title: booking.title,
-        type: booking.type,
-        status: booking.status,
-        address: booking.address,
-        url: booking.url,
-        cancel_url: booking.cancelUrl,
-        note: booking.note,
-      })),
-      reminders: plan.reminders.map((item: PlanReminder) => ({
-        time: item.time,
-        text: item.text,
-        links: item.links || [],
-      })),
-      tips: plan.tips,
-      conflicts: plan.conflicts,
-      weather_by_adjustable_date: adjustableDates.map((date) => {
-        const weather = evaluateWeather(plan, date.id, weatherData, language);
-        return {
-          date: date.id,
-          status: weather.label,
-          summary: weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('weatherUnknown'),
-        };
-      }),
-    });
-
-    const tripContext = {
-      trip: {
-        name: tripName || t('unnamedTrip'),
-        range: formatTripRange(startDateStr, tripDays, language),
-        days: tripDays,
-        planning_from: planningStartDate?.id || null,
-      },
-      lodgings: lodgings.map(compactLodgingForAi),
-      existing_schedule: tripDates.map(summarizeScheduleDate),
-      existing_plans: normalizedPlans.map(summarizePlan),
-      current_warnings: riskGroups.map((group) => ({
-        title: translateRiskTitle(group.title, language),
-        level: group.level,
-        items: group.items,
-      })),
-    };
-
-    return buildAiPlanningPromptText({
-      mode,
-      language,
-      tripContext,
-      hasInitializedPlans,
-      plannerQuestion: aiPlannerQuestionRef.current?.value || '',
-      unplannedDates: tripDates.filter((date) => !schedule[date.id]?.planId),
-      fixedDates,
-      adjustableDates,
-      remainingPlans,
-      normalizedPlans,
-      summarizeScheduleDate,
-      summarizePlan,
-    });
-  };
-
-  const copyAiPlanningPrompt = () => {
-    copyText(buildAiPlanningPrompt(), t('aiPromptCopied', { label: getAiModeText(aiPlannerMode, language).label }));
-  };
-
-  const copyBatchAiPrompt = () => {
-    copyText(buildAiPlanningPrompt('generate'), t('aiPromptCopied', { label: aiGenerateText.label }));
-  };
-
-  const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied')) => {
-    let touched = false;
-
-    if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
-    if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
-    const importedLodgings = parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays;
-    if (Array.isArray(importedLodgings)) {
-      touched = true;
-      setLodgings(normalizeTripLodgings(importedLodgings));
-    }
-
-    if (Array.isArray(parsed.plans)) {
-      touched = true;
-      setPlans((current) => {
-        const next = [...current];
-        parsed.plans.forEach((incomingPlan: unknown, index: number) => {
-          const normalized = normalizePlan(incomingPlan, index, tripDates);
-          const existingIndex = next.findIndex((plan) => plan.id === normalized.id);
-          if (existingIndex >= 0) {
-            next[existingIndex] = normalized;
-          } else {
-            next.push(normalized);
-          }
-        });
-        return next;
-      });
-
-      const assigned = parsed.plans.reduce((accumulator: NormalizedSchedule, plan: AnyRecord) => {
-        if (plan.assigned_day && plan.id) {
-          accumulator[plan.assigned_day] = { planId: plan.id };
-        }
-        return accumulator;
-      }, {} as NormalizedSchedule);
-
-      if (Object.keys(assigned).length) {
-        touched = true;
-        setSchedule((current) => ({ ...current, ...assigned }));
-      }
-    }
-
-    if (Array.isArray(parsed.schedule)) {
-      const importedSchedule = parsed.schedule.reduce((accumulator: NormalizedSchedule, item: AnyRecord) => {
-        const dateId = item.date || item.dateId || item.day;
-        const planId = item.plan_id || item.planId || item.id;
-        if (dateId && planId) accumulator[dateId] = { planId };
-        return accumulator;
-      }, {} as NormalizedSchedule);
-
-      if (Object.keys(importedSchedule).length) {
-        touched = true;
-        setSchedule((current) => ({ ...current, ...importedSchedule }));
-      }
-    } else if (parsed.schedule && typeof parsed.schedule === 'object') {
-      touched = true;
-      setSchedule((current) => ({ ...current, ...normalizeSchedule(parsed.schedule) }));
-    }
-
-    if (!touched && !parsed.startDateStr && !parsed.tripDays) {
-      throw new Error(t('noApplicableJson'));
-    }
-
-    notify(message);
-  };
-
-  const applyAiPlannerResult = () => {
-    try {
-      applyImportedPayload(parseImportJson(aiPlannerResultRef.current?.value || ''), t('aiPlanApplied'));
-      resetAiPlannerFields();
-      setAiPlannerOpen(false);
-      setBatchAiOpen(false);
-    } catch (error) {
-      notify(t('applyFailed', { message: getErrorMessage(error) }));
-    }
-  };
-
-
-  const buildPlanAiPrompt = (planQuestion: string = '') => {
-    const currentPlan = editorPlan
-      ? compactPlanForAi(editorPlan, planAssignments.get(editorPlan.id) || null)
-      : null;
-    const planUserRequest = planQuestion.trim() || (isCreatingPlan
-      ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
-      : (language === 'en' ? 'Improve the current plan.' : '请优化当前计划。'));
-    const tripContext = {
-      name: tripName || t('unnamedTrip'),
-      range: formatTripRange(startDateStr, tripDays, language),
-      days: tripDays,
-    };
-    const planContext = isCreatingPlan
-      ? {
-        trip: tripContext,
-        lodgings: lodgings.map(compactLodgingForAi),
-        existing_plan_ids: normalizedPlans.map((plan) => plan.id),
-      }
-      : {
-        trip: tripContext,
-        lodgings: lodgings.map(compactLodgingForAi),
-        current_plan: currentPlan,
-      };
-
-    return buildSinglePlanPrompt({
-      language,
-      isCreatingPlan,
-      planContext,
-      userRequest: planUserRequest,
-    });
-  };
-
-  const copyPlanAiPrompt = (planQuestion: string = '') => {
-    copyText(buildPlanAiPrompt(planQuestion), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
-  };
-
-  const assertPlanDraftOption = (value: unknown, allowedValues: Set<string>, path: string) => {
-    const normalizedValue = String(value || '').trim();
-    if (normalizedValue && !allowedValues.has(normalizedValue)) {
-      throw new Error(t('invalidPlanField', { path, value: normalizedValue }));
-    }
-  };
-
-  const validatePlanDraftOptions = (payload: AnyRecord) => {
-    if (!payload || typeof payload !== 'object') return;
-
-    if (payload.priority) {
-      assertPlanDraftOption(payload.priority, new Set(Object.keys(PRIORITY_META)), 'priority');
-    }
-
-    if (payload.weather_rules && typeof payload.weather_rules === 'object') {
-      ['best', 'ok', 'blocked'].forEach((ruleKey) => {
-        toArray(payload.weather_rules[ruleKey]).forEach((value) => {
-          assertPlanDraftOption(value, WEATHER_RULE_VALUES, `weather_rules.${ruleKey}`);
-        });
-      });
-    }
-
-    [
-      ...toArray(payload.bookings),
-      ...toArray(payload.reservations),
-      ...toArray(payload.appointments),
-      ...toArray(payload.tickets),
-    ].forEach((booking, index) => {
-      if (!booking || typeof booking !== 'object') return;
-      if (booking.type || booking.kind) {
-        assertPlanDraftOption(booking.type || booking.kind, BOOKING_TYPE_VALUES, `bookings[${index}].type`);
-      }
-      if (booking.status) {
-        assertPlanDraftOption(booking.status, BOOKING_STATUS_VALUES, `bookings[${index}].status`);
-      }
-    });
-  };
-
-  const parseSinglePlanDraft = (text: string) => {
-    const parsed = parseImportJson(text);
-    const payload = getSinglePlanPayload(parsed);
-    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-      throw new Error(t('noApplicableJson'));
-    }
-    validatePlanDraftOptions(payload);
-
-    const payloadWithFallbackId = isCreatingPlan
-      ? payload
-      : { ...payload, id: payload.id || editorPlanId };
-    const normalizedPlan = normalizePlan(payloadWithFallbackId, 0, tripDates);
-    const duplicatePlan = normalizedPlans.find((plan) => (
-      plan.id === normalizedPlan.id && (isCreatingPlan || plan.id !== editorPlanId)
-    ));
-    if (duplicatePlan) throw new Error(t('duplicatePlanId', { id: normalizedPlan.id }));
-
-    return {
-      plan: normalizedPlan,
-      assignedDay: payload.assigned_day || payload.assignedDay || '',
-    };
-  };
-
-  const applySinglePlanDraft = ({ plan, assignedDay }: { plan: NormalizedPlan; assignedDay: string }, message: string) => {
-    const previousPlanId = isCreatingPlan ? '' : editorPlanId;
-
-    setPlans((current) => {
-      if (isCreatingPlan) return [...current, plan];
-
-      return current.map((item, index) => {
-        const normalizedPlan = normalizePlan(item, index, tripDates);
-        return normalizedPlan.id === previousPlanId ? plan : item;
-      });
-    });
-
-    if (assignedDay || (previousPlanId && previousPlanId !== plan.id)) {
-      setSchedule((current) => {
-        const next = Object.fromEntries(
-          Object.entries(current).map(([dateId, entry]) => [
-            dateId,
-            entry?.planId === previousPlanId ? { ...entry, planId: plan.id } : entry,
-          ]),
-        );
-
-        if (assignedDay) next[assignedDay] = { planId: plan.id };
-        return next;
-      });
-    }
-
-    notify(message);
-    closePlanEditor();
-  };
-
-  const applyPlanEditDraft = (draftJson: string) => {
-    try {
-      applySinglePlanDraft(
-        parseSinglePlanDraft(draftJson),
-        isCreatingPlan ? t('planCreated') : t('planUpdated'),
-      );
-    } catch (error) {
-      notify(t('applyFailed', { message: getErrorMessage(error) }));
-    }
-  };
-
-  const handleImport = () => {
-    try {
-      applyImportedPayload(parseImportJson(importTextRef.current?.value || ''), t('importDone'));
-      setImportModalOpen(false);
-      if (importTextRef.current) importTextRef.current.value = '';
-    } catch (error) {
-      notify(t('importFailed', { message: getErrorMessage(error) }));
-    }
-  };
-
-  const handleImportFile = async (event: ChangeEvent<HTMLInputElement>, onLoaded: (text: string) => void) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await readImportFileText(file);
-      onLoaded(text);
-      notify(t('importFileLoaded', { name: file.name }));
-    } catch {
-      notify(t('importFileReadFailed'));
-    } finally {
-      event.target.value = '';
-    }
-  };
-
-  const handleTripImportFile = (event: ChangeEvent<HTMLInputElement>) => handleImportFile(event, (text: string) => {
-    if (importTextRef.current) importTextRef.current.value = text;
+  const {
+    copyAiPlanningPrompt,
+    copyBatchAiPrompt,
+    copyPlanAiPrompt,
+  } = useAiPromptController({
+    aiGenerateText,
+    aiPlannerMode,
+    aiPlannerQuestionRef,
+    copyText,
+    editorPlan,
+    hasInitializedPlans,
+    isCreatingPlan,
+    language,
+    lodgings,
+    normalizedPlans,
+    planAssignments,
+    plansById,
+    riskGroups,
+    schedule,
+    selectedDate,
+    startDateStr,
+    t,
+    tripDates,
+    tripDays,
+    tripName,
+    weatherData,
   });
-
-  const handleChecklistImportFile = (event: ChangeEvent<HTMLInputElement>) => handleImportFile(event, (text: string) => {
-    setChecklistImportText(text);
-    setChecklistImportConflicts([]);
-  });
-
-  const handleExportState = () => {
-    const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, lodgings, plans: normalizedPlans, schedule };
-    const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
-    downloadJson(data, fileName, t('jsonDownloaded'));
-  };
-
-  const handleExportChecklist = () => {
-    const data = {
-      schemaVersion: APP_SCHEMA_VERSION,
-      checklistText,
-      checklistState,
-    };
-    const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-checklist-${startDateStr || 'trip'}.json`;
-    downloadJson(data, fileName, t('checklistExported'));
-  };
 
   const renderDriveSyncPanel = () => {
     return (
