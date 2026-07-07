@@ -1,5 +1,7 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import en from './locales/en.json';
+import zh from './locales/zh.json';
 
 const urlLanguage = new URLSearchParams(window.location.search).get('lang');
 const initialLanguage = ['zh', 'en'].includes(urlLanguage) ? urlLanguage : 'zh';
@@ -11,8 +13,8 @@ i18n
     fallbackLng: 'zh',
     supportedLngs: ['zh', 'en'],
     resources: {
-      zh: { translation: {} },
-      en: { translation: {} },
+      zh: { translation: zh },
+      en: { translation: en },
     },
     interpolation: {
       escapeValue: false,

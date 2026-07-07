@@ -1,0 +1,138 @@
+import type { ReactNode } from 'react';
+
+export type IconName =
+  | 'check'
+  | 'camera'
+  | 'clock'
+  | 'listChecks'
+  | 'pencil'
+  | 'copy'
+  | 'mapPin'
+  | 'route'
+  | 'home'
+  | 'plus'
+  | 'refresh'
+  | 'cloud'
+  | 'sparkles'
+  | 'trash'
+  | 'x';
+
+interface IconProps {
+  name: IconName;
+  className?: string;
+}
+
+export function Icon({ name, className = '' }: IconProps) {
+  const commonProps = {
+    className: `svg-icon ${className}`.trim(),
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': 'true' as const,
+  };
+
+  const paths: Record<IconName, ReactNode> = {
+    check: (
+      <path d="M20 6 9 17l-5-5" />
+    ),
+    camera: (
+      <>
+        <path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3Z" />
+        <circle cx="12" cy="12.5" r="3.2" />
+      </>
+    ),
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+    listChecks: (
+      <>
+        <path d="m3 7 2 2 4-4" />
+        <path d="m3 17 2 2 4-4" />
+        <path d="M13 6h8" />
+        <path d="M13 18h8" />
+      </>
+    ),
+    pencil: (
+      <>
+        <path d="M12 20h9" />
+        <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+      </>
+    ),
+    copy: (
+      <>
+        <rect width="14" height="14" x="8" y="8" rx="2" />
+        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+      </>
+    ),
+    mapPin: (
+      <>
+        <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+        <circle cx="12" cy="10" r="3" />
+      </>
+    ),
+    route: (
+      <>
+        <circle cx="6" cy="18" r="2" />
+        <circle cx="18" cy="6" r="2" />
+        <path d="M8 18h3a3 3 0 0 0 0-6h2a3 3 0 0 0 3-3V8" />
+      </>
+    ),
+    home: (
+      <>
+        <path d="m3 10 9-7 9 7" />
+        <path d="M5 10v10h14V10" />
+        <path d="M9 20v-6h6v6" />
+      </>
+    ),
+    plus: (
+      <>
+        <path d="M12 5v14" />
+        <path d="M5 12h14" />
+      </>
+    ),
+    refresh: (
+      <>
+        <path d="M21 12a9 9 0 0 1-15.2 6.5" />
+        <path d="M3 12A9 9 0 0 1 18.2 5.5" />
+        <path d="M18 3v4h-4" />
+        <path d="M6 21v-4h4" />
+      </>
+    ),
+    cloud: (
+      <>
+        <path d="M17.5 19H8a5 5 0 1 1 1.4-9.8A7 7 0 0 1 22 13.5 4.5 4.5 0 0 1 17.5 19Z" />
+        <path d="m12 13 2 2 4-4" />
+      </>
+    ),
+    sparkles: (
+      <>
+        <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8Z" />
+        <path d="m19 15 .8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.8Z" />
+        <path d="m5 14 .7 1.5L7.2 16l-1.5.7L5 18.2l-.7-1.5L2.8 16l1.5-.7Z" />
+      </>
+    ),
+    trash: (
+      <>
+        <path d="M3 6h18" />
+        <path d="M8 6V4h8v2" />
+        <path d="M19 6l-1 14H6L5 6" />
+        <path d="M10 11v5" />
+        <path d="M14 11v5" />
+      </>
+    ),
+    x: (
+      <>
+        <path d="M18 6 6 18" />
+        <path d="m6 6 12 12" />
+      </>
+    ),
+  };
+
+  return <svg {...commonProps}>{paths[name]}</svg>;
+}
