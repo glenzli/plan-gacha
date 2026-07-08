@@ -231,6 +231,38 @@ export function normalizeCoordinate(value: unknown) {
   return Number.isFinite(number) ? number : undefined;
 }
 
+const JAPAN_LOCATION_HINTS = [
+  'japan',
+  '日本',
+  '京都府',
+  '大阪府',
+  '滋賀県',
+  '滋贺县',
+  '奈良県',
+  '奈良县',
+  '兵庫県',
+  '兵库县',
+  '和歌山県',
+  '和歌山县',
+  '東京都',
+  '北海道',
+];
+
+const JAPAN_PREFECTURE_ALIASES: Record<string, string> = {
+  京都府: '京都府',
+  大阪府: '大阪府',
+  滋賀県: '滋賀県',
+  滋贺县: '滋賀県',
+  奈良県: '奈良県',
+  奈良县: '奈良県',
+  兵庫県: '兵庫県',
+  兵库县: '兵庫県',
+  和歌山県: '和歌山県',
+  和歌山县: '和歌山県',
+  東京都: '東京都',
+  北海道: '北海道',
+};
+
 function normalizeCountryCode(value: unknown) {
   const normalized = String(value || '').trim().toUpperCase();
   const countryMap: Record<string, string> = {
@@ -255,6 +287,66 @@ function normalizeCountryCode(value: unknown) {
   return countryMap[normalized] || normalized;
 }
 
+function getLocationTextValues(...values: unknown[]) {
+  return values
+    .flatMap((value) => {
+      if (!isRecord(value)) return [value];
+      return [
+        value.query,
+        value.label,
+        value.name,
+        value.weatherLabel,
+        value.weather_label,
+        value.address,
+        value.city,
+        value.district,
+        value.area,
+        value.admin1,
+        value.admin2,
+        value.prefecture,
+        value.province,
+        value.state,
+        value.country,
+        value.countryCode,
+        value.country_code,
+      ];
+    })
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+}
+
+function inferCountryCodeFromLocation(values: string[]) {
+  const joined = values.join(' ');
+  if (!joined) return '';
+  if (JAPAN_LOCATION_HINTS.some((hint) => joined.toLowerCase().includes(hint.toLowerCase()))) return 'JP';
+  return '';
+}
+
+function inferJapanPrefecture(values: string[]) {
+  const joined = values.join(' ');
+  const alias = Object.keys(JAPAN_PREFECTURE_ALIASES).find((key) => joined.includes(key));
+  if (alias) return JAPAN_PREFECTURE_ALIASES[alias];
+
+  const match = joined.match(/([^\s,，、]{2,5}[都道府県])/);
+  return match?.[1] || '';
+}
+
+function inferJapanCity(values: string[]) {
+  const joined = values.join(' ');
+  const match = joined.match(/([一-龯ぁ-んァ-ヶ]{1,8}市)/);
+  return match?.[1] || '';
+}
+
+function normalizeWeatherKeyPart(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[，、,].*$/, '')
+    .replace(/県/g, '県')
+    .replace(/县/g, '県');
+}
+
 export function normalizeLocation(location: unknown, area = ''): NormalizedLocation {
   if (typeof location === 'string') {
     return {
@@ -269,6 +361,7 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
     const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
     const weatherLocationObject = isRecord(weatherLocation) ? weatherLocation : null;
     const weatherLocationText = typeof weatherLocation === 'string' ? weatherLocation : '';
+    const locationTextValues = getLocationTextValues(weatherLocationObject || weatherLocationText, location, area);
     const latitude = normalizeCoordinate(
       weatherLocationObject?.latitude ?? weatherLocationObject?.lat ?? location.latitude ?? location.lat,
     );
@@ -283,7 +376,7 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
         location.country_code ||
         location.country ||
         '',
-    );
+    ) || inferCountryCodeFromLocation(locationTextValues);
     const admin1 =
       weatherLocationObject?.admin1 ||
       weatherLocationObject?.prefecture ||
@@ -293,6 +386,7 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
       location.prefecture ||
       location.province ||
       location.state ||
+      (countryCode === 'JP' ? inferJapanPrefecture(locationTextValues) : '') ||
       '';
     const admin2 =
       weatherLocationObject?.admin2 ||
@@ -301,15 +395,34 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
       location.admin2 ||
       location.county ||
       location.city ||
+      (countryCode === 'JP' ? inferJapanCity(locationTextValues) : '') ||
       '';
     const weatherLabel = inferWeatherLabel(location);
-    const query =
+    const explicitWeatherQuery =
       location.weatherQuery ||
       location.weather_query ||
       weatherLocationText ||
       weatherLocationObject?.query ||
       weatherLocationObject?.label ||
-      weatherLocationObject?.name ||
+      weatherLocationObject?.name;
+    const topLevelAdminHint = Boolean(
+      location.weatherLabel ||
+        location.weather_label ||
+        location.city ||
+        location.district ||
+        location.area ||
+        location.admin1 ||
+        location.admin2 ||
+        location.prefecture ||
+        location.province ||
+        location.state ||
+        location.countryCode ||
+        location.country_code ||
+        location.country,
+    );
+    const query =
+      explicitWeatherQuery ||
+      (topLevelAdminHint ? weatherLabel || admin2 || admin1 || area : '') ||
       location.query ||
       weatherLabel ||
       area ||
@@ -339,6 +452,32 @@ export function hasCoordinates(location: Pick<NormalizedLocation, 'latitude' | '
 
 export function getWeatherLocationKey(location: WeatherLocationLike) {
   if (hasCoordinates(location)) return `${normalizeCoordinate(location.latitude)},${normalizeCoordinate(location.longitude)}`;
+  const source = location as WeatherLocationLike & {
+    address?: string;
+    countryCode?: string;
+    country_code?: string;
+    country?: string;
+    admin1?: string;
+    admin2?: string;
+  };
+  const textValues = getLocationTextValues(source);
+  const countryCode = normalizeCountryCode(source.countryCode || source.country_code || source.country || '') || inferCountryCodeFromLocation(textValues);
+  const admin1 = source.admin1 || (countryCode === 'JP' ? inferJapanPrefecture(textValues) : '');
+  const admin2 = source.admin2 || (countryCode === 'JP' ? inferJapanCity(textValues) : '');
+
+  if (countryCode && admin1 && admin2) {
+    const normalizedAdmin1 = normalizeWeatherKeyPart(admin1);
+    const normalizedAdmin2 = normalizeWeatherKeyPart(admin2);
+    if (normalizedAdmin1 === normalizedAdmin2) {
+      return [countryCode, admin2].map(normalizeWeatherKeyPart).join(':');
+    }
+    return [countryCode, admin1, admin2].map(normalizeWeatherKeyPart).join(':');
+  }
+
+  if (countryCode && admin2) {
+    return [countryCode, admin2].map(normalizeWeatherKeyPart).join(':');
+  }
+
   if (location.query) return location.query;
   return location.label || '';
 }
@@ -346,19 +485,44 @@ export function getWeatherLocationKey(location: WeatherLocationLike) {
 function hasOwnWeatherSource(location: unknown) {
   if (!isRecord(location)) return false;
 
+  const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
+  if (typeof weatherLocation === 'string') return Boolean(weatherLocation.trim());
+  if (isRecord(weatherLocation)) {
+    return Boolean(
+      weatherLocation.query ||
+        weatherLocation.label ||
+        weatherLocation.name ||
+        weatherLocation.weatherLabel ||
+        weatherLocation.weather_label ||
+        weatherLocation.city ||
+        weatherLocation.district ||
+        weatherLocation.area ||
+        weatherLocation.admin1 ||
+        weatherLocation.admin2 ||
+        weatherLocation.prefecture ||
+        weatherLocation.province ||
+        weatherLocation.state ||
+        weatherLocation.country ||
+        weatherLocation.countryCode ||
+        weatherLocation.country_code ||
+        hasCoordinates(weatherLocation),
+    );
+  }
+
   return Boolean(
-    location.query ||
-      hasCoordinates(location) ||
-      location.weatherLocation ||
-      location.weather_location ||
-      location.weather ||
+    hasCoordinates(location) ||
       location.weatherQuery ||
       location.weather_query ||
       location.weatherLabel ||
       location.weather_label ||
       location.city ||
       location.district ||
-      location.area,
+      location.area ||
+      location.admin1 ||
+      location.admin2 ||
+      location.countryCode ||
+      location.country_code ||
+      location.country,
   );
 }
 

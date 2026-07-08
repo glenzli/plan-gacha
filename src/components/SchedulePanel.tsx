@@ -3,6 +3,7 @@ import type { RefObject, ReactNode } from 'react';
 import { MobileRiskPanel } from './RiskPanels';
 import { WeatherIcon } from './PlanContent';
 import type { DisplayTripDate } from '../domain/display';
+import type { CalendarDayState, DayInsight } from '../domain/dayInsight';
 import type { NormalizedPlan } from '../domain/plan';
 import type { NormalizedSchedule } from '../domain/trip';
 import type { RiskGroup } from '../domain/risk';
@@ -63,7 +64,7 @@ export function SchedulePanel({
   availableCandidateCount: number;
   dayTileRefs: RefObject<Map<string, HTMLButtonElement | null>>;
   formatMiniDate: (dateId: string) => string;
-  getCalendarDayState: (plan: NormalizedPlan | null | undefined, insight: any, language: string) => { key: string; ariaLabel: string; label?: string };
+  getCalendarDayState: (plan: NormalizedPlan | null | undefined, insight: Pick<DayInsight, 'issueCount' | 'level'>, language: string) => CalendarDayState;
   getDayInsight: (
     plan: NormalizedPlan | null | undefined,
     dateId: string,
@@ -71,7 +72,7 @@ export function SchedulePanel({
     plansById: Map<string, NormalizedPlan>,
     weatherData: WeatherDataMap,
     language: string,
-  ) => any;
+  ) => DayInsight;
   getPriorityLabel: (priority: string, language: string) => string;
   language: string;
   mobileRisksOpen: boolean;

@@ -68,6 +68,32 @@ describe('weather evaluation', () => {
     expect(getRainRisk(highRain)).toBe('high');
   });
 
+  it('only marks high temperature when the forecast is clearly hot', () => {
+    const warm = buildWeatherSnapshot({
+      weatherCode: 1,
+      tempMin: 24,
+      tempMax: 34,
+      apparentMin: 25,
+      apparentMax: 37,
+      precipitationProbability: 0,
+      precipitationSum: 0,
+      windMax: 8,
+    });
+    const hot = buildWeatherSnapshot({
+      weatherCode: 1,
+      tempMin: 25,
+      tempMax: 35,
+      apparentMin: 26,
+      apparentMax: 37,
+      precipitationProbability: 0,
+      precipitationSum: 0,
+      windMax: 8,
+    });
+
+    expect(warm?.categories).not.toContain('hot');
+    expect(hot?.categories).toContain('hot');
+  });
+
   it('blocks severe weather for outdoor plans but allows indoor plans', () => {
     const storm = snapshot('storm', 80);
     const outdoorPlan = {

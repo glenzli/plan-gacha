@@ -105,6 +105,16 @@ interface TripDisplay {
   meta: string;
 }
 
+interface AppSnapshotInput {
+  trips: unknown[];
+  activeTripId?: string;
+  checklistText?: unknown;
+  checklist?: unknown;
+  packingList?: unknown;
+  checklistState?: unknown;
+  checklistStatus?: unknown;
+}
+
 function getInitialLanguage() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -124,7 +134,7 @@ function App() {
   const [tripName, setTripName] = useState(initial.tripName);
   const [startDateStr, setStartDateStr] = useState(initial.startDate);
   const [tripDays, setTripDays] = useState(initial.tripDays);
-  const [plans, setPlans] = useState<any[]>(initial.plans);
+  const [plans, setPlans] = useState<unknown[]>(initial.plans);
   const [schedule, setSchedule] = useState<NormalizedSchedule>(initial.schedule);
   const [lodgings, setLodgings] = useState<NormalizedLodging[]>(initial.lodgings);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
@@ -525,16 +535,17 @@ function App() {
     if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
   };
 
-  const importAppSnapshot = (payload: any) => {
-    if (!payload || typeof payload !== 'object' || !Array.isArray(payload.trips)) {
+  const importAppSnapshot = (payload: unknown) => {
+    const snapshot = payload as Partial<AppSnapshotInput> | null;
+    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.trips)) {
       throw new Error(t('driveInvalidSnapshot'));
     }
 
-    const importedTrips = payload.trips
+    const importedTrips = snapshot.trips
       .map((trip: unknown, index: number) => normalizeTripSnapshot(trip, index));
     if (!importedTrips.length) throw new Error(t('driveInvalidSnapshot'));
 
-    const preferredTripId = payload.activeTripId || importedTrips[0].id;
+    const preferredTripId = snapshot.activeTripId || importedTrips[0].id;
     const visibleImportedTrips = importedTrips.filter((trip: NormalizedTripSnapshot) => !trip.archived);
     const activeTrip = visibleImportedTrips.find((trip: NormalizedTripSnapshot) => trip.id === preferredTripId)
       || visibleImportedTrips[0]
@@ -546,8 +557,8 @@ function App() {
     setTrips(nextTrips);
     applyTripSnapshot(nextActiveTrip);
     applyChecklistSnapshot(
-      payload.checklistText ?? payload.checklist ?? payload.packingList,
-      payload.checklistState || payload.checklistStatus || {},
+      snapshot.checklistText ?? snapshot.checklist ?? snapshot.packingList,
+      snapshot.checklistState || snapshot.checklistStatus || {},
     );
     setImportModalOpen(false);
     setPendingAssignment(null);
@@ -728,9 +739,12 @@ function App() {
     setPlans((current) => current.map((plan, index) => {
       const normalizedPlan = normalizePlan(plan, index, tripDates);
       if (normalizedPlan.id !== planId) return plan;
+      const planRecord = plan && typeof plan === 'object' && !Array.isArray(plan)
+        ? plan as Record<string, unknown>
+        : normalizedPlan;
 
       return {
-        ...plan,
+        ...planRecord,
         bookings: normalizedPlan.bookings.map((booking) => (
           booking.id === bookingId ? { ...booking, status: nextStatus } : booking
         )),

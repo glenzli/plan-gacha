@@ -72,6 +72,7 @@ export function useWeatherSync({
         tripDates,
         startDateStr,
         weatherDataRef.current,
+        { forceRefresh: true },
       ) as WeatherFetchResult;
       if (!timedOut) {
         setWeatherData(nextWeatherData);

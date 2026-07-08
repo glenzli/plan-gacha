@@ -4,7 +4,27 @@ import { getTodayId } from '../domain/date';
 import { Icon } from './Icon';
 import type { TranslateFn } from '../types/ui';
 
-type LodgingDraftInput = Record<string, any>;
+interface LodgingDraftInput {
+  id?: string;
+  name?: string;
+  title?: string;
+  hotel?: string;
+  location?: {
+    label?: string;
+    address?: string;
+  };
+  checkIn?: string;
+  check_in?: string;
+  startDate?: string;
+  start_date?: string;
+  checkOut?: string;
+  check_out?: string;
+  endDate?: string;
+  end_date?: string;
+  address?: string;
+  note?: string;
+  description?: string;
+}
 
 interface LodgingEditorDraft {
   id: string;

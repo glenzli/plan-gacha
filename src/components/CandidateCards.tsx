@@ -63,15 +63,16 @@ export function CandidateSignals({ candidate, t, language }: CandidateSignalsPro
   if (!candidate) return null;
 
   const { hardReasons = [], notes = [], weather } = candidate;
+  const weatherCondition = getWeatherIconCondition(weather.snapshot);
   const visibleHardReasons = hardReasons.filter(
     (reason) => !(weather.level === 'blocked' && reason === weather.label),
   );
 
   return (
     <>
-      <div className={`weather-line ${weather.level}`}>
+      <div className={`weather-line ${weather.level} condition-${weatherCondition}`}>
         <strong>
-          <WeatherIcon condition={getWeatherIconCondition(weather.snapshot)} level={weather.level} />
+          <WeatherIcon condition={weatherCondition} level={weather.level} />
           <span>{weather.label}</span>
         </strong>
         <span className="weather-summary">

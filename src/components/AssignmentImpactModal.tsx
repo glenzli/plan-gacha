@@ -1,24 +1,15 @@
 import { Icon } from './Icon';
+import type { NormalizedPlan } from '../domain/plan';
+import type { AssignmentClearItem } from '../domain/planning';
+import type { RiskItem } from '../domain/risk';
+import type { PendingAssignment } from '../hooks/useScheduleAssignmentController';
 import type { TranslateFn } from '../types/ui';
-
-interface AssignmentClearItem {
-  dateId: string;
-  reason: string;
-  plan: { id: string; name: string };
-}
-
-interface AssignmentRiskItem {
-  level: string;
-  title: string;
-  reasons: string[];
-  plan: { id: string; name: string };
-}
 
 interface AssignmentImpactModalProps {
   language: string;
   onClose: () => void;
   onConfirm: () => void;
-  pendingAssignment: any;
+  pendingAssignment: PendingAssignment;
   t: TranslateFn;
   translateIssue: (issue: string, language: string) => string;
   translateRiskTitle: (title: string, language: string) => string;
@@ -33,8 +24,8 @@ export function AssignmentImpactModal({
   translateIssue,
   translateRiskTitle,
 }: AssignmentImpactModalProps) {
-  const clears = pendingAssignment.clears as AssignmentClearItem[];
-  const nextRisks = pendingAssignment.nextRisks as AssignmentRiskItem[];
+  const clears = pendingAssignment.clears;
+  const nextRisks: RiskItem<NormalizedPlan>[] = pendingAssignment.nextRisks;
   const movedItems = clears.filter((item: AssignmentClearItem) => item.reason === '同一计划被移动');
   const clearedItems = clears.filter((item: AssignmentClearItem) => item.reason !== '同一计划被移动');
 
@@ -82,13 +73,13 @@ export function AssignmentImpactModal({
         {nextRisks.length > 0 && (
           <div className="impact-section">
             <h3>{t('nextRisks')}</h3>
-            {nextRisks.map((risk: AssignmentRiskItem) => (
+            {nextRisks.map((risk) => (
               <div className={`risk-item ${risk.level}`} key={risk.plan.id}>
                 <strong>{risk.plan.name}</strong>
                 <p>
                   {translateRiskTitle(risk.title, language)}
-                  {risk.reasons.length
-                    ? `${language === 'en' ? ': ' : '：'}${risk.reasons.map((reason: string) => translateIssue(reason, language)).join(' / ')}`
+                  {risk.reasons?.length
+                    ? `${language === 'en' ? ': ' : '：'}${risk.reasons.map((reason) => translateIssue(reason, language)).join(' / ')}`
                     : ''}
                 </p>
               </div>

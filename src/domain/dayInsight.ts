@@ -18,7 +18,23 @@ import {
 } from './display';
 import type { NormalizedSchedule } from './trip';
 import type { WeatherDataMap } from '../types/weatherData';
-import type { WeatherEvaluation, WeatherSnapshot } from './weather';
+import type { WeatherCondition, WeatherEvaluation, WeatherSnapshot } from './weather';
+
+export interface DayInsight {
+  level: string;
+  label: string;
+  weatherText: string;
+  weatherCondition?: WeatherCondition;
+  riskText: string;
+  riskTone?: string;
+  issueCount: number;
+}
+
+export interface CalendarDayState {
+  key: string;
+  ariaLabel: string;
+  label?: string;
+}
 
 export function getPlanWeatherSnapshot(plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap) {
   const snapshots = getPlanWeatherLocations(plan)
@@ -46,7 +62,7 @@ export function getDayInsight(
   plansById: Map<string, NormalizedPlan>,
   weatherData: WeatherDataMap,
   language: string = DEFAULT_LANGUAGE,
-) {
+): DayInsight {
   if (!plan) {
     return {
       level: 'empty',
@@ -77,7 +93,11 @@ export function getDayInsight(
   };
 }
 
-export function getCalendarDayState(plan: NormalizedPlan | null | undefined, insight: { issueCount: number; level: string }, language: string = DEFAULT_LANGUAGE) {
+export function getCalendarDayState(
+  plan: NormalizedPlan | null | undefined,
+  insight: Pick<DayInsight, 'issueCount' | 'level'>,
+  language: string = DEFAULT_LANGUAGE,
+): CalendarDayState {
   if (!plan) return { key: 'empty', label: '', ariaLabel: translate('assignedAriaEmpty', language) };
 
   if (insight.issueCount > 0 || ['danger', 'critical'].includes(insight.level)) {

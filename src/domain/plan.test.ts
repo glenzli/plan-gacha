@@ -46,7 +46,7 @@ describe('location normalization', () => {
 
     expect(plan.stops[0].location).toMatchObject({
       label: '京都铁道博物馆',
-      query: 'Kyoto',
+      query: '京都市',
       weatherLabel: '京都市',
     });
   });
@@ -158,6 +158,105 @@ describe('plan normalization', () => {
     }, 0, tripDates);
 
     expect(getPlanWeatherLocations(plan).map((location) => location.weatherLabel || location.label))
-      .toEqual(['Osaka']);
+      .toEqual(['大阪市']);
+  });
+
+  it('inherits plan weather source for stop map queries in the same city', () => {
+    const plan = normalizePlan({
+      id: 'kyoto-classics',
+      name: '京都经典线',
+      location: {
+        label: '京都市',
+        query: 'Kyoto, Japan',
+        weather_location: {
+          query: 'Kyoto, Japan',
+          country_code: 'JP',
+          admin1: 'Kyoto',
+          city: 'Kyoto',
+        },
+      },
+      stops: [
+        {
+          title: '鸭川三角洲',
+          location: {
+            label: '鸭川三角洲',
+            query: 'Kamogawa',
+            address: '京都府京都市左京区',
+          },
+        },
+      ],
+    }, 0, tripDates);
+
+    expect(getPlanWeatherLocations(plan).map((location) => location.query)).toEqual(['Kyoto, Japan']);
+    expect(plan.stops[0].location).toMatchObject({
+      label: '鸭川三角洲',
+      query: 'Kyoto, Japan',
+      weatherLabel: 'Kyoto',
+    });
+  });
+
+  it('prefers administrative stop fields over plain map query for weather', () => {
+    const plan = normalizePlan({
+      id: 'kyoto-admin-stop',
+      name: '京都行政字段',
+      location: {
+        label: '京都市',
+        weather_location: {
+          query: 'Kyoto, Japan',
+          country_code: 'JP',
+          admin1: 'Kyoto',
+          city: 'Kyoto',
+        },
+      },
+      stops: [
+        {
+          title: '鸭川三角洲',
+          location: {
+            label: '鸭川三角洲',
+            query: 'Kamogawa',
+            city: 'Kyoto',
+            country: 'Japan',
+          },
+        },
+      ],
+    }, 0, tripDates);
+
+    expect(plan.stops[0].location.query).toBe('Kyoto');
+    expect(getPlanWeatherLocations(plan).map((location) => location.query))
+      .toEqual(['Kyoto']);
+  });
+
+  it('keeps explicit cross-city stop weather locations', () => {
+    const plan = normalizePlan({
+      id: 'kyoto-to-otsu',
+      name: '京都和大津',
+      location: {
+        label: '京都市',
+        weather_location: {
+          query: 'Kyoto, Japan',
+          country_code: 'JP',
+          admin1: 'Kyoto',
+          city: 'Kyoto',
+        },
+      },
+      stops: [
+        {
+          title: '琵琶湖露台',
+          location: {
+            label: '琵琶湖露台',
+            address: '滋賀県大津市木戸',
+            weather_location: {
+              query: 'Otsu, Shiga, Japan',
+              country_code: 'JP',
+              admin1: 'Shiga',
+              city: 'Otsu',
+            },
+          },
+        },
+      ],
+    }, 0, tripDates);
+
+    expect(getPlanWeatherLocations(plan).map((location) => location.query))
+      .toEqual(['Otsu, Shiga, Japan', 'Kyoto, Japan']);
   });
 });

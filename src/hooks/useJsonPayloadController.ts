@@ -52,7 +52,7 @@ interface UseJsonPayloadControllerOptions {
   setChecklistImportText: Dispatch<SetStateAction<string>>;
   setImportModalOpen: Dispatch<SetStateAction<boolean>>;
   setLodgings: Dispatch<SetStateAction<NormalizedLodging[]>>;
-  setPlans: Dispatch<SetStateAction<any[]>>;
+  setPlans: Dispatch<SetStateAction<unknown[]>>;
   setSchedule: Dispatch<SetStateAction<NormalizedSchedule>>;
   setStartDateStr: Dispatch<SetStateAction<string>>;
   setTripDays: Dispatch<SetStateAction<number>>;
@@ -156,7 +156,9 @@ export function useJsonPayloadController({
         const next = [...current];
         parsed.plans.forEach((incomingPlan: unknown, index: number) => {
           const normalized = normalizePlan(incomingPlan, index, tripDates);
-          const existingIndex = next.findIndex((plan) => plan.id === normalized.id);
+          const existingIndex = next.findIndex((plan, currentIndex) => (
+            normalizePlan(plan, currentIndex, tripDates).id === normalized.id
+          ));
           if (existingIndex >= 0) {
             next[existingIndex] = normalized;
           } else {

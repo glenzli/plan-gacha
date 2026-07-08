@@ -330,7 +330,7 @@ export function buildWeatherSnapshot(day?: ForecastDayLike | null, language: Lan
   const windMax = numberOrZero(day.windMax);
   const categories = new Set<WeatherCondition>([classifyWeatherCode(day.weatherCode)]);
 
-  if (tempMax >= 32 || apparentMax >= 34) categories.add('hot');
+  if (tempMax >= 35 || apparentMax >= 38) categories.add('hot');
   if (tempMin <= 5 || apparentMin <= 3) categories.add('cold');
   if (windMax >= 35) categories.add('windy');
   if (precipitationSum >= 12) categories.add('heavy_rain');

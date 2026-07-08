@@ -18,6 +18,10 @@ export const WEATHER_CACHE_HIT_KEY = Symbol('weatherCacheHit');
 type AnyRecord = Record<string, any>;
 type WeatherLocation = WeatherLocationLike & AnyRecord;
 
+interface FetchWeatherForPlansOptions {
+  forceRefresh?: boolean;
+}
+
 function uniq<T>(values: T[]) {
   return Array.from(new Set(values.filter(Boolean)));
 }
@@ -243,6 +247,7 @@ function scoreGeocodeResult(result: AnyRecord, term: string, location: WeatherLo
     if (expectedAdmin1 && admin1) {
       if (admin1 === expectedAdmin1) score += 55;
       else if (admin1.includes(expectedAdmin1) || expectedAdmin1.includes(admin1)) score += 30;
+      else score -= 45;
     }
   }
 
@@ -251,6 +256,7 @@ function scoreGeocodeResult(result: AnyRecord, term: string, location: WeatherLo
     if (expectedAdmin2 && admin2) {
       if (admin2 === expectedAdmin2) score += 35;
       else if (admin2.includes(expectedAdmin2) || expectedAdmin2.includes(admin2)) score += 18;
+      else score -= 30;
     }
   }
 
@@ -403,6 +409,7 @@ export async function fetchWeatherForPlans(
   tripDates: TripDateLike[],
   startDateStr: string,
   cachedWeatherData: Record<string, any> = {},
+  options: FetchWeatherForPlansOptions = {},
 ) {
   if (!tripDates.length) return {};
 
@@ -431,7 +438,7 @@ export async function fetchWeatherForPlans(
     const key = getWeatherLocationKey(location);
     const cachedEntry = cachedWeatherData[key];
 
-    if (isWeatherCacheFresh(cachedEntry, tripDates)) {
+    if (!options.forceRefresh && isWeatherCacheFresh(cachedEntry, tripDates)) {
       nextWeatherData[key] = cachedEntry;
       return;
     }
@@ -452,13 +459,18 @@ export async function fetchWeatherForPlans(
   const errors: string[] = [];
 
   results.forEach((result, index) => {
+    const location = locationsToFetch[index];
+    const key = getWeatherLocationKey(location);
+
     if (result.status === 'fulfilled') {
       nextWeatherData[result.value.key] = result.value.data;
       return;
     }
 
     const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
-    errors.push(`${getWeatherLocationLabel(locationsToFetch[index])}：${reason}`);
+    const cachedEntry = cachedWeatherData[key];
+    if (cachedEntry?.dailyByDate) nextWeatherData[key] = cachedEntry;
+    errors.push(`${getWeatherLocationLabel(location)}：${reason}`);
   });
 
   if (!Object.keys(nextWeatherData).length && errors.length) {
@@ -470,7 +482,7 @@ export async function fetchWeatherForPlans(
     enumerable: false,
   });
   Object.defineProperty(nextWeatherData, WEATHER_CACHE_HIT_KEY, {
-    value: locationsToFetch.length === 0 && uniqueLocations.length > 0,
+    value: !options.forceRefresh && locationsToFetch.length === 0 && uniqueLocations.length > 0,
     enumerable: false,
   });
 

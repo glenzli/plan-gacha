@@ -5,13 +5,14 @@ import { addDays, parseDateId } from '../domain/date';
 import { normalizePlan, type NormalizedPlan } from '../domain/plan';
 import { normalizeSchedule, type NormalizedTripSnapshot } from '../domain/trip';
 import { formatWeatherDataSummary, getWeatherIconCondition } from '../domain/weather';
+import type { WeatherEvaluation } from '../domain/weather';
 import type { TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
 
 type RenderPlanSection = (plan: NormalizedPlan, options?: { readOnly?: boolean }) => ReactNode;
 
 interface ArchivedTripModalProps {
-  evaluateWeather: (plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap, language: string) => any;
+  evaluateWeather: (plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap, language: string) => WeatherEvaluation;
   formatTripRange: (startDateStr: string, tripDays: number, language: string) => string;
   getPriorityLabel: (priority: string, language: string) => string;
   language: string;
@@ -108,17 +109,20 @@ export function ArchivedTripModal({
                     {renderPlanStops(plan)}
                     {renderPlanBookings(plan, { readOnly: true })}
                     {renderPlanNotes(plan)}
-                    {weather && (
-                      <div className={`weather-line ${weather.level}`}>
-                        <strong>
-                          <WeatherIcon condition={getWeatherIconCondition(weather.snapshot)} level={weather.level} />
-                          <span>{weather.label}</span>
-                        </strong>
-                        <span className="weather-summary">
-                          {weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : t('noWeatherForPlace')}
-                        </span>
-                      </div>
-                    )}
+                    {weather && (() => {
+                      const weatherCondition = getWeatherIconCondition(weather.snapshot);
+                      return (
+                        <div className={`weather-line ${weather.level} condition-${weatherCondition}`}>
+                          <strong>
+                            <WeatherIcon condition={weatherCondition} level={weather.level} />
+                            <span>{weather.label}</span>
+                          </strong>
+                          <span className="weather-summary">
+                            {weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : t('noWeatherForPlace')}
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </>
                 ) : (
                   <div className="empty-state">{t('noPlanForDay')}</div>
