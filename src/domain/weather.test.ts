@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildAggregatedWeatherSnapshot,
   buildWeatherOverview,
   buildWeatherSnapshot,
   classifyWeatherCode,
   evaluateWeatherForSnapshot,
   formatWeatherDataSummary,
   formatWeatherSummary,
+  getWeatherLocationSummaryRows,
   getRainRisk,
   getWeatherIconCondition,
   type WeatherCondition,
@@ -44,6 +46,28 @@ describe('weather display helpers', () => {
         { location: { label: 'Kyoto' }, snapshot: snapshot('storm', 80) },
       ],
     })).toBe('storm');
+  });
+
+  it('formats multi-place weather as one compact daily range with place rows', () => {
+    const multiPlace = buildAggregatedWeatherSnapshot([
+      { location: { label: 'Kyoto' }, snapshot: snapshot('cloudy', 35) },
+      {
+        location: { label: 'Otsu' },
+        snapshot: {
+          ...snapshot('hot', 54),
+          tempMin: 20,
+          tempMax: 34,
+          windMax: 18,
+        },
+      },
+    ]);
+
+    expect(formatWeatherDataSummary(multiPlace, 'zh')).toBe('20-34°C / 降水54% / 风18km/h');
+    expect(formatWeatherSummary(multiPlace, 'zh')).toContain('Kyoto');
+    expect(getWeatherLocationSummaryRows(multiPlace, 'zh').map((row) => `${row.label} ${row.summary}`)).toEqual([
+      'Kyoto 22-28°C / 降水35% / 风12km/h',
+      'Otsu 20-34°C / 降水54% / 风18km/h',
+    ]);
   });
 });
 

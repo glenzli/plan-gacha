@@ -1904,6 +1904,38 @@ label {
   font-size: 0.78rem;
 }
 
+.weather-location-list {
+  display: grid;
+  gap: 0.24rem;
+  margin-top: 0.1rem;
+}
+
+.weather-location-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 7.5rem) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.34rem;
+  color: var(--faint);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.weather-location-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-weight: 760;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weather-location-summary {
+  min-width: 0;
+  color: var(--faint);
+  font-family: var(--mono);
+  overflow-wrap: anywhere;
+}
+
 .weather-icon {
   width: auto;
   min-width: 1.52rem;

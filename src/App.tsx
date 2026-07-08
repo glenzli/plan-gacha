@@ -233,11 +233,11 @@ function App() {
   const hasInitializedPlans = normalizedPlans.length > 0;
   const {
     weatherData,
-    setWeatherData,
     weatherLoading,
     weatherError,
     refreshWeather,
     clearWeatherError,
+    clearWeatherData,
   } = useWeatherSync({
     initialWeatherData: initial.weatherData,
     language,
@@ -556,6 +556,7 @@ function App() {
 
     setTrips(nextTrips);
     applyTripSnapshot(nextActiveTrip);
+    clearWeatherData();
     applyChecklistSnapshot(
       snapshot.checklistText ?? snapshot.checklist ?? snapshot.packingList,
       snapshot.checklistState || snapshot.checklistStatus || {},
@@ -620,7 +621,7 @@ function App() {
     setPlans(exampleTrip.plans);
     setSchedule(exampleTrip.schedule);
     setLodgings(exampleTrip.lodgings || []);
-    setWeatherData({});
+    clearWeatherData();
     setSelectedDateId(exampleTrip.startDateStr);
     closePlanEditor();
     setBatchAiOpen(false);
@@ -706,6 +707,7 @@ function App() {
     setChecklistImportConflicts,
     setChecklistImportText,
     setImportModalOpen,
+    invalidateWeatherCache: clearWeatherData,
     setLodgings,
     setPlans,
     setSchedule,
@@ -726,12 +728,14 @@ function App() {
     setSchedule((current) => Object.fromEntries(
       Object.entries(current).filter(([, entry]) => entry?.planId !== planId),
     ));
+    clearWeatherData();
     if (editorPlanId === planId) closePlanEditor();
     notify(t('planDeleted'));
   };
 
   const saveLodgings = (nextLodgings: unknown[]) => {
     setLodgings(normalizeTripLodgings(nextLodgings));
+    clearWeatherData();
     notify(t('lodgingsSaved'));
   };
 

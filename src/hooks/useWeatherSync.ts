@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { STORAGE_KEYS } from '../domain/appStorage';
 import { formatWeatherUpdateWarning } from '../domain/dayInsight';
-import { getPlanWeatherLocations, type NormalizedPlan } from '../domain/plan';
+import { getPlanWeatherLocations, getWeatherLocationKey, type NormalizedPlan } from '../domain/plan';
 import {
   WEATHER_CACHE_HIT_KEY,
   WEATHER_ERRORS_KEY,
@@ -45,6 +45,7 @@ export function useWeatherSync({
   const [weatherLoading, setWeatherLoading] = useState(false);
   const [weatherError, setWeatherError] = useState('');
   const autoWeatherKeyRef = useRef('');
+  const weatherRequestIdRef = useRef(0);
   const weatherDataRef = useRef<WeatherDataMap>(initialWeatherData);
 
   useEffect(() => {
@@ -57,10 +58,13 @@ export function useWeatherSync({
 
   const refreshWeather = useCallback(async () => {
     if (!tripDates.length) return;
+    const requestId = weatherRequestIdRef.current + 1;
+    weatherRequestIdRef.current = requestId;
     setWeatherLoading(true);
     setWeatherError('');
     let timedOut = false;
     const timeoutId = window.setTimeout(() => {
+      if (weatherRequestIdRef.current !== requestId) return;
       timedOut = true;
       setWeatherLoading(false);
       setWeatherError(t('weatherTimeout'));
@@ -74,7 +78,7 @@ export function useWeatherSync({
         weatherDataRef.current,
         { forceRefresh: true },
       ) as WeatherFetchResult;
-      if (!timedOut) {
+      if (!timedOut && weatherRequestIdRef.current === requestId) {
         setWeatherData(nextWeatherData);
         const warning = formatWeatherUpdateWarning(nextWeatherData[WEATHER_ERRORS_KEY] || [], language);
         setWeatherError(warning);
@@ -85,18 +89,27 @@ export function useWeatherSync({
             : t('weatherUpdated'));
       }
     } catch (error) {
-      if (!timedOut) {
+      if (!timedOut && weatherRequestIdRef.current === requestId) {
         const message = getErrorMessage(error);
         setWeatherError(message);
         notify(message);
       }
     } finally {
       window.clearTimeout(timeoutId);
-      if (!timedOut) setWeatherLoading(false);
+      if (!timedOut && weatherRequestIdRef.current === requestId) setWeatherLoading(false);
     }
   }, [language, normalizedPlans, notify, startDateStr, t, tripDates]);
 
   const clearWeatherError = useCallback(() => {
+    setWeatherError('');
+  }, []);
+
+  const clearWeatherData = useCallback(() => {
+    weatherRequestIdRef.current += 1;
+    autoWeatherKeyRef.current = '';
+    weatherDataRef.current = {};
+    localStorage.removeItem(STORAGE_KEYS.weatherCache);
+    setWeatherData({});
     setWeatherError('');
   }, []);
 
@@ -106,7 +119,7 @@ export function useWeatherSync({
     const lastDateId = tripDates[tripDates.length - 1]?.id;
     const locationKey = normalizedPlans
       .flatMap((plan) => getPlanWeatherLocations(plan))
-      .map((location) => `${location.query || location.label}:${location.latitude || ''}:${location.longitude || ''}`)
+      .map((location) => getWeatherLocationKey(location))
       .sort()
       .join('|');
     const autoWeatherKey = `${startDateStr}|${lastDateId}|${locationKey}`;
@@ -114,12 +127,15 @@ export function useWeatherSync({
     if (autoWeatherKeyRef.current === autoWeatherKey) return undefined;
     autoWeatherKeyRef.current = autoWeatherKey;
 
+    const requestId = weatherRequestIdRef.current + 1;
+    weatherRequestIdRef.current = requestId;
     let cancelled = false;
     let timedOut = false;
     let settled = false;
     setWeatherLoading(true);
     setWeatherError('');
     const timeoutId = window.setTimeout(() => {
+      if (weatherRequestIdRef.current !== requestId) return;
       timedOut = true;
       if (!cancelled) {
         setWeatherLoading(false);
@@ -129,32 +145,35 @@ export function useWeatherSync({
 
     fetchWeatherForPlans(normalizedPlans, tripDates, startDateStr, weatherDataRef.current)
       .then((nextWeatherData) => {
-        if (!cancelled && !timedOut) {
+        if (!cancelled && !timedOut && weatherRequestIdRef.current === requestId) {
           const weatherResult = nextWeatherData as WeatherFetchResult;
           setWeatherData(weatherResult);
           setWeatherError(formatWeatherUpdateWarning(weatherResult[WEATHER_ERRORS_KEY] || [], language));
         }
       })
       .catch((error) => {
-        if (!cancelled && !timedOut) setWeatherError(t('autoWeatherFailed', { message: getErrorMessage(error) }));
+        if (!cancelled && !timedOut && weatherRequestIdRef.current === requestId) {
+          setWeatherError(t('autoWeatherFailed', { message: getErrorMessage(error) }));
+        }
       })
       .finally(() => {
         settled = true;
         window.clearTimeout(timeoutId);
-        if (!cancelled && !timedOut) setWeatherLoading(false);
+        if (!cancelled && !timedOut && weatherRequestIdRef.current === requestId) setWeatherLoading(false);
       });
 
     return () => {
       cancelled = true;
       window.clearTimeout(timeoutId);
       if (!settled && autoWeatherKeyRef.current === autoWeatherKey) autoWeatherKeyRef.current = '';
-      setWeatherLoading(false);
+      if (weatherRequestIdRef.current === requestId) setWeatherLoading(false);
     };
   }, [language, normalizedPlans, startDateStr, t, tripDates]);
 
   return {
     weatherData,
     setWeatherData,
+    clearWeatherData,
     weatherLoading,
     weatherError,
     refreshWeather,

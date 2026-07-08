@@ -3,6 +3,8 @@ import {
   formatStopTransfer,
   formatStopTransferDeparture,
   getPlanWeatherLocations,
+  getWeatherLocationKey,
+  hasCoordinates,
   normalizeExternalLinkUrl,
   normalizeLocation,
   normalizePlan,
@@ -49,6 +51,23 @@ describe('location normalization', () => {
       query: '京都市',
       weatherLabel: '京都市',
     });
+  });
+
+  it('treats 0,0 imported coordinates as empty placeholders', () => {
+    const location = normalizeLocation({
+      label: '奈良市及周边',
+      query: 'Nara, Nara, Japan',
+      weatherLabel: 'Nara, Nara, Japan',
+      latitude: 0,
+      longitude: 0,
+      countryCode: 'JP',
+      admin1: 'Nara',
+      address: '奈良県奈良市',
+    });
+
+    expect(hasCoordinates(location)).toBe(false);
+    expect(getWeatherLocationKey(location)).not.toBe('0,0');
+    expect(getWeatherLocationKey(location)).toContain('jp');
   });
 });
 

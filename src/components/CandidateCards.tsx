@@ -3,6 +3,7 @@ import { formatAssignedDate } from '../domain/risk';
 import {
   formatWeatherDataSummary,
   getWeatherIconCondition,
+  getWeatherLocationSummaryRows,
 } from '../domain/weather';
 import type { NormalizedPlan } from '../domain/plan';
 import type {
@@ -64,6 +65,7 @@ export function CandidateSignals({ candidate, t, language }: CandidateSignalsPro
 
   const { hardReasons = [], notes = [], weather } = candidate;
   const weatherCondition = getWeatherIconCondition(weather.snapshot);
+  const weatherRows = getWeatherLocationSummaryRows(weather.snapshot, language);
   const visibleHardReasons = hardReasons.filter(
     (reason) => !(weather.level === 'blocked' && reason === weather.label),
   );
@@ -78,6 +80,17 @@ export function CandidateSignals({ candidate, t, language }: CandidateSignalsPro
         <span className="weather-summary">
           {weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : t('noWeatherForPlace')}
         </span>
+        {weatherRows.length > 1 && (
+          <span className="weather-location-list">
+            {weatherRows.map((row) => (
+              <span className="weather-location-row" key={row.key}>
+                <WeatherIcon condition={row.condition} level={weather.level} />
+                <span className="weather-location-name">{row.label}</span>
+                <span className="weather-location-summary">{row.summary}</span>
+              </span>
+            ))}
+          </span>
+        )}
       </div>
 
       {(visibleHardReasons.length > 0 || notes.length > 0) && (

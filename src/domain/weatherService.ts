@@ -10,6 +10,7 @@ import { getWeatherLocationLabel, type WeatherLocationLike } from './weather';
 const WEATHER_FETCH_TIMEOUT_MS = 20000;
 const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const WEATHER_FETCH_CONCURRENCY = 4;
+const WEATHER_DEBUG_STORAGE_KEY = 'planGacha.weatherDebug';
 const weatherTranslationCache = new Map<string, string[]>();
 
 export const WEATHER_ERRORS_KEY = Symbol('weatherErrors');
@@ -20,6 +21,73 @@ type WeatherLocation = WeatherLocationLike & AnyRecord;
 
 interface FetchWeatherForPlansOptions {
   forceRefresh?: boolean;
+}
+
+function isWeatherDebugEnabled() {
+  if (typeof window === 'undefined') return false;
+
+  try {
+    const params = new URLSearchParams(window.location.search);
+    return (
+      params.get('weatherDebug') === '1' ||
+      params.get('debugWeather') === '1' ||
+      window.localStorage.getItem(WEATHER_DEBUG_STORAGE_KEY) === '1'
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logWeatherDebug(event: string, detail: AnyRecord = {}) {
+  if (!isWeatherDebugEnabled()) return;
+  console.info(`[plan-gacha:weather] ${event}`, detail);
+}
+
+function summarizeLocation(location: WeatherLocation = {}) {
+  return {
+    key: getWeatherLocationKey(location),
+    label: getWeatherLocationLabel(location),
+    query: location.query || '',
+    weatherLabel: location.weatherLabel || location.weather_label || '',
+    latitude: location.latitude,
+    longitude: location.longitude,
+    countryCode: location.countryCode || location.country_code || '',
+    admin1: location.admin1 || '',
+    admin2: location.admin2 || '',
+    address: location.address || '',
+    hasCoordinates: hasCoordinates(location),
+  };
+}
+
+function summarizeGeocodeResult(result: AnyRecord | null) {
+  if (!result) return null;
+  return {
+    name: result.name,
+    countryCode: result.country_code,
+    admin1: result.admin1,
+    admin2: result.admin2 || result.admin3,
+    latitude: result.latitude,
+    longitude: result.longitude,
+    timezone: result.timezone,
+  };
+}
+
+function summarizeDailyByDate(dailyByDate: AnyRecord, dates: string[]) {
+  return Object.fromEntries(
+    dates.map((dateId) => {
+      const day = dailyByDate?.[dateId] || {};
+      return [
+        dateId,
+        {
+          code: day.weatherCode,
+          min: day.tempMin,
+          max: day.tempMax,
+          rain: day.precipitationProbability,
+          wind: day.windMax,
+        },
+      ];
+    }),
+  );
 }
 
 function uniq<T>(values: T[]) {
@@ -297,26 +365,60 @@ async function geocodeWeatherSearchTerms(searchTerms: string[], resolvedLabel: s
   return bestScore >= 20 ? bestResult : null;
 }
 
-async function fetchWeatherForLocation(location: WeatherLocation, startDateStr: string, endDate: string) {
+async function fetchWeatherForLocation(
+  location: WeatherLocation,
+  startDateStr: string,
+  endDate: string,
+  debugDates: string[] = [],
+) {
+  const forecastDates = debugDates.length ? debugDates : [startDateStr, endDate].filter(Boolean);
   let resolved = location;
+  logWeatherDebug('location:start', {
+    startDate: startDateStr,
+    endDate,
+    location: summarizeLocation(location),
+  });
+
   if (!hasCoordinates(resolved)) {
     const resolvedLabel = getWeatherLocationLabel(resolved);
     const searchTerms = getWeatherSearchTerms(resolved);
     let first: AnyRecord | null = null;
     let geocodeError: unknown = null;
 
+    logWeatherDebug('geocode:start', {
+      label: resolvedLabel,
+      countryCode: resolved.countryCode || resolved.country_code || '',
+      searchTerms,
+    });
+
     try {
       first = await geocodeWeatherSearchTerms(searchTerms, resolvedLabel, resolved);
+      logWeatherDebug('geocode:primary-result', {
+        label: resolvedLabel,
+        result: summarizeGeocodeResult(first),
+      });
 
       if (!first) {
         const translatedTerms: string[] = [];
         for (const term of searchTerms.slice(0, 3)) {
           translatedTerms.push(...await translateWeatherSearchTerm(term));
         }
+        logWeatherDebug('geocode:translated-terms', {
+          label: resolvedLabel,
+          translatedTerms: uniq(translatedTerms),
+        });
         first = await geocodeWeatherSearchTerms(uniq(translatedTerms), resolvedLabel, resolved);
+        logWeatherDebug('geocode:translated-result', {
+          label: resolvedLabel,
+          result: summarizeGeocodeResult(first),
+        });
       }
     } catch (error) {
       geocodeError = error;
+      logWeatherDebug('geocode:error', {
+        label: resolvedLabel,
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
 
     if (first) {
@@ -330,16 +432,33 @@ async function fetchWeatherForLocation(location: WeatherLocation, startDateStr: 
         admin1: resolved.admin1 || first.admin1,
         admin2: resolved.admin2 || first.admin2,
       };
+      logWeatherDebug('geocode:resolved', {
+        original: summarizeLocation(location),
+        resolved: summarizeLocation(resolved),
+        result: summarizeGeocodeResult(first),
+      });
     } else {
       const fallback = getWeatherLocationFallback(resolved);
       if (fallback) {
         resolved = fallback;
+        logWeatherDebug('geocode:fallback', {
+          original: summarizeLocation(location),
+          fallback: summarizeLocation(resolved),
+        });
       } else if (geocodeError) {
         throw geocodeError;
       } else {
+        logWeatherDebug('geocode:not-found', {
+          label: resolvedLabel,
+          searchTerms,
+        });
         throw new Error(`找不到地点：${resolvedLabel}`);
       }
     }
+  } else {
+    logWeatherDebug('geocode:skip-coordinates', {
+      location: summarizeLocation(resolved),
+    });
   }
 
   const forecastUrl = new URL('https://api.open-meteo.com/v1/forecast');
@@ -363,12 +482,24 @@ async function fetchWeatherForLocation(location: WeatherLocation, startDateStr: 
   forecastUrl.searchParams.set('start_date', startDateStr);
   forecastUrl.searchParams.set('end_date', endDate);
 
+  logWeatherDebug('forecast:request', {
+    location: summarizeLocation(resolved),
+    startDate: startDateStr,
+    endDate,
+  });
+
   const forecastData = await fetchJson(forecastUrl, `天气查询：${getWeatherLocationLabel(resolved)}`);
+  const dailyByDate = parseForecastDaily(forecastData);
+
+  logWeatherDebug('forecast:success', {
+    location: summarizeLocation(resolved),
+    days: summarizeDailyByDate(dailyByDate, forecastDates),
+  });
 
   return {
     ...resolved,
     label: getWeatherLocationLabel(resolved),
-    dailyByDate: parseForecastDaily(forecastData),
+    dailyByDate,
     fetchedAt: new Date().toISOString(),
   };
 }
@@ -434,12 +565,33 @@ export async function fetchWeatherForPlans(
   const nextWeatherData: Record<string, any> = {};
   const locationsToFetch: WeatherLocation[] = [];
 
+  logWeatherDebug('batch:start', {
+    forceRefresh: Boolean(options.forceRefresh),
+    startDate: startDateStr,
+    endDate,
+    tripDates: tripDates.map((date) => date.id),
+    locations: uniqueLocations.map((location) => {
+      const key = getWeatherLocationKey(location);
+      const cachedEntry = cachedWeatherData[key];
+      return {
+        ...summarizeLocation(location),
+        hasCached: Boolean(cachedEntry?.dailyByDate),
+        cacheFresh: isWeatherCacheFresh(cachedEntry, tripDates),
+        cachedAt: cachedEntry?.fetchedAt || '',
+      };
+    }),
+  });
+
   uniqueLocations.forEach((location) => {
     const key = getWeatherLocationKey(location);
     const cachedEntry = cachedWeatherData[key];
 
     if (!options.forceRefresh && isWeatherCacheFresh(cachedEntry, tripDates)) {
       nextWeatherData[key] = cachedEntry;
+      logWeatherDebug('batch:cache-hit', {
+        location: summarizeLocation(location),
+        cachedAt: cachedEntry.fetchedAt,
+      });
       return;
     }
 
@@ -452,7 +604,7 @@ export async function fetchWeatherForPlans(
     async (location) => ({
       key: getWeatherLocationKey(location),
       label: getWeatherLocationLabel(location),
-      data: await fetchWeatherForLocation(location, startDateStr, endDate),
+      data: await fetchWeatherForLocation(location, startDateStr, endDate, tripDates.map((date) => date.id)),
     }),
   );
 
@@ -469,8 +621,13 @@ export async function fetchWeatherForPlans(
 
     const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
     const cachedEntry = cachedWeatherData[key];
-    if (cachedEntry?.dailyByDate) nextWeatherData[key] = cachedEntry;
+    if (!options.forceRefresh && cachedEntry?.dailyByDate) nextWeatherData[key] = cachedEntry;
     errors.push(`${getWeatherLocationLabel(location)}：${reason}`);
+    logWeatherDebug('batch:location-error', {
+      location: summarizeLocation(location),
+      reason,
+      usedCachedFallback: Boolean(!options.forceRefresh && cachedEntry?.dailyByDate),
+    });
   });
 
   if (!Object.keys(nextWeatherData).length && errors.length) {
@@ -484,6 +641,13 @@ export async function fetchWeatherForPlans(
   Object.defineProperty(nextWeatherData, WEATHER_CACHE_HIT_KEY, {
     value: !options.forceRefresh && locationsToFetch.length === 0 && uniqueLocations.length > 0,
     enumerable: false,
+  });
+
+  logWeatherDebug('batch:done', {
+    forceRefresh: Boolean(options.forceRefresh),
+    fetched: locationsToFetch.length,
+    returned: Object.keys(nextWeatherData),
+    errors,
   });
 
   return nextWeatherData;

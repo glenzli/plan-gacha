@@ -42,6 +42,20 @@ export interface WeatherSnapshot {
   summary?: string;
 }
 
+export interface WeatherLocationSummaryRow {
+  key: string;
+  label: string;
+  summary: string;
+  condition: WeatherCondition;
+}
+
+interface WeatherMetricSummary {
+  tempMin: number;
+  tempMax: number;
+  precipitationProbability?: number;
+  windMax?: number;
+}
+
 export interface TripDateLike {
   id: string;
   dayNumber: number;
@@ -275,6 +289,35 @@ export function formatWeatherMetrics(
   return `${getWeatherLabel(primary, language)} ${formatWeatherDataMetrics(tempMin, tempMax, precipitationProbability, windMax, language)}`;
 }
 
+function getAggregatedWeatherMetrics(snapshot?: WeatherSnapshot | null): WeatherMetricSummary | null {
+  if (!snapshot) return null;
+  if (
+    Number.isFinite(snapshot.tempMin) &&
+    Number.isFinite(snapshot.tempMax)
+  ) {
+    return {
+      tempMin: snapshot.tempMin as number,
+      tempMax: snapshot.tempMax as number,
+      precipitationProbability: snapshot.precipitationProbability,
+      windMax: snapshot.windMax,
+    };
+  }
+
+  const entries = snapshot.entries || [];
+  const metrics = entries
+    .map((entry) => getAggregatedWeatherMetrics(entry.snapshot))
+    .filter((item): item is WeatherMetricSummary => Boolean(item));
+
+  if (!metrics.length) return null;
+
+  return {
+    tempMin: Math.min(...metrics.map((item) => item.tempMin)),
+    tempMax: Math.max(...metrics.map((item) => item.tempMax)),
+    precipitationProbability: Math.max(...metrics.map((item) => Number(item.precipitationProbability || 0))),
+    windMax: Math.max(...metrics.map((item) => Number(item.windMax || 0))),
+  };
+}
+
 export function formatWeatherSummary(snapshot?: WeatherSnapshot | null, language: Language = 'zh'): string {
   if (!snapshot) return '';
   if (Array.isArray(snapshot.entries) && snapshot.entries.length) {
@@ -300,6 +343,17 @@ export function formatWeatherSummary(snapshot?: WeatherSnapshot | null, language
 export function formatWeatherDataSummary(snapshot?: WeatherSnapshot | null, language: Language = 'zh'): string {
   if (!snapshot) return '';
   if (Array.isArray(snapshot.entries) && snapshot.entries.length) {
+    const metrics = getAggregatedWeatherMetrics(snapshot);
+    if (metrics) {
+      return formatWeatherDataMetrics(
+        metrics.tempMin,
+        metrics.tempMax,
+        metrics.precipitationProbability,
+        metrics.windMax,
+        language,
+      );
+    }
+
     return snapshot.entries
       .map((entry) => `${getWeatherLocationLabel(entry.location)} ${formatWeatherDataSummary(entry.snapshot, language)}`)
       .join(language === 'en' ? '; ' : '；');
@@ -316,6 +370,27 @@ export function formatWeatherDataSummary(snapshot?: WeatherSnapshot | null, lang
   }
 
   return snapshot.summary || '';
+}
+
+export function getWeatherLocationSummaryRows(
+  snapshot?: WeatherSnapshot | null,
+  language: Language = 'zh',
+): WeatherLocationSummaryRow[] {
+  if (!snapshot?.entries?.length) return [];
+
+  return snapshot.entries
+    .map((entry, index) => {
+      const summary = formatWeatherDataSummary(entry.snapshot, language);
+      if (!summary) return null;
+      const label = entry.location?.label || getWeatherLocationLabel(entry.location) || (language === 'en' ? `Place ${index + 1}` : `地点 ${index + 1}`);
+      return {
+        key: `${label}-${index}`,
+        label,
+        summary,
+        condition: getWeatherIconCondition(entry.snapshot),
+      };
+    })
+    .filter((item): item is WeatherLocationSummaryRow => Boolean(item));
 }
 
 export function buildWeatherSnapshot(day?: ForecastDayLike | null, language: Language = 'zh'): WeatherSnapshot | null {
@@ -362,12 +437,14 @@ export function buildAggregatedWeatherSnapshot(
   const summary = entries
     .map(({ location, snapshot }) => `${getWeatherLocationLabel(location)} ${snapshot.summary || formatWeatherSummary(snapshot)}`.trim())
     .join('；');
+  const metrics = getAggregatedWeatherMetrics({ entries });
 
   return {
     primary: pickPrimaryWeatherCategory(categories),
     categories,
     summary,
     entries,
+    ...(metrics || {}),
   };
 }
 

@@ -40,6 +40,7 @@ interface UseJsonPayloadControllerOptions {
   closePlanEditor: () => void;
   editorPlanId: string | null;
   importTextRef: RefObject<HTMLTextAreaElement | null>;
+  invalidateWeatherCache: () => void;
   isCreatingPlan: boolean;
   lodgings: NormalizedLodging[];
   normalizedPlans: NormalizedPlan[];
@@ -79,6 +80,7 @@ export function useJsonPayloadController({
   closePlanEditor,
   editorPlanId,
   importTextRef,
+  invalidateWeatherCache,
   isCreatingPlan,
   lodgings,
   normalizedPlans,
@@ -142,8 +144,14 @@ export function useJsonPayloadController({
   const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied')) => {
     let touched = false;
 
-    if (parsed.startDateStr) setStartDateStr(parsed.startDateStr);
-    if (parsed.tripDays) setTripDays(clampTripDays(parsed.tripDays));
+    if (parsed.startDateStr) {
+      touched = true;
+      setStartDateStr(parsed.startDateStr);
+    }
+    if (parsed.tripDays) {
+      touched = true;
+      setTripDays(clampTripDays(parsed.tripDays));
+    }
     const importedLodgings = parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays;
     if (Array.isArray(importedLodgings)) {
       touched = true;
@@ -202,6 +210,7 @@ export function useJsonPayloadController({
       throw new Error(t('noApplicableJson'));
     }
 
+    invalidateWeatherCache();
     notify(message);
   };
 
@@ -266,6 +275,7 @@ export function useJsonPayloadController({
     }
 
     notify(message);
+    invalidateWeatherCache();
     closePlanEditor();
   };
 

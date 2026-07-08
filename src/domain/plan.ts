@@ -447,7 +447,12 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
 }
 
 export function hasCoordinates(location: Pick<NormalizedLocation, 'latitude' | 'longitude'> | WeatherLocationLike) {
-  return normalizeCoordinate(location.latitude) !== undefined && normalizeCoordinate(location.longitude) !== undefined;
+  const latitude = normalizeCoordinate(location.latitude);
+  const longitude = normalizeCoordinate(location.longitude);
+  if (latitude === undefined || longitude === undefined) return false;
+
+  // AI/imported data often uses 0,0 as an empty coordinate placeholder.
+  return !(latitude === 0 && longitude === 0);
 }
 
 export function getWeatherLocationKey(location: WeatherLocationLike) {

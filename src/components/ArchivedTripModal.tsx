@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { addDays, parseDateId } from '../domain/date';
 import { normalizePlan, type NormalizedPlan } from '../domain/plan';
 import { normalizeSchedule, type NormalizedTripSnapshot } from '../domain/trip';
-import { formatWeatherDataSummary, getWeatherIconCondition } from '../domain/weather';
+import { formatWeatherDataSummary, getWeatherIconCondition, getWeatherLocationSummaryRows } from '../domain/weather';
 import type { WeatherEvaluation } from '../domain/weather';
 import type { TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
@@ -111,6 +111,7 @@ export function ArchivedTripModal({
                     {renderPlanNotes(plan)}
                     {weather && (() => {
                       const weatherCondition = getWeatherIconCondition(weather.snapshot);
+                      const weatherRows = getWeatherLocationSummaryRows(weather.snapshot, language);
                       return (
                         <div className={`weather-line ${weather.level} condition-${weatherCondition}`}>
                           <strong>
@@ -120,6 +121,17 @@ export function ArchivedTripModal({
                           <span className="weather-summary">
                             {weather.snapshot ? formatWeatherDataSummary(weather.snapshot, language) : t('noWeatherForPlace')}
                           </span>
+                          {weatherRows.length > 1 && (
+                            <span className="weather-location-list">
+                              {weatherRows.map((row) => (
+                                <span className="weather-location-row" key={row.key}>
+                                  <WeatherIcon condition={row.condition} level={weather.level} />
+                                  <span className="weather-location-name">{row.label}</span>
+                                  <span className="weather-location-summary">{row.summary}</span>
+                                </span>
+                              ))}
+                            </span>
+                          )}
                         </div>
                       );
                     })()}
