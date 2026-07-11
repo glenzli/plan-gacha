@@ -3,7 +3,7 @@
   --bg: #f8f9fa;
   --panel: #ffffff;
   --surface: #ffffff;
-  --surface-soft: #f4f4f5;
+  --surface-soft: #f6f7f8;
   --surface-strong: #e4e4e7;
   --border: rgba(228, 228, 231, 0.6);
   --border-strong: rgba(161, 161, 170, 0.38);
@@ -31,9 +31,11 @@
   --vanilla-strong: #52525b;
   --signal-warning: #f97316;
   --signal-warning-soft: #fff4ed;
+  --signal-warning-wash: #fffbf8;
   --signal-warning-border: #ffcfb0;
   --signal-critical: #ef4444;
   --signal-critical-soft: #fef2f2;
+  --signal-critical-wash: #fffafa;
   --signal-critical-border: #fecaca;
   --signal-good: #059669;
   --signal-good-soft: #ecfdf5;
@@ -42,8 +44,8 @@
   --danger: #ef4444;
   --danger-soft: #fef2f2;
   --danger-border: #fecaca;
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05), 0 4px 12px 0 rgba(0, 0, 0, 0.02);
-  --shadow-md: 0 2px 4px 0 rgba(0, 0, 0, 0.06), 0 10px 24px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px rgba(9, 9, 11, 0.04), 0 3px 10px rgba(9, 9, 11, 0.025);
+  --shadow-md: 0 2px 5px rgba(9, 9, 11, 0.05), 0 10px 24px rgba(9, 9, 11, 0.045);
   --mono: "JetBrains Mono", "Geist Mono", "SF Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   --radius: 8px;
   --radius-sm: 6px;
@@ -88,6 +90,11 @@ button {
   color: inherit;
 }
 
+:where(button, a, input, textarea, summary):focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.42);
+  outline-offset: 2px;
+}
+
 .app-shell {
   min-height: 100vh;
   max-width: 100%;
@@ -104,7 +111,7 @@ button {
   justify-content: space-between;
   gap: 1rem;
   padding: 1rem;
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 2px rgba(9, 9, 11, 0.04);
   backdrop-filter: blur(14px);
@@ -202,9 +209,25 @@ h3 {
 .trip-actions {
   display: flex;
   align-items: center;
-  gap: 0.45rem;
+  gap: 0.08rem;
   flex-wrap: nowrap;
   min-width: max-content;
+  padding: 0.16rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.trip-actions .icon-btn {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.trip-actions .icon-btn:hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(9, 9, 11, 0.05);
 }
 
 .ai-replan-btn {
@@ -232,6 +255,10 @@ h3 {
   box-shadow: var(--shadow-sm);
   cursor: pointer;
   text-align: left;
+}
+
+.trip-menu-trigger:hover:not(:disabled) {
+  border-color: var(--border-strong);
 }
 
 .trip-menu-trigger::after {
@@ -533,7 +560,7 @@ label {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(9, 9, 11, 0.035);
   text-align: left;
   cursor: pointer;
   transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease, background 0.18s ease;
@@ -563,6 +590,7 @@ label {
 }
 
 .day-tile:hover {
+  box-shadow: var(--shadow-sm);
   transform: translateY(-1px);
 }
 
@@ -573,13 +601,13 @@ label {
 
 .day-tile.status-mismatch:not(.is-selected),
 .day-tile.status-unknown:not(.is-selected) {
-  background: var(--signal-warning-soft);
+  background: var(--signal-warning-wash);
 }
 
 .day-tile.status-blocked:not(.is-selected),
 .day-tile.status-danger:not(.is-selected),
 .day-tile.status-critical:not(.is-selected) {
-  background: var(--signal-critical-soft);
+  background: var(--signal-critical-wash);
 }
 
 .day-tile.status-best::before,
@@ -1096,14 +1124,14 @@ label {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 1px 2px rgba(9, 9, 11, 0.035);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease, background 0.2s ease;
 }
 
 .plan-card:hover {
   border-color: var(--border-strong);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  transform: translateY(-1px);
 }
 
 .plan-card.is-current {
@@ -1797,7 +1825,7 @@ label {
   border: 0;
   border-left: 3px solid #52525b;
   border-radius: 0;
-  background: rgba(244, 244, 245, 0.72);
+  background: rgba(244, 244, 245, 0.56);
   box-shadow: 0 1px 2px rgba(9, 9, 11, 0.035);
 }
 
@@ -1867,7 +1895,7 @@ label {
 
 .plan-reminders {
   border-left-color: var(--signal-warning);
-  background: var(--signal-warning-soft);
+  background: rgba(255, 244, 237, 0.58);
 }
 
 .plan-reminders strong,
@@ -1890,7 +1918,7 @@ label {
   border: 0;
   border-left: 3px solid #52525b;
   border-radius: 0;
-  background: rgba(244, 244, 245, 0.72);
+  background: rgba(244, 244, 245, 0.56);
   box-shadow: 0 1px 2px rgba(9, 9, 11, 0.035);
 }
 
@@ -2015,26 +2043,26 @@ label {
 
 .weather-line.best {
   border-left-color: var(--signal-good);
-  background: rgba(236, 253, 245, 0.72);
+  background: rgba(236, 253, 245, 0.56);
   color: #065f46;
 }
 
 .weather-line.ok {
   border-left-color: #3b82f6;
-  background: rgba(238, 242, 255, 0.72);
+  background: rgba(238, 242, 255, 0.56);
   color: #4f46e5;
 }
 
 .weather-line.blocked {
   border-left-color: var(--signal-critical);
-  background: var(--signal-critical-soft);
+  background: rgba(254, 242, 242, 0.62);
   color: var(--signal-critical);
 }
 
 .weather-line.mismatch,
 .weather-line.unknown {
   border-left-color: var(--signal-warning);
-  background: var(--signal-warning-soft);
+  background: rgba(255, 244, 237, 0.62);
   color: var(--amber-strong);
 }
 
@@ -2069,7 +2097,7 @@ label {
 .status-panel {
   display: grid;
   align-content: start;
-  gap: 1.18rem;
+  gap: 1.3rem;
 }
 
 .status-panel .panel-header h2 {
@@ -2082,7 +2110,7 @@ label {
 
 .risk-list {
   display: grid;
-  gap: 0.72rem;
+  gap: 0.92rem;
 }
 
 .risk-item,
@@ -2099,13 +2127,13 @@ label {
 }
 
 .risk-item {
-  padding: 0;
+  gap: 0;
+  padding: 0.08rem 0 0.12rem 0.68rem;
   border: 0;
   border-left: 2px solid var(--faint);
   border-radius: 0;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(9, 9, 11, 0.035);
-  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
 }
 
 .risk-item div {
@@ -2118,8 +2146,9 @@ label {
   align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  padding: 0.48rem 0.62rem;
-  background: var(--surface-soft);
+  min-height: 1.75rem;
+  padding: 0 0.52rem 0.3rem 0;
+  background: transparent;
 }
 
 .risk-group-head .btn {
@@ -2130,6 +2159,13 @@ label {
 }
 
 .risk-item strong {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 1.45rem;
+  align-items: center;
+  padding: 0.08rem 0.42rem;
+  border-radius: 4px;
+  background: var(--surface-soft);
   font-size: 0.9rem;
   line-height: 1.35;
 }
@@ -2158,11 +2194,12 @@ label {
 
 .risk-item ul {
   display: grid;
-  gap: 0.32rem;
+  gap: 0.18rem;
   margin: 0;
-  padding: 0.5rem 0.65rem 0.58rem 1.55rem;
+  padding: 0 0.48rem 0 0;
   color: var(--muted);
   font-size: 0.82rem;
+  list-style: none;
 }
 
 .status-panel .risk-item ul {
@@ -2170,7 +2207,27 @@ label {
 }
 
 .risk-item li {
-  padding-left: 0.1rem;
+  display: grid;
+  gap: 0.04rem;
+  padding: 0.32rem 0.42rem;
+  border-radius: 5px;
+  background: rgba(244, 244, 245, 0.46);
+}
+
+.risk-item .risk-item-date {
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 0.66rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.risk-item .risk-item-label {
+  min-width: 0;
+  color: var(--muted);
+  font-size: inherit;
+  line-height: 1.42;
+  overflow-wrap: anywhere;
 }
 
 .risk-item.critical {
@@ -2182,19 +2239,30 @@ label {
 }
 
 .risk-item.critical .risk-group-head {
-  background: var(--signal-critical-soft);
+  background: transparent;
 }
 
 .risk-item.warning .risk-group-head {
-  background: var(--signal-warning-soft);
+  background: transparent;
 }
 
 .risk-item.critical strong {
+  background: var(--signal-critical-soft);
   color: var(--signal-critical);
 }
 
 .risk-item.warning strong {
+  background: var(--signal-warning-soft);
   color: var(--signal-warning);
+}
+
+.risk-item.tone-preparation {
+  border-left-color: var(--accent);
+}
+
+.risk-item.tone-preparation strong {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
 }
 
 .risk-item.info {
@@ -2362,7 +2430,8 @@ label {
 .workflow-panel {
   display: grid;
   gap: 0.72rem;
-  padding-top: 0.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
 }
 
 .action-grid {
@@ -2566,7 +2635,8 @@ label {
   display: grid;
   place-items: center;
   padding: 1rem;
-  background: rgba(0, 0, 0, 0.48);
+  background: rgba(9, 9, 11, 0.36);
+  backdrop-filter: blur(3px);
 }
 
 .modal {
@@ -2579,7 +2649,7 @@ label {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 22px 70px rgba(9, 9, 11, 0.18);
 }
 
 .impact-modal {
@@ -2634,9 +2704,9 @@ label {
   display: grid;
   gap: 0.48rem;
   padding: 0.72rem 0.8rem;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--surface-soft);
 }
 
 .checklist-scroll,
@@ -2741,7 +2811,7 @@ label {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 .checklist-item {
@@ -3583,7 +3653,7 @@ label {
     grid-template-columns: minmax(0, 1fr);
     align-items: center;
     min-height: var(--mobile-header-height);
-    padding: 0.6rem 0.7rem;
+    padding: 0.35rem 0.7rem;
   }
 
   .trip-brand {
@@ -3788,6 +3858,14 @@ label {
     white-space: nowrap;
   }
 
+  .mobile-risk-summary:focus-visible {
+    outline: none;
+  }
+
+  .mobile-risk-summary:focus-visible em {
+    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.24);
+  }
+
   .mobile-risk-panel.level-critical .mobile-risk-summary {
     border-left-color: var(--signal-critical);
     background: transparent;
@@ -3798,9 +3876,15 @@ label {
     background: transparent;
   }
 
+  .mobile-risk-panel.level-preparation .mobile-risk-summary {
+    border-left-color: var(--accent);
+    background: transparent;
+  }
+
   .mobile-risk-summary.is-open,
   .mobile-risk-panel.level-critical .mobile-risk-summary.is-open,
-  .mobile-risk-panel.level-warning .mobile-risk-summary.is-open {
+  .mobile-risk-panel.level-warning .mobile-risk-summary.is-open,
+  .mobile-risk-panel.level-preparation .mobile-risk-summary.is-open {
     padding-left: 0;
     border-left-color: transparent;
     background: transparent;
