@@ -1024,6 +1024,7 @@ function App() {
         openAiPlanner={openAiPlanner}
         openChecklist={openChecklist}
         openLodgingEditor={openLodgingEditor}
+        refreshWeather={refreshWeather}
         setTripMenuOpen={setTripMenuOpen}
         switchTrip={switchTrip}
         t={t}
@@ -1031,6 +1032,7 @@ function App() {
         tripMenuDisabled={tripMenuDisabled}
         tripMenuOpen={tripMenuOpen}
         visibleTrips={visibleTrips}
+        weatherLoading={weatherLoading}
       />
 
       {hasInitializedPlans ? (

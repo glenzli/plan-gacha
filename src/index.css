@@ -181,6 +181,10 @@ h3 {
   font-size: 0.72rem;
 }
 
+.mobile-weather-refresh-btn {
+  display: none;
+}
+
 .trip-switcher {
   display: grid;
   grid-template-columns: minmax(22rem, 34rem) auto;
@@ -3657,6 +3661,10 @@ label {
   }
 
   .icon-btn.mobile-language-toggle {
+    display: inline-grid;
+  }
+
+  .mobile-weather-refresh-btn {
     display: inline-grid;
   }
 

@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { NormalizedTripSnapshot } from '../domain/trip';
-import type { TranslateFn } from '../types/ui';
+import type { TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
 
 interface TripDisplay {
@@ -22,6 +22,7 @@ interface TripHeaderProps {
   openAiPlanner: (mode: 'replan' | 'generate') => void;
   openChecklist: () => void;
   openLodgingEditor: () => void;
+  refreshWeather: VoidFn;
   setTripMenuOpen: Dispatch<SetStateAction<boolean>>;
   switchTrip: (tripId: string) => void;
   t: TranslateFn;
@@ -29,6 +30,7 @@ interface TripHeaderProps {
   tripMenuDisabled: boolean;
   tripMenuOpen: boolean;
   visibleTrips: NormalizedTripSnapshot[];
+  weatherLoading: boolean;
 }
 
 export function TripHeader({
@@ -44,6 +46,7 @@ export function TripHeader({
   openAiPlanner,
   openChecklist,
   openLodgingEditor,
+  refreshWeather,
   setTripMenuOpen,
   switchTrip,
   t,
@@ -51,6 +54,7 @@ export function TripHeader({
   tripMenuDisabled,
   tripMenuOpen,
   visibleTrips,
+  weatherLoading,
 }: TripHeaderProps) {
   return (
     <header className="trip-header">
@@ -112,15 +116,27 @@ export function TripHeader({
         </div>
         <div className="trip-actions">
           {hasInitializedPlans && (
-            <button
-              className="icon-btn ai-replan-btn"
-              type="button"
-              onClick={() => openAiPlanner('replan')}
-              aria-label={t('aiReplan')}
-              title={t('aiReplan')}
-            >
-              <Icon name="sparkles" />
-            </button>
+            <>
+              <button
+                className="icon-btn ai-replan-btn"
+                type="button"
+                onClick={() => openAiPlanner('replan')}
+                aria-label={t('aiReplan')}
+                title={t('aiReplan')}
+              >
+                <Icon name="sparkles" />
+              </button>
+              <button
+                className="icon-btn mobile-weather-refresh-btn"
+                type="button"
+                onClick={refreshWeather}
+                disabled={weatherLoading}
+                aria-label={weatherLoading ? t('updating') : t('updateWeather')}
+                title={weatherLoading ? t('updating') : t('updateWeather')}
+              >
+                <Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />
+              </button>
+            </>
           )}
           <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
             <Icon name="listChecks" />
