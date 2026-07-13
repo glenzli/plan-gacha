@@ -16,7 +16,7 @@ import {
   translate,
   translateIssue,
 } from './display';
-import type { NormalizedSchedule } from './trip';
+import { ScheduleEntryStatus, type NormalizedSchedule } from './trip';
 import type { WeatherDataMap } from '../types/weatherData';
 import type { WeatherCondition, WeatherEvaluation, WeatherSnapshot } from './weather';
 
@@ -73,6 +73,16 @@ export function getDayInsight(
     };
   }
 
+  if (schedule[dateId]?.status === ScheduleEntryStatus.Abandoned) {
+    return {
+      level: ScheduleEntryStatus.Abandoned,
+      label: translate('dayAbandoned', language),
+      weatherText: translate('abandonedPlanKept', language),
+      riskText: '',
+      issueCount: 0,
+    };
+  }
+
   const weather = evaluateWeather(plan, dateId, weatherData, language);
   const issues = getDateHardIssues(plan, dateId, schedule, plansById, weatherData, evaluateWeather, {
     ignoreOccupancy: true,
@@ -99,6 +109,14 @@ export function getCalendarDayState(
   language: string = DEFAULT_LANGUAGE,
 ): CalendarDayState {
   if (!plan) return { key: 'empty', label: '', ariaLabel: translate('assignedAriaEmpty', language) };
+
+  if (insight.level === ScheduleEntryStatus.Abandoned) {
+    return {
+      key: ScheduleEntryStatus.Abandoned,
+      label: translate('dayAbandoned', language),
+      ariaLabel: translate('assignedAriaAbandoned', language),
+    };
+  }
 
   if (insight.issueCount > 0 || ['danger', 'critical'].includes(insight.level)) {
     return { key: 'adjust', label: translate('adjust', language), ariaLabel: translate('assignedAriaAdjust', language) };

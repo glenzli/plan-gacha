@@ -1,15 +1,24 @@
 import { describe, expect, it } from 'vitest';
 import {
   clampTripDays,
+  getStopOutcomeKey,
+  getPlaceFeedbackKey,
+  isStopAbandoned,
+  isPlaceBlacklisted,
   hasUsefulLodgingInfo,
   isEmptyTripDraft,
   normalizeLodging,
   normalizeLodgingDrafts,
+  normalizePlaceFeedback,
   normalizeSchedule,
+  normalizeStopOutcomes,
   normalizeTripLodgings,
   normalizeTripSnapshot,
   pruneEmptyTripDrafts,
   stripChecklistFromTripSnapshot,
+  PlaceFeedbackStatus,
+  ScheduleEntryStatus,
+  StopOutcomeStatus,
 } from './trip';
 
 describe('trip day normalization', () => {
@@ -61,13 +70,76 @@ describe('schedule normalization', () => {
   it('normalizes schedule strings and object entries', () => {
     expect(normalizeSchedule({
       '2026-07-10': 'plan-a',
-      '2026-07-11': { id: 'plan-b' },
+      '2026-07-11': { id: 'plan-b', status: 'abandoned' },
+      '2026-07-14': { id: 'plan-c', status: 'invalid' },
       '2026-07-12': {},
       '2026-07-13': null,
     })).toEqual({
       '2026-07-10': { planId: 'plan-a' },
-      '2026-07-11': { planId: 'plan-b' },
+      '2026-07-11': { planId: 'plan-b', status: ScheduleEntryStatus.Abandoned },
+      '2026-07-14': { planId: 'plan-c' },
     });
+  });
+});
+
+describe('place feedback normalization', () => {
+  it('uses the address as a stable place key and preserves reversible status', () => {
+    const location = { label: 'Museum', address: '  Osaka 1-2-3 ' };
+    const key = getPlaceFeedbackKey(location);
+
+    expect(key).toBe('osaka 1-2-3');
+    expect(normalizePlaceFeedback({
+      [key]: {
+        label: 'Museum',
+        address: 'Osaka 1-2-3',
+        status: 'blacklisted',
+        updated_at: '2026-07-12T10:00:00.000Z',
+      },
+      allowed: {
+        label: 'Cafe',
+        status: 'allowed',
+      },
+    })).toMatchObject({
+      [key]: {
+        status: PlaceFeedbackStatus.Blacklisted,
+        updatedAt: '2026-07-12T10:00:00.000Z',
+      },
+      cafe: {
+        status: PlaceFeedbackStatus.Allowed,
+      },
+    });
+  });
+
+  it('matches the same place by label when one plan has a fuller address', () => {
+    const feedback = normalizePlaceFeedback({
+      museum: { label: 'Museum', status: 'blacklisted' },
+    });
+
+    expect(isPlaceBlacklisted({ label: 'Museum', address: 'Osaka 1-2-3' }, feedback)).toBe(true);
+  });
+});
+
+describe('stop outcome normalization', () => {
+  it('keeps a skipped stop scoped to its date, plan and stop id', () => {
+    const key = getStopOutcomeKey('2026-07-11', 'plan-1', 'stop-1');
+    const outcomes = normalizeStopOutcomes({
+      [key]: {
+        date_id: '2026-07-11',
+        plan_id: 'plan-1',
+        stop_id: 'stop-1',
+        stop_title: 'Museum',
+        status: 'abandoned',
+        updated_at: '2026-07-12T10:00:00.000Z',
+      },
+    });
+
+    expect(outcomes[key]).toMatchObject({
+      status: StopOutcomeStatus.Abandoned,
+      stopTitle: 'Museum',
+      updatedAt: '2026-07-12T10:00:00.000Z',
+    });
+    expect(isStopAbandoned('2026-07-11', 'plan-1', 'stop-1', outcomes)).toBe(true);
+    expect(isStopAbandoned('2026-07-12', 'plan-1', 'stop-1', outcomes)).toBe(false);
   });
 });
 
@@ -82,6 +154,17 @@ describe('trip snapshot normalization', () => {
       hotels: [{ name: 'Hotel', address: 'Osaka' }],
       checklist: '# 证件\n护照',
       checklistStatus: { '证件::护照': 'done' },
+      place_feedback: {
+        museum: { label: 'Museum', status: 'blacklisted' },
+      },
+      stop_outcomes: {
+        skipped: {
+          date_id: '2026-07-11',
+          plan_id: 'plan-1',
+          stop_id: 'stop-1',
+          status: 'abandoned',
+        },
+      },
       weatherData: { stale: true },
     }, 0, { todayId: '2026-07-01' });
 
@@ -94,6 +177,12 @@ describe('trip snapshot normalization', () => {
       lodgings: [{ name: 'Hotel' }],
       checklistText: '# 证件\n护照',
       checklistState: { '证件::护照': 'done' },
+      placeFeedback: {
+        museum: { status: PlaceFeedbackStatus.Blacklisted },
+      },
+      stopOutcomes: {
+        '2026-07-11:plan-1:stop-1': { status: StopOutcomeStatus.Abandoned },
+      },
       archived: false,
     });
     expect(trip.plans[0].available_dates).toEqual(['2026-07-11']);

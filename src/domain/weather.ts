@@ -74,7 +74,7 @@ export interface WeatherOverviewPlan {
 
 export interface WeatherOverviewOptions<TPlan extends WeatherOverviewPlan> {
   tripDates: TripDateLike[];
-  schedule: Record<string, { planId?: string } | null | undefined>;
+  schedule: Record<string, { planId?: string; status?: 'abandoned' } | null | undefined>;
   plansById: Map<string, TPlan>;
   evaluateWeather: (plan: TPlan, dateId: string) => WeatherEvaluation;
   language?: Language;
@@ -642,7 +642,9 @@ export function buildWeatherOverview<TPlan extends WeatherOverviewPlan>({
 }: WeatherOverviewOptions<TPlan>) {
   const scheduledRows = tripDates
     .map((date) => {
-      const plan = plansById.get(schedule[date.id]?.planId || '');
+      const scheduleEntry = schedule[date.id];
+      if (scheduleEntry?.status === 'abandoned') return null;
+      const plan = plansById.get(scheduleEntry?.planId || '');
       if (!plan) return null;
       const weather = evaluateWeather(plan, date.id);
       const condition = getWeatherIconCondition(weather.snapshot);

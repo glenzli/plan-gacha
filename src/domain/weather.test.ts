@@ -178,4 +178,16 @@ describe('weather overview', () => {
       evaluateWeather: () => ({ level: 'unknown', snapshot: null }),
     }).summary).toBe('已排 1/10 天，尚未获取天气。');
   });
+
+  it('excludes abandoned days from the active weather overview', () => {
+    const plans = new Map([['p1', { id: 'p1', name: 'Plan 1' }]]);
+
+    expect(buildWeatherOverview({
+      tripDates,
+      schedule: { [tripDates[0].id]: { planId: 'p1', status: 'abandoned' } },
+      plansById: plans,
+      language: 'zh',
+      evaluateWeather: () => ({ level: 'ok', snapshot: snapshot('sunny', 0) }),
+    }).summary).toBe('还没有已安排日期，安排后会按地点生成天气概览。');
+  });
 });

@@ -1,9 +1,6 @@
 import { memo, useState } from 'react';
-import type { ReactNode } from 'react';
 import type { NormalizedPlan } from '../domain/plan';
-import type { TranslateFn } from '../types/ui';
-
-type PlanRenderer = (plan: NormalizedPlan, options?: { readOnly?: boolean }) => ReactNode;
+import type { PlanRenderer, TranslateFn } from '../types/ui';
 
 interface PlanRawJsonEditorProps {
   value: string;

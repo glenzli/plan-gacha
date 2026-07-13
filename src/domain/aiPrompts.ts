@@ -340,6 +340,8 @@ Output rules:
 17. Add reminders and tips only when useful; otherwise use empty arrays.
 18. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
 19. If a plan should be scheduled, write assigned_day on that plan.
+20. Treat abandoned days and blacklisted_places as explicit user decisions. Do not schedule an abandoned day or reintroduce a blacklisted place unless the user explicitly asks. abandoned_stops are date-specific records of places skipped on that occurrence; preserve them as history and do not treat them as a global blacklist.
+21. Dates before planning_from are fixed history. In particular, a plan assigned before current_date and before planning_from has already been visited: do not schedule it again or clear that earlier record. Only rewrite planning_from and later dates.
 
 JSON format:
 ${planSchema}`;
@@ -379,6 +381,8 @@ ${JSON.stringify({
 17. 有特别提醒和 tips 就写，没有就留空数组。
 18. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
 19. 需要安排日期时，在对应 plan 上写 assigned_day。
+20. 已放弃日期和 blacklisted_places 都是用户明确做出的决定；除非用户明确要求，否则不要重新安排已放弃日期，也不要再次加入已拉黑地点。abandoned_stops 是某个日期中临时没去的地点记录，只作为历史保留，不要把它当成全局拉黑。
+21. planning_from 之前的日期是固定历史。尤其是同时早于 current_date 和 planning_from 的已安排计划，视为已经去过：不要再次安排，也不要清空其历史记录；只调整 planning_from 及之后的日期。
 
 JSON 格式：
 ${planSchema}`;
@@ -408,6 +412,7 @@ You need to:
 5. Explain if a plan must be dropped.
 6. Clearly list anything I need to confirm if the adjustment creates risk.
 7. End with JSON so I can import or compare changes manually.
+8. Keep abandoned days and blacklisted places unchanged unless I explicitly ask to restore them. abandoned_stops are date-specific skipped-place records, not global blacklists.
 
 Data:
 ${JSON.stringify(context, null, 2)}
@@ -442,6 +447,7 @@ ${replanRequest}
 5. 如果必须放弃计划，请说明原因。
 6. 如果某个调整会带来风险，请明确列出需要我确认的事项。
 7. 最后输出一个 JSON，方便我手动导入或对照修改。
+8. 除非我明确要求恢复，否则保留已放弃日期和已拉黑地点，不要重新加入规划；abandoned_stops 只是具体日期中没去的地点记录，不等于全局拉黑。
 
 数据：
 ${JSON.stringify(context, null, 2)}
@@ -501,6 +507,7 @@ ${language === 'en' ? `Requirements:
 14. For official sites, realtime status pages, live cameras, booking pages or other URLs in reminders, put them in reminders[].links. Do not put Markdown links or raw URLs inside reminder text.
 15. If the plan fits a specific day, include assigned_day.
 16. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
+17. Do not add a place listed in blacklisted_places unless the user explicitly asks to restore it. Preserve ids for unchanged stops so date-specific abandoned_stops remain traceable.
 
 Single plan JSON format:
 ${schema}` : `要求：
@@ -520,6 +527,7 @@ ${schema}` : `要求：
 14. 提醒里如果涉及官网、实时状态、实时摄像头、预约页或其他 URL，放到 reminders[].links；不要把 Markdown 链接或裸 URL 写进 text。
 15. 如果计划适合安排到某一天，可以写 assigned_day。
 16. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
+17. 除非用户明确要求恢复，否则不要加入 blacklisted_places 中的地点；未改变的 stop 要保留原 id，确保具体日期的 abandoned_stops 仍能关联。
 
 单个计划 JSON 格式：
 ${schema}`}

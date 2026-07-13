@@ -5,7 +5,14 @@ import {
   formatStopTransferDeparture,
   type BookingType,
   type NormalizedPlan,
+  type NormalizedLocation,
 } from '../domain/plan';
+import {
+  isPlaceBlacklisted,
+  isStopAbandoned,
+  type NormalizedPlaceFeedback,
+  type NormalizedStopOutcomes,
+} from '../domain/trip';
 import {
   getGoogleMapsDirectionsUrl,
   getGoogleMapsUrl,
@@ -27,6 +34,12 @@ interface PlanStopsProps {
   t: TranslateFn;
   language: string;
   onCopyPlace: (copyValue: string) => void;
+  dateId?: string;
+  onToggleStopAbandoned?: (dateId: string, planId: string, stopId: string, stopTitle: string) => void;
+  onTogglePlaceBlacklist?: (location: NormalizedLocation) => void;
+  placeFeedback?: NormalizedPlaceFeedback;
+  stopOutcomes?: NormalizedStopOutcomes;
+  readOnly?: boolean;
 }
 
 interface BookingTypeMeta {
@@ -61,7 +74,18 @@ export function WeatherIcon({ condition = 'unknown', level = 'unknown' }: Weathe
   );
 }
 
-export function PlanStops({ plan, t, language, onCopyPlace }: PlanStopsProps) {
+export function PlanStops({
+  plan,
+  t,
+  language,
+  onCopyPlace,
+  dateId,
+  onToggleStopAbandoned,
+  onTogglePlaceBlacklist,
+  placeFeedback = {},
+  stopOutcomes = {},
+  readOnly = false,
+}: PlanStopsProps) {
   if (!plan?.stops.length) return null;
 
   return (
@@ -77,6 +101,8 @@ export function PlanStops({ plan, t, language, onCopyPlace }: PlanStopsProps) {
         const previousStopName = previousStop?.title || previousStop?.location?.label || '';
         const currentStopName = stop.title || stop.location?.label || '';
         const showTransfer = Boolean(previousStop && (transferText || transferDepartureText));
+        const blacklisted = isPlaceBlacklisted(stop.location, placeFeedback);
+        const abandoned = Boolean(dateId && isStopAbandoned(dateId, plan.id, stop.id, stopOutcomes));
 
         return (
           <Fragment key={stop.id}>
@@ -98,10 +124,14 @@ export function PlanStops({ plan, t, language, onCopyPlace }: PlanStopsProps) {
                 </span>
               </li>
             )}
-            <li className="stop-item">
+            <li className={`stop-item ${abandoned ? 'is-abandoned-stop' : ''} ${blacklisted ? 'is-blacklisted' : ''}`}>
               <span className="stop-time">{stop.time || t('flexible')}</span>
               <span className="stop-detail">
-                <strong>{stop.title}</strong>
+                <span className="stop-title-row">
+                  <strong>{stop.title}</strong>
+                  {abandoned && <span className="stop-outcome-badge">{t('stopAbandoned')}</span>}
+                  {blacklisted && <span className="place-feedback-badge">{t('placeBlacklisted')}</span>}
+                </span>
                 <span className="stop-location">
                   <span className="stop-location-text">
                     <span className="stop-location-line">
@@ -148,6 +178,28 @@ export function PlanStops({ plan, t, language, onCopyPlace }: PlanStopsProps) {
                         title={t('copyPlace')}
                       >
                         <Icon name="copy" />
+                      </button>
+                    )}
+                    {!readOnly && dateId && onToggleStopAbandoned && (
+                      <button
+                        className={`stop-location-action stop-abandon-action ${abandoned ? 'is-active' : ''}`}
+                        type="button"
+                        onClick={() => onToggleStopAbandoned(dateId, plan.id, stop.id, stop.title)}
+                        aria-label={abandoned ? t('restoreAbandonedStop') : t('abandonStop')}
+                        title={abandoned ? t('restoreAbandonedStop') : t('abandonStop')}
+                      >
+                          <Icon name="mapPinX" />
+                      </button>
+                    )}
+                    {!readOnly && onTogglePlaceBlacklist && (
+                      <button
+                        className={`stop-location-action place-blacklist-action ${blacklisted ? 'is-active' : ''}`}
+                        type="button"
+                        onClick={() => onTogglePlaceBlacklist(stop.location)}
+                        aria-label={blacklisted ? t('removePlaceBlacklist') : t('blacklistPlace')}
+                        title={blacklisted ? t('removePlaceBlacklist') : t('blacklistPlace')}
+                      >
+                        <Icon name="ban" />
                       </button>
                     )}
                   </span>

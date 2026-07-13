@@ -9,6 +9,7 @@ import {
   getLodgingContextForDate,
 } from '../domain/aiPrompts';
 import { evaluateWeather, getDayInsight } from '../domain/dayInsight';
+import { getTodayId } from '../domain/date';
 import {
   formatTripRange,
   getAiModeText,
@@ -23,7 +24,14 @@ import type {
   PlanStop,
 } from '../domain/plan';
 import type { RiskGroup } from '../domain/risk';
-import type { NormalizedLodging, NormalizedSchedule } from '../domain/trip';
+import {
+  PlaceFeedbackStatus,
+  StopOutcomeStatus,
+  type NormalizedLodging,
+  type NormalizedPlaceFeedback,
+  type NormalizedSchedule,
+  type NormalizedStopOutcomes,
+} from '../domain/trip';
 import { formatWeatherSummary } from '../domain/weather';
 import type { WeatherDataMap } from '../types/weatherData';
 import type { AiModeText, TranslateFn } from '../types/ui';
@@ -41,6 +49,8 @@ interface UseAiPromptControllerOptions {
   language: string;
   lodgings: NormalizedLodging[];
   normalizedPlans: NormalizedPlan[];
+  placeFeedback: NormalizedPlaceFeedback;
+  stopOutcomes: NormalizedStopOutcomes;
   planAssignments: Map<string, string>;
   plansById: Map<string, NormalizedPlan>;
   riskGroups: RiskGroup[];
@@ -65,6 +75,8 @@ export function useAiPromptController({
   language,
   lodgings,
   normalizedPlans,
+  placeFeedback,
+  stopOutcomes,
   planAssignments,
   plansById,
   riskGroups,
@@ -77,6 +89,18 @@ export function useAiPromptController({
   tripName,
   weatherData,
 }: UseAiPromptControllerOptions) {
+  const blacklistedPlaces = Object.values(placeFeedback)
+    .filter((entry) => entry.status === PlaceFeedbackStatus.Blacklisted)
+    .map((entry) => ({ name: entry.label, address: entry.address }));
+  const abandonedStops = Object.values(stopOutcomes)
+    .filter((entry) => entry.status === StopOutcomeStatus.Abandoned)
+    .map((entry) => ({
+      date: entry.dateId,
+      plan_id: entry.planId,
+      stop_id: entry.stopId,
+      stop_name: entry.stopTitle,
+    }));
+
   const buildAiPlanningPrompt = (mode: AiPlannerMode = aiPlannerMode) => {
     const planningStartDate = selectedDate || tripDates[0];
     const fixedDates = planningStartDate
@@ -158,11 +182,14 @@ export function useAiPromptController({
         name: tripName || t('unnamedTrip'),
         range: formatTripRange(startDateStr, tripDays, language),
         days: tripDays,
+        current_date: getTodayId(),
         planning_from: planningStartDate?.id || null,
       },
       lodgings: lodgings.map(compactLodgingForAi),
       existing_schedule: tripDates.map(summarizeScheduleDate),
       existing_plans: normalizedPlans.map(summarizePlan),
+      blacklisted_places: blacklistedPlaces,
+      abandoned_stops: abandonedStops,
       current_warnings: riskGroups.map((group) => ({
         title: translateRiskTitle(group.title, language),
         level: group.level,
@@ -211,11 +238,15 @@ export function useAiPromptController({
         trip: tripContext,
         lodgings: lodgings.map(compactLodgingForAi),
         existing_plan_ids: normalizedPlans.map((plan) => plan.id),
+        blacklisted_places: blacklistedPlaces,
+        abandoned_stops: abandonedStops,
       }
       : {
         trip: tripContext,
         lodgings: lodgings.map(compactLodgingForAi),
         current_plan: currentPlan,
+        blacklisted_places: blacklistedPlaces,
+        abandoned_stops: abandonedStops,
       };
 
     return buildSinglePlanPrompt({

@@ -54,18 +54,28 @@ import { buildRiskGroups } from './domain/risk';
 import { addDays, getTodayId } from './domain/date';
 import {
   type BookingStatus,
+  type NormalizedLocation,
   type NormalizedPlan,
   normalizePlan,
 } from './domain/plan';
 import {
+  countBlacklistedPlanStops,
+  findPlaceFeedbackEntry,
+  getPlaceFeedbackKey,
+  getStopOutcomeKey,
   isEmptyTripDraft,
   normalizeSchedule,
   normalizeTripLodgings,
   normalizeTripSnapshot,
   pruneEmptyTripDrafts,
   stripChecklistFromTripSnapshot,
+  PlaceFeedbackStatus,
+  ScheduleEntryStatus,
+  StopOutcomeStatus,
   type NormalizedLodging,
+  type NormalizedPlaceFeedback,
   type NormalizedSchedule,
+  type NormalizedStopOutcomes,
   type NormalizedTripSnapshot,
 } from './domain/trip';
 import {
@@ -93,7 +103,7 @@ import {
   getCalendarDayState,
   getDayInsight,
 } from './domain/dayInsight';
-import type { EditorTab, TranslateFn } from './types/ui';
+import type { EditorTab, PlanRenderOptions, TranslateFn } from './types/ui';
 
 const NEW_PLAN_EDITOR_ID = '__new_plan__';
 
@@ -137,6 +147,8 @@ function App() {
   const [plans, setPlans] = useState<unknown[]>(initial.plans);
   const [schedule, setSchedule] = useState<NormalizedSchedule>(initial.schedule);
   const [lodgings, setLodgings] = useState<NormalizedLodging[]>(initial.lodgings);
+  const [placeFeedback, setPlaceFeedback] = useState<NormalizedPlaceFeedback>(initial.placeFeedback);
+  const [stopOutcomes, setStopOutcomes] = useState<NormalizedStopOutcomes>(initial.stopOutcomes);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -264,6 +276,7 @@ function App() {
 
   const selectedDateEntry = selectedDate ? schedule[selectedDate.id] : null;
   const selectedPlan = selectedDateEntry ? plansById.get(selectedDateEntry.planId) : null;
+  const selectedDayAbandoned = selectedDateEntry?.status === ScheduleEntryStatus.Abandoned;
   const { planImageBusy, shareCurrentPlanImage } = usePlanImageShare({
     notify,
     selectedDate,
@@ -327,6 +340,7 @@ function App() {
     requestAssignPlan,
     selectNeighborDate,
     setPendingAssignment,
+    toggleDayAbandoned,
   } = useScheduleAssignmentController({
     normalizedPlans,
     notify,
@@ -355,7 +369,7 @@ function App() {
   const planAssignments = useMemo(() => {
     return new Map(
       Object.entries(schedule)
-        .filter(([, entry]) => entry?.planId)
+        .filter(([, entry]) => entry?.planId && entry.status !== ScheduleEntryStatus.Abandoned)
         .map(([dateId, entry]) => [entry.planId, dateId]),
     );
   }, [schedule]);
@@ -452,6 +466,8 @@ function App() {
       plans: normalizedPlans,
       schedule: normalizeSchedule(schedule),
       lodgings,
+      placeFeedback,
+      stopOutcomes,
       checklistText: '',
       checklistState: {},
       archived: activeTripArchived,
@@ -470,6 +486,8 @@ function App() {
     t,
     normalizedPlans,
     lodgings,
+    placeFeedback,
+    stopOutcomes,
     schedule,
     startDateStr,
     tripName,
@@ -485,6 +503,8 @@ function App() {
     plans: normalizedPlans,
     schedule: normalizeSchedule(schedule),
     lodgings,
+    placeFeedback,
+    stopOutcomes,
     checklistText: '',
     checklistState: {},
     archived: activeTripArchived,
@@ -499,6 +519,8 @@ function App() {
     setPlans(normalizedTrip.plans);
     setSchedule(normalizedTrip.schedule);
     setLodgings(normalizedTrip.lodgings || []);
+    setPlaceFeedback(normalizedTrip.placeFeedback || {});
+    setStopOutcomes(normalizedTrip.stopOutcomes || {});
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     clearWeatherError();
   };
@@ -621,6 +643,8 @@ function App() {
     setPlans(exampleTrip.plans);
     setSchedule(exampleTrip.schedule);
     setLodgings(exampleTrip.lodgings || []);
+    setPlaceFeedback(exampleTrip.placeFeedback || {});
+    setStopOutcomes(exampleTrip.stopOutcomes || {});
     clearWeatherData();
     setSelectedDateId(exampleTrip.startDateStr);
     closePlanEditor();
@@ -823,6 +847,43 @@ function App() {
     }
   };
 
+  const togglePlaceBlacklist = (location: NormalizedLocation) => {
+    const existingFeedback = findPlaceFeedbackEntry(location, placeFeedback);
+    const key = existingFeedback?.key || getPlaceFeedbackKey(location);
+    if (!key) return;
+
+    const currentlyBlacklisted = existingFeedback?.status === PlaceFeedbackStatus.Blacklisted;
+    setPlaceFeedback((current) => ({
+      ...current,
+      [key]: {
+        key,
+        label: location.label,
+        address: location.address,
+        status: currentlyBlacklisted ? PlaceFeedbackStatus.Allowed : PlaceFeedbackStatus.Blacklisted,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    notify(currentlyBlacklisted ? t('placeBlacklistRemoved') : t('placeAddedToBlacklist'));
+  };
+
+  const toggleStopAbandoned = (dateId: string, planId: string, stopId: string, stopTitle: string) => {
+    const key = getStopOutcomeKey(dateId, planId, stopId);
+    const currentlyAbandoned = stopOutcomes[key]?.status === StopOutcomeStatus.Abandoned;
+    setStopOutcomes((current) => ({
+      ...current,
+      [key]: {
+        key,
+        dateId,
+        planId,
+        stopId,
+        stopTitle,
+        status: currentlyAbandoned ? StopOutcomeStatus.Active : StopOutcomeStatus.Abandoned,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    notify(currentlyAbandoned ? t('stopRestored') : t('stopMarkedAbandoned'));
+  };
+
   const {
     copyAiPlanningPrompt,
     copyBatchAiPrompt,
@@ -838,6 +899,8 @@ function App() {
     language,
     lodgings,
     normalizedPlans,
+    placeFeedback,
+    stopOutcomes,
     planAssignments,
     plansById,
     riskGroups,
@@ -870,16 +933,22 @@ function App() {
     );
   };
 
-  const renderPlanStops = (plan: NormalizedPlan | null | undefined) => plan ? (
+  const renderPlanStops = (plan: NormalizedPlan | null | undefined, options: PlanRenderOptions = {}) => plan ? (
     <PlanStops
       plan={plan}
       t={t}
       language={language}
       onCopyPlace={(copyValue) => copyText(copyValue, t('placeCopied'))}
+      dateId={options.dateId}
+      onToggleStopAbandoned={toggleStopAbandoned}
+      onTogglePlaceBlacklist={togglePlaceBlacklist}
+      placeFeedback={options.placeFeedback || placeFeedback}
+      stopOutcomes={options.stopOutcomes || stopOutcomes}
+      readOnly={options.readOnly}
     />
   ) : null;
 
-  const renderPlanBookings = (plan: NormalizedPlan | null | undefined, options: { readOnly?: boolean } = {}) => plan ? (
+  const renderPlanBookings = (plan: NormalizedPlan | null | undefined, options: PlanRenderOptions = {}) => plan ? (
     <PlanBookings
       plan={plan}
       t={t}
@@ -906,6 +975,7 @@ function App() {
       openPlanEditor={openPlanEditor}
       getPriorityLabel={getPriorityLabel}
       getPlanBookingBadge={getPlanBookingBadge}
+      getBlacklistedStopCount={(plan) => countBlacklistedPlanStops(plan, placeFeedback)}
       renderPlanStops={renderPlanStops}
       renderPlanBookings={renderPlanBookings}
       renderPlanNotes={renderPlanNotes}
@@ -917,11 +987,13 @@ function App() {
       className={className}
       selectedDate={selectedDate}
       selectedPlan={selectedPlan}
-      currentCandidate={currentCandidate}
+      currentCandidate={selectedDayAbandoned ? null : currentCandidate}
       planImageBusy={planImageBusy}
       shareCurrentPlanImage={shareCurrentPlanImage}
       openPlanEditor={openPlanEditor}
       clearDay={clearDay}
+      isAbandoned={selectedDayAbandoned}
+      toggleDayAbandoned={toggleDayAbandoned}
       t={t}
       language={language}
       getPriorityLabel={getPriorityLabel}

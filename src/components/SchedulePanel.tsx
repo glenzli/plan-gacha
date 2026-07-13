@@ -5,7 +5,7 @@ import { WeatherIcon } from './PlanContent';
 import type { DisplayTripDate } from '../domain/display';
 import type { CalendarDayState, DayInsight } from '../domain/dayInsight';
 import type { NormalizedPlan } from '../domain/plan';
-import type { NormalizedSchedule } from '../domain/trip';
+import { ScheduleEntryStatus, type NormalizedSchedule } from '../domain/trip';
 import type { RiskGroup } from '../domain/risk';
 import type { TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
@@ -162,7 +162,9 @@ export function SchedulePanel({
                   </span>
                 )}
                 <span className="day-weather">
-                  <WeatherIcon condition={insight.weatherCondition} level={insight.level} />
+                  {insight.level !== ScheduleEntryStatus.Abandoned && (
+                    <WeatherIcon condition={insight.weatherCondition} level={insight.level} />
+                  )}
                   <span>{insight.weatherText}</span>
                 </span>
                 {insight.riskText && <span className={`day-risk ${insight.riskTone}`}>{insight.riskText}</span>}

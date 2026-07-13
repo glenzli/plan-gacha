@@ -265,6 +265,8 @@ export function createExampleTripSnapshot(name = '青岛 5 日示例', startDate
     plans: createExamplePlans(startDate),
     schedule: createExampleSchedule(startDate),
     lodgings: [],
+    placeFeedback: {},
+    stopOutcomes: {},
     archived: false,
   };
 }
@@ -278,6 +280,8 @@ export function createEmptyTripSnapshot(name = '新旅行计划', startDate = ge
     plans: [],
     schedule: {},
     lodgings: [],
+    placeFeedback: {},
+    stopOutcomes: {},
     checklistText: '',
     checklistState: {},
     archived: false,

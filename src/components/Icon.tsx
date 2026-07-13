@@ -3,6 +3,8 @@ import type { ReactNode } from 'react';
 export type IconName =
   | 'check'
   | 'camera'
+  | 'calendarX'
+  | 'mapPinX'
   | 'clock'
   | 'listChecks'
   | 'pencil'
@@ -14,6 +16,7 @@ export type IconName =
   | 'refresh'
   | 'cloud'
   | 'sparkles'
+  | 'ban'
   | 'trash'
   | 'x';
 
@@ -42,6 +45,23 @@ export function Icon({ name, className = '' }: IconProps) {
       <>
         <path d="M14.5 4h-5L8 6H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3Z" />
         <circle cx="12" cy="12.5" r="3.2" />
+      </>
+    ),
+    calendarX: (
+      <>
+        <path d="M8 2v4" />
+        <path d="M16 2v4" />
+        <rect width="18" height="18" x="3" y="4" rx="2" />
+        <path d="M3 10h18" />
+        <path d="m10 14 4 4" />
+        <path d="m14 14-4 4" />
+      </>
+    ),
+    mapPinX: (
+      <>
+        <path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z" />
+        <path d="m9.5 7.5 5 5" />
+        <path d="m14.5 7.5-5 5" />
       </>
     ),
     clock: (
@@ -115,6 +135,12 @@ export function Icon({ name, className = '' }: IconProps) {
         <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8Z" />
         <path d="m19 15 .8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.8Z" />
         <path d="m5 14 .7 1.5L7.2 16l-1.5.7L5 18.2l-.7-1.5L2.8 16l1.5-.7Z" />
+      </>
+    ),
+    ban: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="m5.6 5.6 12.8 12.8" />
       </>
     ),
     trash: (

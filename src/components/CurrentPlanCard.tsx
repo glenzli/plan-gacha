@@ -1,7 +1,6 @@
-import type { ReactNode } from 'react';
 import type { NormalizedPlan, PlanPriority } from '../domain/plan';
 import type { PlanBookingBadgeData, PlanCandidate } from '../types/candidates';
-import type { TranslateFn } from '../types/ui';
+import type { PlanRenderer, TranslateFn } from '../types/ui';
 import { CandidateSignals, PlanBookingBadge } from './CandidateCards';
 import { Icon } from './Icon';
 
@@ -18,13 +17,15 @@ interface CurrentPlanCardProps {
   shareCurrentPlanImage: (cardElement: HTMLElement | null) => void;
   openPlanEditor: (planId: string) => void;
   clearDay: (dateId: string) => void;
+  isAbandoned: boolean;
+  toggleDayAbandoned: (dateId: string) => void;
   t: TranslateFn;
   language: string;
   getPriorityLabel: (priority: PlanPriority | string, language: string) => string;
   getPlanBookingBadge: (plan: NormalizedPlan | null | undefined, language: string) => PlanBookingBadgeData | null;
-  renderPlanStops: (plan: NormalizedPlan | null | undefined) => ReactNode;
-  renderPlanBookings: (plan: NormalizedPlan | null | undefined) => ReactNode;
-  renderPlanNotes: (plan: NormalizedPlan | null | undefined) => ReactNode;
+  renderPlanStops: PlanRenderer;
+  renderPlanBookings: PlanRenderer;
+  renderPlanNotes: PlanRenderer;
 }
 
 export function CurrentPlanCard({
@@ -36,6 +37,8 @@ export function CurrentPlanCard({
   shareCurrentPlanImage,
   openPlanEditor,
   clearDay,
+  isAbandoned,
+  toggleDayAbandoned,
   t,
   language,
   getPriorityLabel,
@@ -45,7 +48,7 @@ export function CurrentPlanCard({
   renderPlanNotes,
 }: CurrentPlanCardProps) {
   return (
-    <div className={className} data-current-plan-card="true">
+    <div className={`${className} ${isAbandoned ? 'is-abandoned' : ''}`} data-current-plan-card="true">
       <div>
         <p className="eyebrow">{t('currentPlanLabel')}</p>
         <div className="title-row current-title-row">
@@ -62,7 +65,13 @@ export function CurrentPlanCard({
           />
         </div>
         <p className="current-plan-summary">{selectedPlan?.description || t('currentPlanHelp')}</p>
-        {renderPlanStops(selectedPlan)}
+        {selectedPlan && isAbandoned && (
+          <div className="abandoned-plan-note">
+            <strong>{t('dayAbandoned')}</strong>
+            <span>{t('abandonedPlanKept')}</span>
+          </div>
+        )}
+        {renderPlanStops(selectedPlan, { dateId: selectedDate?.id })}
         {renderPlanBookings(selectedPlan)}
         {renderPlanNotes(selectedPlan)}
         <CandidateSignals candidate={currentCandidate} t={t} language={language} />
@@ -90,6 +99,16 @@ export function CurrentPlanCard({
             data-screenshot-exclude="true"
           >
             <Icon name="pencil" />
+          </button>
+          <button
+            className={`icon-btn compact-icon-btn current-abandon-btn ${isAbandoned ? 'is-active' : ''}`}
+            type="button"
+            onClick={() => toggleDayAbandoned(selectedDate.id)}
+            aria-label={isAbandoned ? t('restoreAbandonedDay') : t('abandonDay')}
+            title={isAbandoned ? t('restoreAbandonedDay') : t('abandonDay')}
+            data-screenshot-exclude="true"
+          >
+            <Icon name="calendarX" />
           </button>
           <button
             className="icon-btn compact-icon-btn current-clear-btn"

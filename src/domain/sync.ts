@@ -7,7 +7,9 @@ import {
 import { addDays } from './date';
 import { normalizePlan, type TripDateLike } from './plan';
 import {
+  normalizePlaceFeedback,
   normalizeSchedule,
+  normalizeStopOutcomes,
   normalizeTripSnapshot,
   pruneEmptyTripDrafts,
   stripChecklistFromTripSnapshot,
@@ -180,6 +182,58 @@ function mergeScheduleForSync(localSchedule: any, remoteSchedule: any, path: str
   return normalizeSchedule(result);
 }
 
+function mergePlaceFeedbackForSync(localFeedback: any, remoteFeedback: any, path: string) {
+  const local = normalizePlaceFeedback(localFeedback);
+  const remote = normalizePlaceFeedback(remoteFeedback);
+  const result = { ...remote };
+
+  Object.entries(local).forEach(([key, localEntry]) => {
+    const remoteEntry = result[key];
+    if (!remoteEntry) {
+      result[key] = localEntry;
+      return;
+    }
+    if (jsonEqual(localEntry, remoteEntry)) return;
+
+    const localTime = Date.parse(localEntry.updatedAt);
+    const remoteTime = Date.parse(remoteEntry.updatedAt);
+    if (Number.isFinite(localTime) && Number.isFinite(remoteTime) && localTime !== remoteTime) {
+      result[key] = localTime > remoteTime ? localEntry : remoteEntry;
+      return;
+    }
+
+    throw createSyncMergeError('merge_data_conflict', { path: `${path}.placeFeedback.${key}` });
+  });
+
+  return normalizePlaceFeedback(result);
+}
+
+function mergeStopOutcomesForSync(localOutcomes: any, remoteOutcomes: any, path: string) {
+  const local = normalizeStopOutcomes(localOutcomes);
+  const remote = normalizeStopOutcomes(remoteOutcomes);
+  const result = { ...remote };
+
+  Object.entries(local).forEach(([key, localEntry]) => {
+    const remoteEntry = result[key];
+    if (!remoteEntry) {
+      result[key] = localEntry;
+      return;
+    }
+    if (jsonEqual(localEntry, remoteEntry)) return;
+
+    const localTime = Date.parse(localEntry.updatedAt);
+    const remoteTime = Date.parse(remoteEntry.updatedAt);
+    if (Number.isFinite(localTime) && Number.isFinite(remoteTime) && localTime !== remoteTime) {
+      result[key] = localTime > remoteTime ? localEntry : remoteEntry;
+      return;
+    }
+
+    throw createSyncMergeError('merge_data_conflict', { path: `${path}.stopOutcomes.${key}` });
+  });
+
+  return normalizeStopOutcomes(result);
+}
+
 function mergePlansForSync(localPlans: any[], remotePlans: any[], path: string) {
   const result: any[] = [];
   const localById = new Map((localPlans || []).map((plan) => [plan.id, plan]));
@@ -244,6 +298,8 @@ function mergeTripForSync(localTrip: any, remoteTrip: any) {
     plans: mergePlansForSync(localTrip.plans, remoteTrip.plans, path),
     schedule: mergeScheduleForSync(localTrip.schedule, remoteTrip.schedule, path),
     lodgings: mergeLodgingsForSync(localTrip.lodgings, remoteTrip.lodgings, path),
+    placeFeedback: mergePlaceFeedbackForSync(localTrip.placeFeedback, remoteTrip.placeFeedback, path),
+    stopOutcomes: mergeStopOutcomesForSync(localTrip.stopOutcomes, remoteTrip.stopOutcomes, path),
     archived: mergeScalarValue(localTrip.archived, remoteTrip.archived, `${path}.archived`),
   };
 }

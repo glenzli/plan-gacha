@@ -1,5 +1,6 @@
 import { useState, type Dispatch, type SetStateAction } from 'react';
 import {
+  AssignmentBlockReason,
   buildAssignmentPreview,
   buildRiskItems,
   getRiskIdentity,
@@ -9,11 +10,12 @@ import { evaluateWeather } from '../domain/dayInsight';
 import type { DisplayTripDate } from '../domain/display';
 import type { NormalizedPlan } from '../domain/plan';
 import type { RiskItem } from '../domain/risk';
-import type { NormalizedSchedule } from '../domain/trip';
+import { ScheduleEntryStatus, type NormalizedSchedule } from '../domain/trip';
 import type { TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
 
 export interface PendingAssignment {
+  blocks: ReturnType<typeof buildAssignmentPreview>['blocks'];
   clears: AssignmentClearItem[];
   nextSchedule: NormalizedSchedule;
   nextRisks: RiskItem<NormalizedPlan>[];
@@ -54,7 +56,7 @@ export function useScheduleAssignmentController({
     const targetPlan = plansById.get(planId);
     if (!targetPlan) return null;
 
-    const { clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
+    const { blocks, clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
     const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
 
     const nextRisks = buildRiskItems({
@@ -68,7 +70,7 @@ export function useScheduleAssignmentController({
       .filter((risk) => risk.level !== 'info')
       .filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
 
-    return { clears, nextSchedule, nextRisks, targetPlan, dateId };
+    return { blocks, clears, nextSchedule, nextRisks, targetPlan, dateId };
   };
 
   const applySchedule = (nextSchedule: NormalizedSchedule, message = t('scheduleUpdated')) => {
@@ -79,6 +81,14 @@ export function useScheduleAssignmentController({
   const requestAssignPlan = (dateId: string, planId: string) => {
     const impact = buildAssignmentImpact(dateId, planId);
     if (!impact) return;
+
+    if (impact.blocks.length > 0) {
+      const hasVisitedPlan = impact.blocks.some(
+        (item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited,
+      );
+      notify(hasVisitedPlan ? t('planAlreadyVisited') : t('conflictsWithVisitedPlan'));
+      return;
+    }
 
     if (impact.clears.length || impact.nextRisks.length) {
       setPendingAssignment(impact);
@@ -106,6 +116,20 @@ export function useScheduleAssignmentController({
     notify(t('dayCleared'));
   };
 
+  const toggleDayAbandoned = (dateId: string) => {
+    const shouldAbandon = schedule[dateId]?.status !== ScheduleEntryStatus.Abandoned;
+    setSchedule((current) => {
+      const entry = current[dateId];
+      if (!entry?.planId) return current;
+
+      const nextEntry = shouldAbandon
+        ? { ...entry, status: ScheduleEntryStatus.Abandoned }
+        : { planId: entry.planId };
+      return { ...current, [dateId]: nextEntry };
+    });
+    notify(shouldAbandon ? t('dayMarkedAbandoned') : t('dayRestored'));
+  };
+
   const selectNeighborDate = (step: number) => {
     if (selectedIndex < 0) return;
     const next = tripDates[selectedIndex + step];
@@ -120,5 +144,6 @@ export function useScheduleAssignmentController({
     requestAssignPlan,
     selectNeighborDate,
     setPendingAssignment,
+    toggleDayAbandoned,
   };
 }

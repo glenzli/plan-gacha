@@ -630,6 +630,14 @@ label {
   background: var(--signal-empty);
 }
 
+.day-tile.status-abandoned:not(.is-selected) {
+  background: #fffaf5;
+}
+
+.day-tile.status-abandoned::before {
+  background: #f97316;
+}
+
 .day-tile.status-best .day-number,
 .day-tile.status-ok .day-number {
   background: var(--signal-good-soft);
@@ -652,6 +660,11 @@ label {
 .day-tile.status-empty .day-number {
   background: var(--surface-soft);
   color: var(--signal-empty);
+}
+
+.day-tile.status-abandoned .day-number {
+  background: #fff7ed;
+  color: #ea580c;
 }
 
 .day-number {
@@ -764,6 +777,12 @@ label {
   border-color: var(--signal-warning-border);
   background: var(--signal-warning-soft);
   color: var(--signal-warning);
+}
+
+.day-status.status-abandoned {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #c2410c;
 }
 
 .day-weather,
@@ -998,6 +1017,33 @@ label {
   gap: 0.55rem;
 }
 
+.abandoned-plan-note {
+  display: grid;
+  gap: 0.14rem;
+  margin-top: 0.65rem;
+  padding: 0.42rem 0.65rem;
+  border-left: 2px solid #f97316;
+  background: #fffaf5;
+  color: #9a3412;
+}
+
+.abandoned-plan-note strong {
+  color: #c2410c;
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.abandoned-plan-note span {
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.current-abandon-btn.is-active {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #ea580c;
+}
+
 .btn {
   display: inline-flex;
   min-height: 2.45rem;
@@ -1113,6 +1159,11 @@ label {
   color: var(--muted);
   font-size: 0.8rem;
   font-weight: 850;
+}
+
+.candidate-group-visited .candidate-group-title h3,
+.candidate-group-visited .candidate-group-title span {
+  color: var(--faint);
 }
 
 .plan-card {
@@ -1522,6 +1573,65 @@ label {
   line-height: 1.35;
 }
 
+.stop-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.place-feedback-badge {
+  display: inline-flex;
+  min-height: 1.2rem;
+  align-items: center;
+  padding: 0.04rem 0.34rem;
+  border-radius: var(--radius-sm);
+  background: #27272a;
+  color: #fff;
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.stop-outcome-badge,
+.outcome-badge {
+  display: inline-flex;
+  min-height: 1.2rem;
+  align-items: center;
+  padding: 0.04rem 0.34rem;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius-sm);
+  background: #fff7ed;
+  color: #c2410c;
+  font-size: 0.64rem;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.stop-item.is-abandoned-stop .stop-title-row > strong {
+  color: var(--faint);
+  text-decoration: line-through;
+  text-decoration-color: #fb923c;
+  text-decoration-thickness: 1px;
+}
+
+.stop-item.is-abandoned-stop .stop-detail::before {
+  border-color: #f97316;
+  background: #fff7ed;
+}
+
+.stop-item.is-blacklisted .stop-detail::before {
+  border-color: #3f3f46;
+  background: #3f3f46;
+}
+
+.stop-item.is-blacklisted .stop-location-label {
+  color: #52525b;
+}
+
 .stop-location-text,
 .stop-detail em {
   color: var(--muted);
@@ -1606,6 +1716,18 @@ label {
   background: var(--surface);
   color: var(--text);
   transform: translateY(-1px);
+}
+
+.stop-location-action.place-blacklist-action.is-active {
+  border-color: #3f3f46;
+  background: #27272a;
+  color: #fff;
+}
+
+.stop-location-action.stop-abandon-action.is-active {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #ea580c;
 }
 
 .stop-location-action .svg-icon {
@@ -3008,6 +3130,14 @@ label {
   gap: 0.75rem;
 }
 
+.archived-outcome-summary {
+  display: block;
+  margin-top: 0.22rem;
+  color: #52525b;
+  font-size: 0.74rem;
+  font-weight: 750;
+}
+
 .archived-day-card {
   display: grid;
   gap: 0.75rem;
@@ -3024,11 +3154,28 @@ label {
   border-color: var(--border-strong);
 }
 
+.archived-day-card.is-abandoned {
+  border-color: #fed7aa;
+  background: #fffdf9;
+}
+
 .archived-day-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
+}
+
+.archived-day-badges {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.35rem;
+}
+
+.archived-abandoned-note {
+  margin-top: 0;
 }
 
 .archived-day-head h3,
@@ -3988,6 +4135,10 @@ label {
     color: var(--signal-empty);
   }
 
+  .mini-day.state-abandoned {
+    color: #ea580c;
+  }
+
   .mini-day:hover {
     color: var(--text);
   }
@@ -4012,6 +4163,10 @@ label {
 
   .mini-day.state-empty.is-selected {
     color: var(--signal-empty);
+  }
+
+  .mini-day.state-abandoned.is-selected {
+    color: #c2410c;
   }
 
   .day-list {

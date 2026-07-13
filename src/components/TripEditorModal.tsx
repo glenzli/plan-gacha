@@ -7,9 +7,7 @@ import { TripSettingsPanel } from './TripSettingsPanel';
 import type { DisplayTripDate } from '../domain/display';
 import type { NormalizedPlan } from '../domain/plan';
 import type { NormalizedLodging } from '../domain/trip';
-import type { AiModeText, EditorTab, TranslateFn } from '../types/ui';
-
-type PlanRenderer = (plan: NormalizedPlan, options?: { readOnly?: boolean }) => ReactNode;
+import type { AiModeText, EditorTab, PlanRenderer, TranslateFn } from '../types/ui';
 
 interface TripEditorModalProps {
   activeTripId: string;

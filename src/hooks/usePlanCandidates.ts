@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import {
   buildAssignmentPreview,
+  AssignmentBlockReason,
   buildRiskItems,
   getClearPenalty,
   getPlanPriorityWeight,
@@ -80,7 +81,7 @@ export function usePlanCandidates({
         const isCurrent = selectedPlan?.id === plan.id;
         const assignedDateId = planAssignments.get(plan.id) || '';
         const weather = evaluateWeather(plan, selectedDate.id, weatherData, language);
-        const { clears, nextSchedule } = buildAssignmentPreview(schedule, selectedDate.id, plan, plansById);
+        const { blocks, clears, nextSchedule } = buildAssignmentPreview(schedule, selectedDate.id, plan, plansById);
         const nextRisks = buildRiskItems({
           plans: normalizedPlans,
           tripDates,
@@ -94,6 +95,14 @@ export function usePlanCandidates({
 
         if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push(t('dateNotSuitable'));
         if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push(t('closedOrUnavailable'));
+        if (!isCurrent) {
+          if (blocks.some((item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited)) {
+            hardReasons.push(t('planAlreadyVisited'));
+          }
+          if (blocks.some((item) => item.reason === AssignmentBlockReason.ConflictsWithVisitedPlan)) {
+            hardReasons.push(t('conflictsWithVisitedPlan'));
+          }
+        }
         if (weather.level === 'unknown') notes.push(t('weatherUnknown'));
 
         const priorityScore = getPlanPriorityWeight(plan) * 3;
@@ -109,6 +118,7 @@ export function usePlanCandidates({
           score,
           isCurrent,
           assignedDateId,
+          isAlreadyVisited: blocks.some((item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited),
           weather,
           weatherOverride: weather.level === 'blocked',
         } satisfies PlanCandidate;
@@ -143,10 +153,15 @@ export function usePlanCandidates({
     const currentCandidate = candidates.find((candidate) => candidate.isCurrent);
     const readyCandidates: PlanCandidate[] = [];
     const scheduled: PlanCandidate[] = [];
+    const visited: PlanCandidate[] = [];
     const unavailable: PlanCandidate[] = [];
 
     candidates.forEach((candidate) => {
       if (candidate.isCurrent) return;
+      if (candidate.isAlreadyVisited) {
+        visited.push(candidate);
+        return;
+      }
       if (!candidate.canAssign) {
         unavailable.push(candidate);
         return;
@@ -158,6 +173,7 @@ export function usePlanCandidates({
     const candidateGroups = [
       { key: 'ready', title: t('candidateReady'), items: readyCandidates },
       { key: 'scheduled', title: t('candidateScheduled'), items: scheduled },
+      { key: 'visited', title: t('candidateVisited'), items: visited },
       { key: 'unavailable', title: t('candidateUnavailable'), items: unavailable },
     ].filter((group) => group.items.length > 0);
 

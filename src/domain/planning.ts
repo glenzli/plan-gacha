@@ -1,5 +1,6 @@
 import { CHECKLIST_STATUS } from './checklist';
-import { hasUsefulLodgingInfo, type NormalizedSchedule } from './trip';
+import { getTodayId } from './date';
+import { hasUsefulLodgingInfo, ScheduleEntryStatus, type NormalizedSchedule } from './trip';
 import type { NormalizedPlan } from './plan';
 import type { DisplayTripDate } from './display';
 import type { RiskItem } from './risk';
@@ -22,8 +23,26 @@ export interface AssignmentClearItem {
 }
 
 export interface AssignmentPreview {
+  blocks: AssignmentBlockItem[];
   clears: AssignmentClearItem[];
   nextSchedule: NormalizedSchedule;
+}
+
+export const AssignmentBlockReason = {
+  PlanAlreadyVisited: 'plan_already_visited',
+  ConflictsWithVisitedPlan: 'conflicts_with_visited_plan',
+} as const;
+
+export type AssignmentBlockReason = typeof AssignmentBlockReason[keyof typeof AssignmentBlockReason];
+
+export interface AssignmentBlockItem {
+  dateId: string;
+  plan: NormalizedPlan;
+  reason: AssignmentBlockReason;
+}
+
+interface AssignmentPreviewOptions {
+  todayId?: string;
 }
 
 const PRIORITY_RANK: Record<string, number> = {
@@ -66,7 +85,7 @@ export function getDateHardIssues(
   }
 
   Object.entries(schedule).forEach(([otherDateId, otherEntry]) => {
-    if (!otherEntry?.planId || otherDateId === dateId) return;
+    if (!otherEntry?.planId || otherEntry.status === ScheduleEntryStatus.Abandoned || otherDateId === dateId) return;
     const otherPlan = plansById.get(otherEntry.planId);
     if (!otherPlan) return;
     if (otherPlan.id === plan.id) issues.push(`已安排在 ${otherDateId}`);
@@ -128,6 +147,7 @@ export function buildRiskItems({
 
   const scheduledRisks = Object.entries(schedule)
     .map(([dateId, entry]: [string, any]) => {
+      if (entry.status === ScheduleEntryStatus.Abandoned) return null;
       const plan = plansById.get(entry.planId);
       if (!plan) return null;
 
@@ -173,6 +193,7 @@ export function buildRiskItems({
 
   const bookingRisks = Object.entries(schedule)
     .map(([dateId, entry]: [string, any]) => {
+      if (entry.status === ScheduleEntryStatus.Abandoned) return null;
       const plan = plansById.get(entry.planId);
       const pendingBookings = getPendingBookings(plan);
       if (!plan || pendingBookings.length === 0) return null;
@@ -200,18 +221,35 @@ export function buildAssignmentPreview(
   dateId: string,
   targetPlan: NormalizedPlan,
   plansById: Map<string, NormalizedPlan>,
+  options: AssignmentPreviewOptions = {},
 ): AssignmentPreview {
   const nextSchedule = { ...schedule };
+  const blocksByDate = new Map<string, AssignmentBlockItem>();
   const clearsByDate = new Map<string, AssignmentClearItem>();
+  const todayId = options.todayId || getTodayId();
 
   Object.entries(schedule).forEach(([otherDateId, entry]) => {
-    if (!entry?.planId || otherDateId === dateId) return;
+    if (!entry?.planId || entry.status === ScheduleEntryStatus.Abandoned || otherDateId === dateId) return;
     const otherPlan = plansById.get(entry.planId);
     if (!otherPlan) return;
 
     const isSamePlan = otherPlan.id === targetPlan.id;
     const isConflict = planConflicts(targetPlan, otherPlan);
     if (!isSamePlan && !isConflict) return;
+
+    // A historical correction may rewrite the selected day and everything after it,
+    // but must not erase an itinerary that had already happened before that point.
+    const isVisitedBeforePlanningStart = otherDateId < todayId && otherDateId < dateId;
+    if (isVisitedBeforePlanningStart) {
+      blocksByDate.set(otherDateId, {
+        dateId: otherDateId,
+        plan: otherPlan,
+        reason: isSamePlan
+          ? AssignmentBlockReason.PlanAlreadyVisited
+          : AssignmentBlockReason.ConflictsWithVisitedPlan,
+      });
+      return;
+    }
 
     clearsByDate.set(otherDateId, {
       dateId: otherDateId,
@@ -221,9 +259,12 @@ export function buildAssignmentPreview(
     delete nextSchedule[otherDateId];
   });
 
-  nextSchedule[dateId] = { planId: targetPlan.id };
+  if (blocksByDate.size === 0) {
+    nextSchedule[dateId] = { planId: targetPlan.id };
+  }
 
   return {
+    blocks: Array.from(blocksByDate.values()),
     clears: Array.from(clearsByDate.values()),
     nextSchedule,
   };

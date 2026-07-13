@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from 'react';
+import { Fragment } from 'react';
 import { formatAssignedDate } from '../domain/risk';
 import {
   formatWeatherDataSummary,
@@ -14,7 +14,7 @@ import type {
   PlanCandidate,
   PriorityLabelGetter,
 } from '../types/candidates';
-import type { TranslateFn } from '../types/ui';
+import type { PlanRenderer, TranslateFn } from '../types/ui';
 import { Icon } from './Icon';
 import { WeatherIcon } from './PlanContent';
 
@@ -39,9 +39,10 @@ interface CandidateRenderProps {
   openPlanEditor: (planId: string) => void;
   getPriorityLabel: PriorityLabelGetter;
   getPlanBookingBadge: PlanBookingBadgeGetter;
-  renderPlanStops: (plan: NormalizedPlan | null | undefined) => ReactNode;
-  renderPlanBookings: (plan: NormalizedPlan | null | undefined) => ReactNode;
-  renderPlanNotes: (plan: NormalizedPlan | null | undefined) => ReactNode;
+  getBlacklistedStopCount: (plan: NormalizedPlan) => number;
+  renderPlanStops: PlanRenderer;
+  renderPlanBookings: PlanRenderer;
+  renderPlanNotes: PlanRenderer;
 }
 
 interface CandidateGroupsProps extends CandidateRenderProps {
@@ -109,11 +110,12 @@ export function CandidateSignals({ candidate, t, language }: CandidateSignalsPro
 
 function CandidateDetails({
   plan,
+  selectedDate,
   t,
   renderPlanStops,
   renderPlanBookings,
   renderPlanNotes,
-}: Pick<CandidateRenderProps, 't' | 'renderPlanStops' | 'renderPlanBookings' | 'renderPlanNotes'> & {
+}: Pick<CandidateRenderProps, 'selectedDate' | 't' | 'renderPlanStops' | 'renderPlanBookings' | 'renderPlanNotes'> & {
   plan: NormalizedPlan;
 }) {
   const hasDetails = Boolean(plan?.stops.length || plan?.bookings.length || plan?.reminders.length || plan?.tips.length);
@@ -146,7 +148,7 @@ function CandidateDetails({
         </span>
       </summary>
       <div className="candidate-card-detail-body">
-        {renderPlanStops(plan)}
+        {renderPlanStops(plan, { dateId: selectedDate?.id })}
         {renderPlanBookings(plan)}
         {renderPlanNotes(plan)}
       </div>
@@ -202,11 +204,13 @@ function CandidateCard({
   openPlanEditor,
   getPriorityLabel,
   getPlanBookingBadge,
+  getBlacklistedStopCount,
   renderPlanStops,
   renderPlanBookings,
   renderPlanNotes,
 }: CandidateRenderProps & { candidate: PlanCandidate }) {
-  const { plan, canAssign, assignedDateId, weatherOverride } = candidate;
+  const { plan, canAssign, assignedDateId, isAlreadyVisited, weatherOverride } = candidate;
+  const blacklistedStopCount = getBlacklistedStopCount(plan);
 
   return (
     <article
@@ -223,9 +227,16 @@ function CandidateCard({
               language={language}
               getPlanBookingBadge={getPlanBookingBadge}
             />
+            {blacklistedStopCount > 0 && (
+              <span className="place-feedback-badge">
+                {t('blacklistedStopsCount', { count: blacklistedStopCount })}
+              </span>
+            )}
             {assignedDateId && (
               <span className="assigned-badge">
-                {t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
+                {isAlreadyVisited
+                  ? t('visitedOn', { date: formatAssignedDate(assignedDateId, tripDates) })
+                  : t('scheduledOn', { date: formatAssignedDate(assignedDateId, tripDates) })}
               </span>
             )}
           </div>
@@ -235,6 +246,7 @@ function CandidateCard({
 
       <CandidateDetails
         plan={plan}
+        selectedDate={selectedDate}
         t={t}
         renderPlanStops={renderPlanStops}
         renderPlanBookings={renderPlanBookings}
