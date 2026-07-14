@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { mergeAppSnapshots } from './sync';
+import { DayReviewRating } from './dayReview';
 import { PlaceFeedbackStatus, StopOutcomeStatus } from './trip';
 
 function createSnapshot(
   placeFeedback: Record<string, unknown>,
   stopOutcomes: Record<string, unknown> = {},
+  dayReviews: Record<string, unknown> = {},
 ) {
   return {
     appSchemaVersion: '1.0',
@@ -20,6 +22,7 @@ function createSnapshot(
       lodgings: [],
       placeFeedback,
       stopOutcomes,
+      dayReviews,
       archived: false,
     }],
     checklistText: '',
@@ -85,5 +88,36 @@ describe('trip outcome sync', () => {
 
     expect(mergedTrip.stopOutcomes[key].status).toBe(StopOutcomeStatus.Active);
     expect(mergedTrip.placeFeedback).toEqual({});
+  });
+
+  it('uses the latest review for the same day and assigned plan', () => {
+    const key = '2026-07-10:plan-1';
+    const local = createSnapshot({}, {}, {
+      [key]: {
+        key,
+        dateId: '2026-07-10',
+        planId: 'plan-1',
+        rating: 'neutral',
+        tags: ['too_rushed'],
+        updatedAt: '2026-07-12T10:00:00.000Z',
+      },
+    });
+    const remote = createSnapshot({}, {}, {
+      [key]: {
+        key,
+        dateId: '2026-07-10',
+        planId: 'plan-1',
+        rating: 'satisfied',
+        tags: ['well_paced'],
+        updatedAt: '2026-07-12T11:00:00.000Z',
+      },
+    });
+
+    const merged = mergeAppSnapshots(local, remote);
+    const mergedTrip = merged.trips[0] as {
+      dayReviews: Record<string, { rating: string }>;
+    };
+
+    expect(mergedTrip.dayReviews[key].rating).toBe(DayReviewRating.Satisfied);
   });
 });

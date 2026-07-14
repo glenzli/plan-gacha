@@ -1,4 +1,5 @@
 import { Icon } from './Icon';
+import { DayReviewSummary } from './DayReview';
 import { WeatherIcon } from './PlanContent';
 import { addDays, parseDateId } from '../domain/date';
 import { normalizePlan, type NormalizedPlan } from '../domain/plan';
@@ -11,6 +12,7 @@ import {
 } from '../domain/trip';
 import { formatWeatherDataSummary, getWeatherIconCondition, getWeatherLocationSummaryRows } from '../domain/weather';
 import type { WeatherEvaluation } from '../domain/weather';
+import { findDayReview, getDayReviewsForDate } from '../domain/dayReview';
 import type { PlanRenderer, TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
 
@@ -70,6 +72,7 @@ export function ArchivedTripModal({
     .filter((entry) => entry.status === PlaceFeedbackStatus.Blacklisted).length;
   const abandonedStopCount = Object.values(trip.stopOutcomes || {})
     .filter((entry) => entry.status === StopOutcomeStatus.Abandoned).length;
+  const reviewedDayCount = new Set(Object.values(trip.dayReviews || {}).map((review) => review.dateId)).size;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -81,9 +84,10 @@ export function ArchivedTripModal({
             <span className="archived-view-meta">
               {formatTripRange(trip.startDateStr, trip.tripDays, language)} · {t('daysCount', { count: trip.tripDays })}
             </span>
-            {(abandonedDayCount > 0 || abandonedStopCount > 0 || blacklistedPlaceCount > 0) && (
+            {(reviewedDayCount > 0 || abandonedDayCount > 0 || abandonedStopCount > 0 || blacklistedPlaceCount > 0) && (
               <span className="archived-outcome-summary">
                 {[
+                  reviewedDayCount > 0 ? t('reviewedDaysCount', { count: reviewedDayCount }) : '',
                   abandonedDayCount > 0 ? t('abandonedDaysCount', { count: abandonedDayCount }) : '',
                   abandonedStopCount > 0 ? t('abandonedStopsCount', { count: abandonedStopCount }) : '',
                   blacklistedPlaceCount > 0 ? t('blacklistedPlacesCount', { count: blacklistedPlaceCount }) : '',
@@ -104,6 +108,13 @@ export function ArchivedTripModal({
             const plan = archivePlansById.get(archiveSchedule[date.id]?.planId);
             const abandoned = archiveSchedule[date.id]?.status === ScheduleEntryStatus.Abandoned;
             const weather = plan ? evaluateWeather(plan, date.id, weatherData, language) : null;
+            const dateReviews = getDayReviewsForDate(date.id, trip.dayReviews || {});
+            const dayReview = plan && !abandoned
+              ? findDayReview(date.id, plan.id, trip.dayReviews || {})
+              : undefined;
+            const previousReviews = plan
+              ? dateReviews.filter((review) => review.planId !== plan.id)
+              : dateReviews;
 
             return (
               <article className={`archived-day-card ${plan ? `priority-${plan.priority}` : 'is-empty'} ${abandoned ? 'is-abandoned' : ''}`} key={date.id}>
@@ -142,6 +153,7 @@ export function ArchivedTripModal({
                     })}
                     {renderPlanBookings(plan, { readOnly: true })}
                     {renderPlanNotes(plan)}
+                    {dayReview && <DayReviewSummary review={dayReview} t={t} />}
                     {weather && (() => {
                       const weatherCondition = getWeatherIconCondition(weather.snapshot);
                       const weatherRows = getWeatherLocationSummaryRows(weather.snapshot, language);
@@ -171,6 +183,19 @@ export function ArchivedTripModal({
                   </>
                 ) : (
                   <div className="empty-state">{t('noPlanForDay')}</div>
+                )}
+                {previousReviews.length > 0 && (
+                  <details className="archived-previous-reviews">
+                    <summary>{t('previousPlanReviews')} · {previousReviews.length}</summary>
+                    <div>
+                      {previousReviews.map((review) => (
+                        <section key={review.key}>
+                          <strong>{review.planName || review.planId}</strong>
+                          <DayReviewSummary review={review} t={t} />
+                        </section>
+                      ))}
+                    </div>
+                  </details>
                 )}
               </article>
             );

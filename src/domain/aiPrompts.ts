@@ -342,6 +342,7 @@ Output rules:
 19. If a plan should be scheduled, write assigned_day on that plan.
 20. Treat abandoned days and blacklisted_places as explicit user decisions. Do not schedule an abandoned day or reintroduce a blacklisted place unless the user explicitly asks. abandoned_stops are date-specific records of places skipped on that occurrence; preserve them as history and do not treat them as a global blacklist.
 21. Dates before planning_from are fixed history. In particular, a plan assigned before current_date and before planning_from has already been visited: do not schedule it again or clear that earlier record. Only rewrite planning_from and later dates.
+22. past_day_reviews are soft preferences from completed days. Use satisfied/worth_reusing feedback as positive reference and use rushed, tiring, weather-affected or unsatisfied feedback to improve pacing and choices. They are not hard exclusions; only blacklisted_places are a hard place exclusion.
 
 JSON format:
 ${planSchema}`;
@@ -383,6 +384,7 @@ ${JSON.stringify({
 19. 需要安排日期时，在对应 plan 上写 assigned_day。
 20. 已放弃日期和 blacklisted_places 都是用户明确做出的决定；除非用户明确要求，否则不要重新安排已放弃日期，也不要再次加入已拉黑地点。abandoned_stops 是某个日期中临时没去的地点记录，只作为历史保留，不要把它当成全局拉黑。
 21. planning_from 之前的日期是固定历史。尤其是同时早于 current_date 和 planning_from 的已安排计划，视为已经去过：不要再次安排，也不要清空其历史记录；只调整 planning_from 及之后的日期。
+22. past_day_reviews 是用户对已游玩日期的软偏好反馈。满意、值得复用可作为正向参考；太赶、交通折腾、体力超支、天气影响或不满意用于改善节奏和选择。它们不是硬性排除，只有 blacklisted_places 才是地点硬约束。
 
 JSON 格式：
 ${planSchema}`;
@@ -413,6 +415,7 @@ You need to:
 6. Clearly list anything I need to confirm if the adjustment creates risk.
 7. End with JSON so I can import or compare changes manually.
 8. Keep abandoned days and blacklisted places unchanged unless I explicitly ask to restore them. abandoned_stops are date-specific skipped-place records, not global blacklists.
+9. Use past_day_reviews as soft preference signals for pacing, transport load, weather tolerance and reusable day patterns. Do not treat a negative review as a blacklist.
 
 Data:
 ${JSON.stringify(context, null, 2)}
@@ -448,6 +451,7 @@ ${replanRequest}
 6. 如果某个调整会带来风险，请明确列出需要我确认的事项。
 7. 最后输出一个 JSON，方便我手动导入或对照修改。
 8. 除非我明确要求恢复，否则保留已放弃日期和已拉黑地点，不要重新加入规划；abandoned_stops 只是具体日期中没去的地点记录，不等于全局拉黑。
+9. 把 past_day_reviews 当作节奏、交通负担、天气容忍度和可复用路线的软偏好；负面评价不等于拉黑。
 
 数据：
 ${JSON.stringify(context, null, 2)}
@@ -508,6 +512,7 @@ ${language === 'en' ? `Requirements:
 15. If the plan fits a specific day, include assigned_day.
 16. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
 17. Do not add a place listed in blacklisted_places unless the user explicitly asks to restore it. Preserve ids for unchanged stops so date-specific abandoned_stops remain traceable.
+18. Use past_day_reviews as soft feedback when improving or creating the plan. Do not treat unsatisfied feedback as a hard blacklist.
 
 Single plan JSON format:
 ${schema}` : `要求：
@@ -528,6 +533,7 @@ ${schema}` : `要求：
 15. 如果计划适合安排到某一天，可以写 assigned_day。
 16. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
 17. 除非用户明确要求恢复，否则不要加入 blacklisted_places 中的地点；未改变的 stop 要保留原 id，确保具体日期的 abandoned_stops 仍能关联。
+18. 优化或新增计划时参考 past_day_reviews 中的软反馈，但不要把“不满意”直接当作地点拉黑。
 
 单个计划 JSON 格式：
 ${schema}`}

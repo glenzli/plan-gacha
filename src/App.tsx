@@ -8,6 +8,7 @@ import { CandidateGroups } from './components/CandidateCards';
 import { ChecklistImportModal } from './components/ChecklistImportModal';
 import { ChecklistModal } from './components/ChecklistModal';
 import { CurrentPlanCard } from './components/CurrentPlanCard';
+import { DayReviewModal, type DayReviewTarget } from './components/DayReview';
 import { DriveSyncModal } from './components/DriveSyncModal';
 import { DriveSyncPanel } from './components/DriveSyncPanel';
 import { EmptyPlanState } from './components/EmptyPlanState';
@@ -52,6 +53,14 @@ import {
 } from './domain/weather';
 import { buildRiskGroups } from './domain/risk';
 import { addDays, getTodayId } from './domain/date';
+import {
+  findDayReview,
+  getDayReviewKey,
+  getDayReviewsForDate,
+  type DayReviewRating,
+  type DayReviewTag,
+  type NormalizedDayReviews,
+} from './domain/dayReview';
 import {
   type BookingStatus,
   type NormalizedLocation,
@@ -149,6 +158,7 @@ function App() {
   const [lodgings, setLodgings] = useState<NormalizedLodging[]>(initial.lodgings);
   const [placeFeedback, setPlaceFeedback] = useState<NormalizedPlaceFeedback>(initial.placeFeedback);
   const [stopOutcomes, setStopOutcomes] = useState<NormalizedStopOutcomes>(initial.stopOutcomes);
+  const [dayReviews, setDayReviews] = useState<NormalizedDayReviews>(initial.dayReviews);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -160,6 +170,7 @@ function App() {
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState<string | null>(null);
+  const [dayReviewTarget, setDayReviewTarget] = useState<DayReviewTarget | null>(null);
 
   const dayTileRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const aiPlannerQuestionRef = useRef<HTMLTextAreaElement | null>(null);
@@ -277,6 +288,22 @@ function App() {
   const selectedDateEntry = selectedDate ? schedule[selectedDate.id] : null;
   const selectedPlan = selectedDateEntry ? plansById.get(selectedDateEntry.planId) : null;
   const selectedDayAbandoned = selectedDateEntry?.status === ScheduleEntryStatus.Abandoned;
+  const selectedDayReview = selectedDate && selectedPlan && !selectedDayAbandoned
+    ? findDayReview(selectedDate.id, selectedPlan.id, dayReviews)
+    : undefined;
+  const canReviewSelectedDay = Boolean(
+    selectedDate
+    && selectedPlan
+    && !selectedDayAbandoned
+    && selectedDate.id <= getTodayId(),
+  );
+  const editedDayReview = dayReviewTarget
+    ? findDayReview(dayReviewTarget.dateId, dayReviewTarget.planId, dayReviews)
+    : undefined;
+  const previousDayReviews = dayReviewTarget
+    ? getDayReviewsForDate(dayReviewTarget.dateId, dayReviews)
+      .filter((review) => review.planId !== dayReviewTarget.planId)
+    : [];
   const { planImageBusy, shareCurrentPlanImage } = usePlanImageShare({
     notify,
     selectedDate,
@@ -373,6 +400,24 @@ function App() {
         .map(([dateId, entry]) => [entry.planId, dateId]),
     );
   }, [schedule]);
+  const dayReviewHistory = useMemo(() => {
+    const activeReviews = Object.values(dayReviews).map((review) => ({
+      ...review,
+      tripId: activeTripId,
+      tripName: tripName || t('unnamedTrip'),
+    }));
+    const storedReviews = trips
+      .filter((trip) => trip.id !== activeTripId)
+      .flatMap((trip) => Object.values(trip.dayReviews || {}).map((review) => ({
+        ...review,
+        tripId: trip.id,
+        tripName: trip.name,
+      })));
+
+    return [...activeReviews, ...storedReviews]
+      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
+      .slice(0, 50);
+  }, [activeTripId, dayReviews, t, tripName, trips]);
 
   const {
     availableCandidateCount,
@@ -468,6 +513,7 @@ function App() {
       lodgings,
       placeFeedback,
       stopOutcomes,
+      dayReviews,
       checklistText: '',
       checklistState: {},
       archived: activeTripArchived,
@@ -488,6 +534,7 @@ function App() {
     lodgings,
     placeFeedback,
     stopOutcomes,
+    dayReviews,
     schedule,
     startDateStr,
     tripName,
@@ -505,6 +552,7 @@ function App() {
     lodgings,
     placeFeedback,
     stopOutcomes,
+    dayReviews,
     checklistText: '',
     checklistState: {},
     archived: activeTripArchived,
@@ -521,6 +569,8 @@ function App() {
     setLodgings(normalizedTrip.lodgings || []);
     setPlaceFeedback(normalizedTrip.placeFeedback || {});
     setStopOutcomes(normalizedTrip.stopOutcomes || {});
+    setDayReviews(normalizedTrip.dayReviews || {});
+    setDayReviewTarget(null);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     clearWeatherError();
   };
@@ -645,6 +695,8 @@ function App() {
     setLodgings(exampleTrip.lodgings || []);
     setPlaceFeedback(exampleTrip.placeFeedback || {});
     setStopOutcomes(exampleTrip.stopOutcomes || {});
+    setDayReviews(exampleTrip.dayReviews || {});
+    setDayReviewTarget(null);
     clearWeatherData();
     setSelectedDateId(exampleTrip.startDateStr);
     closePlanEditor();
@@ -884,6 +936,44 @@ function App() {
     notify(currentlyAbandoned ? t('stopRestored') : t('stopMarkedAbandoned'));
   };
 
+  const openSelectedDayReview = () => {
+    if (!selectedDate || !selectedPlan || !canReviewSelectedDay) return;
+    setDayReviewTarget({
+      dateId: selectedDate.id,
+      dateLabel: selectedDate.display,
+      planId: selectedPlan.id,
+      planName: selectedPlan.name,
+    });
+  };
+
+  const saveDayReview = ({
+    rating,
+    tags,
+    note,
+  }: {
+    rating: DayReviewRating;
+    tags: DayReviewTag[];
+    note: string;
+  }) => {
+    if (!dayReviewTarget) return;
+    const key = getDayReviewKey(dayReviewTarget.dateId, dayReviewTarget.planId);
+    setDayReviews((current) => ({
+      ...current,
+      [key]: {
+        key,
+        dateId: dayReviewTarget.dateId,
+        planId: dayReviewTarget.planId,
+        planName: dayReviewTarget.planName,
+        rating,
+        tags,
+        note,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    setDayReviewTarget(null);
+    notify(t('dayReviewSaved'));
+  };
+
   const {
     copyAiPlanningPrompt,
     copyBatchAiPrompt,
@@ -901,6 +991,7 @@ function App() {
     normalizedPlans,
     placeFeedback,
     stopOutcomes,
+    dayReviewHistory,
     planAssignments,
     plansById,
     riskGroups,
@@ -994,6 +1085,9 @@ function App() {
       clearDay={clearDay}
       isAbandoned={selectedDayAbandoned}
       toggleDayAbandoned={toggleDayAbandoned}
+      canReviewDay={canReviewSelectedDay}
+      dayReview={selectedDayReview}
+      openDayReview={openSelectedDayReview}
       t={t}
       language={language}
       getPriorityLabel={getPriorityLabel}
@@ -1125,6 +1219,7 @@ function App() {
             renderCurrentPlanCard={renderCurrentPlanCard}
             riskGroups={riskGroups}
             schedule={schedule}
+            dayReviews={dayReviews}
             selectScheduleDate={selectScheduleDate}
             selectedDate={selectedDate}
             t={t}
@@ -1302,6 +1397,18 @@ function App() {
           t={t}
           translateIssue={translateIssue}
           translateRiskTitle={translateRiskTitle}
+        />
+      )}
+
+      {dayReviewTarget && (
+        <DayReviewModal
+          key={`${dayReviewTarget.dateId}:${dayReviewTarget.planId}`}
+          currentReview={editedDayReview}
+          onClose={() => setDayReviewTarget(null)}
+          onSave={saveDayReview}
+          previousReviews={previousDayReviews}
+          t={t}
+          target={dayReviewTarget}
         />
       )}
 

@@ -10,6 +10,10 @@ import {
 } from '../domain/aiPrompts';
 import { evaluateWeather, getDayInsight } from '../domain/dayInsight';
 import { getTodayId } from '../domain/date';
+import type {
+  DayReviewRating,
+  DayReviewTag,
+} from '../domain/dayReview';
 import {
   formatTripRange,
   getAiModeText,
@@ -51,6 +55,17 @@ interface UseAiPromptControllerOptions {
   normalizedPlans: NormalizedPlan[];
   placeFeedback: NormalizedPlaceFeedback;
   stopOutcomes: NormalizedStopOutcomes;
+  dayReviewHistory: Array<{
+    tripId: string;
+    tripName: string;
+    dateId: string;
+    planId: string;
+    planName: string;
+    rating: DayReviewRating;
+    tags: DayReviewTag[];
+    note: string;
+    updatedAt: string;
+  }>;
   planAssignments: Map<string, string>;
   plansById: Map<string, NormalizedPlan>;
   riskGroups: RiskGroup[];
@@ -77,6 +92,7 @@ export function useAiPromptController({
   normalizedPlans,
   placeFeedback,
   stopOutcomes,
+  dayReviewHistory,
   planAssignments,
   plansById,
   riskGroups,
@@ -100,6 +116,16 @@ export function useAiPromptController({
       stop_id: entry.stopId,
       stop_name: entry.stopTitle,
     }));
+  const pastDayReviews = dayReviewHistory.map((review) => ({
+    trip_id: review.tripId,
+    trip_name: review.tripName,
+    date: review.dateId,
+    plan_id: review.planId,
+    plan_name: review.planName,
+    rating: review.rating,
+    tags: review.tags,
+    note: review.note,
+  }));
 
   const buildAiPlanningPrompt = (mode: AiPlannerMode = aiPlannerMode) => {
     const planningStartDate = selectedDate || tripDates[0];
@@ -190,6 +216,7 @@ export function useAiPromptController({
       existing_plans: normalizedPlans.map(summarizePlan),
       blacklisted_places: blacklistedPlaces,
       abandoned_stops: abandonedStops,
+      past_day_reviews: pastDayReviews,
       current_warnings: riskGroups.map((group) => ({
         title: translateRiskTitle(group.title, language),
         level: group.level,
@@ -240,6 +267,7 @@ export function useAiPromptController({
         existing_plan_ids: normalizedPlans.map((plan) => plan.id),
         blacklisted_places: blacklistedPlaces,
         abandoned_stops: abandonedStops,
+        past_day_reviews: pastDayReviews,
       }
       : {
         trip: tripContext,
@@ -247,6 +275,7 @@ export function useAiPromptController({
         current_plan: currentPlan,
         blacklisted_places: blacklistedPlaces,
         abandoned_stops: abandonedStops,
+        past_day_reviews: pastDayReviews,
       };
 
     return buildSinglePlanPrompt({

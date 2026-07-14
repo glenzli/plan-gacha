@@ -737,6 +737,32 @@ label {
   color: #71717a;
 }
 
+.day-review-badge {
+  display: inline-flex;
+  min-height: 1.2rem;
+  align-items: center;
+  margin-left: 0.3rem;
+  padding: 0.04rem 0.3rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.66rem;
+  font-weight: 850;
+}
+
+.day-review-badge.rating-satisfied {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.day-review-badge.rating-neutral {
+  background: #f4f4f5;
+  color: #52525b;
+}
+
+.day-review-badge.rating-unsatisfied {
+  background: #fff1f2;
+  color: #e11d48;
+}
+
 .day-status {
   display: inline-flex;
   min-height: 1.32rem;
@@ -1015,6 +1041,108 @@ label {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.55rem;
+}
+
+.day-review-trigger {
+  display: inline-flex;
+  min-height: 2.1rem;
+  align-items: center;
+  gap: 0.38rem;
+  padding: 0.28rem 0.62rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 850;
+}
+
+.day-review-trigger:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.day-review-trigger .svg-icon,
+.day-review-summary .svg-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.day-review-trigger.rating-satisfied {
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.day-review-trigger.rating-unsatisfied {
+  border-color: #fecdd3;
+  color: #e11d48;
+}
+
+.day-review-summary {
+  display: grid;
+  gap: 0.28rem;
+  margin-top: 0.72rem;
+  padding: 0.48rem 0.68rem;
+  border-left: 2px solid #a1a1aa;
+  background: #fafafa;
+}
+
+.day-review-summary.rating-satisfied {
+  border-left-color: #10b981;
+  background: #f3fcf8;
+}
+
+.day-review-summary.rating-unsatisfied {
+  border-left-color: #f43f5e;
+  background: #fff7f8;
+}
+
+.day-review-summary-head {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.32rem;
+  color: var(--muted);
+}
+
+.day-review-summary-head strong {
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.day-review-summary.rating-satisfied .day-review-summary-head > .svg-icon,
+.day-review-summary.rating-satisfied .day-review-summary-head > strong {
+  color: #047857;
+}
+
+.day-review-summary.rating-unsatisfied .day-review-summary-head > .svg-icon,
+.day-review-summary.rating-unsatisfied .day-review-summary-head > strong {
+  color: #e11d48;
+}
+
+.day-review-tag {
+  padding: 0.05rem 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: #71717a;
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.day-review-summary p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+  line-height: 1.5;
+}
+
+.current-plan .day-review-summary p {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.5;
 }
 
 .abandoned-plan-note {
@@ -2807,6 +2935,153 @@ label {
   max-width: 38rem;
 }
 
+.day-review-modal {
+  width: min(36rem, 100%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.day-review-modal-header h2 {
+  margin: 0.12rem 0 0;
+}
+
+.day-review-target {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+}
+
+.day-review-modal-body {
+  display: grid;
+  min-height: 0;
+  gap: 1rem;
+  overflow: auto;
+  padding-right: 0.12rem;
+  overscroll-behavior: contain;
+}
+
+.day-review-section {
+  display: grid;
+  gap: 0.52rem;
+}
+
+.day-review-section h3,
+.day-review-section p {
+  margin: 0;
+}
+
+.day-review-section h3,
+.day-review-note > span {
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.day-review-ratings {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.day-review-rating,
+.day-review-tags button {
+  min-height: 2.25rem;
+  padding: 0.32rem 0.58rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.day-review-rating.is-selected {
+  border-color: #a1a1aa;
+  background: #f4f4f5;
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px rgba(24, 24, 27, 0.04);
+}
+
+.day-review-rating.rating-satisfied.is-selected {
+  border-color: #6ee7b7;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.day-review-rating.rating-unsatisfied.is-selected {
+  border-color: #fda4af;
+  background: #fff1f2;
+  color: #e11d48;
+}
+
+.day-review-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.day-review-tags button {
+  min-height: 1.95rem;
+  border-radius: 999px;
+}
+
+.day-review-tags button.is-selected {
+  border-color: #c7d2fe;
+  background: #eef2ff;
+  color: #4f46e5;
+}
+
+.day-review-note textarea {
+  min-height: 6.5rem;
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+  line-height: 1.55;
+  outline: none;
+  resize: vertical;
+}
+
+.day-review-note textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.previous-day-reviews {
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border);
+}
+
+.previous-day-reviews > p {
+  color: var(--muted);
+  font-size: 0.74rem;
+  line-height: 1.5;
+}
+
+.previous-day-review {
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.4rem;
+}
+
+.previous-day-review > strong {
+  font-size: 0.76rem;
+}
+
+.previous-day-review .day-review-summary {
+  margin-top: 0;
+}
+
+.day-review-actions {
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border);
+}
+
 .checklist-import-modal {
   max-width: 42rem;
 }
@@ -3192,6 +3467,32 @@ label {
 .archived-plan-summary p {
   color: var(--muted);
   font-size: 0.9rem;
+}
+
+.archived-previous-reviews {
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.archived-previous-reviews summary {
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.archived-previous-reviews > div {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.55rem;
+}
+
+.archived-previous-reviews section > strong {
+  font-size: 0.76rem;
+}
+
+.archived-previous-reviews .day-review-summary {
+  margin-top: 0.3rem;
 }
 
 .ai-mode-tabs {

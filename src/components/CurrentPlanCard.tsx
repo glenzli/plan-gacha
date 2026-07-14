@@ -1,8 +1,11 @@
 import type { NormalizedPlan, PlanPriority } from '../domain/plan';
+import { getDayReviewRatingLabel } from '../domain/dayReviewDisplay';
 import type { PlanBookingBadgeData, PlanCandidate } from '../types/candidates';
 import type { PlanRenderer, TranslateFn } from '../types/ui';
 import { CandidateSignals, PlanBookingBadge } from './CandidateCards';
+import { DayReviewSummary } from './DayReview';
 import { Icon } from './Icon';
+import type { NormalizedDayReviewEntry } from '../domain/dayReview';
 
 interface SelectedDateLike {
   id: string;
@@ -19,6 +22,9 @@ interface CurrentPlanCardProps {
   clearDay: (dateId: string) => void;
   isAbandoned: boolean;
   toggleDayAbandoned: (dateId: string) => void;
+  canReviewDay: boolean;
+  dayReview?: NormalizedDayReviewEntry;
+  openDayReview: () => void;
   t: TranslateFn;
   language: string;
   getPriorityLabel: (priority: PlanPriority | string, language: string) => string;
@@ -39,6 +45,9 @@ export function CurrentPlanCard({
   clearDay,
   isAbandoned,
   toggleDayAbandoned,
+  canReviewDay,
+  dayReview,
+  openDayReview,
   t,
   language,
   getPriorityLabel,
@@ -74,11 +83,23 @@ export function CurrentPlanCard({
         {renderPlanStops(selectedPlan, { dateId: selectedDate?.id })}
         {renderPlanBookings(selectedPlan)}
         {renderPlanNotes(selectedPlan)}
+        {dayReview && <DayReviewSummary review={dayReview} t={t} />}
         <CandidateSignals candidate={currentCandidate} t={t} language={language} />
       </div>
 
       {selectedDate && selectedPlan && (
         <div className="current-actions">
+          {canReviewDay && (
+            <button
+              className={`day-review-trigger ${dayReview ? `rating-${dayReview.rating}` : ''}`}
+              type="button"
+              onClick={openDayReview}
+              data-screenshot-exclude="true"
+            >
+              <Icon name="messageSquare" />
+              <span>{dayReview ? getDayReviewRatingLabel(dayReview.rating, t) : t('reviewDay')}</span>
+            </button>
+          )}
           <button
             className="icon-btn compact-icon-btn"
             type="button"

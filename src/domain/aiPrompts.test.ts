@@ -118,5 +118,6 @@ describe('planning prompts', () => {
     expect(prompt).toContain('Only output importable JSON');
     expect(prompt).toContain('existing_plan_ids_should_not_duplicate');
     expect(prompt).toContain('existing_plan');
+    expect(prompt).toContain('past_day_reviews are soft preferences');
   });
 });

@@ -13,6 +13,10 @@ import {
   type ChecklistState,
 } from './checklist';
 import { addDays, getTodayId } from './date';
+import {
+  normalizeDayReviews,
+  type NormalizedDayReviews,
+} from './dayReview';
 
 const DEFAULT_TRIP_DAYS = 5;
 const MAX_TRIP_DAYS = 30;
@@ -84,6 +88,7 @@ export interface NormalizedTripSnapshot {
   lodgings: NormalizedLodging[];
   placeFeedback: NormalizedPlaceFeedback;
   stopOutcomes: NormalizedStopOutcomes;
+  dayReviews: NormalizedDayReviews;
   checklistText: string;
   checklistState: ChecklistState;
   archived: boolean;
@@ -337,6 +342,7 @@ export function normalizeTripSnapshot(
     lodgings: normalizeTripLodgings(safeTrip.lodgings || safeTrip.hotels || safeTrip.accommodations || safeTrip.stays),
     placeFeedback: normalizePlaceFeedback(safeTrip.placeFeedback || safeTrip.place_feedback),
     stopOutcomes: normalizeStopOutcomes(safeTrip.stopOutcomes || safeTrip.stop_outcomes),
+    dayReviews: normalizeDayReviews(safeTrip.dayReviews || safeTrip.day_reviews),
     checklistText: normalizeChecklistText(
       Object.hasOwn(safeTrip, 'checklistText') ? safeTrip.checklistText : safeTrip.checklist || safeTrip.packingList,
     ),

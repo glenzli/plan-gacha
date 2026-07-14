@@ -4,6 +4,8 @@ import { MobileRiskPanel } from './RiskPanels';
 import { WeatherIcon } from './PlanContent';
 import type { DisplayTripDate } from '../domain/display';
 import type { CalendarDayState, DayInsight } from '../domain/dayInsight';
+import { findDayReview, type NormalizedDayReviews } from '../domain/dayReview';
+import { getDayReviewRatingLabel } from '../domain/dayReviewDisplay';
 import type { NormalizedPlan } from '../domain/plan';
 import { ScheduleEntryStatus, type NormalizedSchedule } from '../domain/trip';
 import type { RiskGroup } from '../domain/risk';
@@ -54,6 +56,7 @@ export function SchedulePanel({
   renderCurrentPlanCard,
   riskGroups,
   schedule,
+  dayReviews,
   selectScheduleDate,
   selectedDate,
   t,
@@ -83,6 +86,7 @@ export function SchedulePanel({
   renderCurrentPlanCard: (className: string) => ReactNode;
   riskGroups: RiskGroup[];
   schedule: NormalizedSchedule;
+  dayReviews: NormalizedDayReviews;
   selectScheduleDate: (dateId: string, options?: { scroll?: boolean }) => void;
   selectedDate: DisplayTripDate | undefined;
   t: TranslateFn;
@@ -136,6 +140,9 @@ export function SchedulePanel({
           const plan = entry ? plansById.get(entry.planId) : null;
           const selected = selectedDate?.id === date.id;
           const insight = getDayInsight(plan, date.id, schedule, plansById, weatherData, language);
+          const dayReview = plan && entry?.status !== ScheduleEntryStatus.Abandoned
+            ? findDayReview(date.id, plan.id, dayReviews)
+            : undefined;
 
           return (
             <Fragment key={date.id}>
@@ -154,6 +161,11 @@ export function SchedulePanel({
                   <span className="day-plan">
                     {plan?.name || t('unassigned')}
                     {plan && <span className={`day-priority priority-${plan.priority}`}>{getPriorityLabel(plan.priority, language)}</span>}
+                    {dayReview && (
+                      <span className={`day-review-badge rating-${dayReview.rating}`}>
+                        {getDayReviewRatingLabel(dayReview.rating, t)}
+                      </span>
+                    )}
                   </span>
                 </span>
                 {insight.label && (

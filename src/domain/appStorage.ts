@@ -43,6 +43,7 @@ export interface InitialAppState {
   lodgings: NormalizedTripSnapshot['lodgings'];
   placeFeedback: NormalizedTripSnapshot['placeFeedback'];
   stopOutcomes: NormalizedTripSnapshot['stopOutcomes'];
+  dayReviews: NormalizedTripSnapshot['dayReviews'];
   selectedDate: string;
   weatherData: WeatherDataMap;
   checklistText: string;
@@ -96,6 +97,7 @@ export function loadInitialState(): InitialAppState {
     lodgings: activeTrip.lodgings || [],
     placeFeedback: activeTrip.placeFeedback || {},
     stopOutcomes: activeTrip.stopOutcomes || {},
+    dayReviews: activeTrip.dayReviews || {},
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
     weatherData: storedWeatherCache && typeof storedWeatherCache === 'object' && !Array.isArray(storedWeatherCache)
       ? storedWeatherCache

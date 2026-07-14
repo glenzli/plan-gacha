@@ -27,6 +27,7 @@
 - 冲突提示：选择某个计划前会评估它是否会影响后续安排，并把需要调整的天数留给用户重新决定。
 - 预约订票：可以记录预约/门票状态、地址、链接和退改链接，状态由用户手动更新。
 - 行程结果记录：整天或其中某个地点可以记录为“本次没去”，地点也可以单独拉黑为以后不再安排；原内容会保留在导出和只读归档中，供之后复盘。
+- 每日行程评价：已执行的每日行程可以记录满意度、节奏与体力等标签和简短备注；评价按日期和当时的计划保存，后续换计划也不会覆盖历史反馈。
 - 历史日程边界：已经过去且实际执行的计划不会在后续日期重复出现；回补历史记录时，仍可从所选日期开始向后调整。
 - 旅行清单：作为独立的长期清单维护，默认空白，可手动编辑、填入示例或导入 JSON，支持勾选完成、本次不需要和一键重置本次状态。
 - 归档只读：已归档旅行可以在编辑界面查看，不参与顶部计划切换，适合保留历史行程。
@@ -196,6 +197,7 @@ Data is stored in browser `localStorage` by default. The current version is a fr
 - Conflict preview: before selecting a plan, the app checks whether it affects later days and leaves impacted dates for the user to replan.
 - Booking and tickets: record status, address, links and cancellation/change links; status updates remain manual.
 - Trip outcomes: record a whole day or an individual stop as skipped for this trip, or blacklist a place from future planning, while keeping the original details in exports and read-only archives.
+- Daily trip reviews: completed days can record satisfaction, pacing and energy tags, plus a short note. Reviews stay tied to the date and the plan used at that time, so later plan changes preserve the original feedback.
 - Historical boundary: plans already completed on past dates cannot be selected again later, while corrections can still replan from the selected historical date forward.
 - Trip checklist: maintain a standalone long-term checklist. It starts empty, can be edited manually, filled from an example or imported from JSON, and supports done/skipped status plus one-click status reset.
 - Read-only archive: archived trips can be viewed from the editor, stay out of the top trip switcher and work well for keeping travel history.

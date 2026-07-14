@@ -7,6 +7,7 @@ export type IconName =
   | 'mapPinX'
   | 'clock'
   | 'listChecks'
+  | 'messageSquare'
   | 'pencil'
   | 'copy'
   | 'mapPin'
@@ -76,6 +77,14 @@ export function Icon({ name, className = '' }: IconProps) {
         <path d="m3 17 2 2 4-4" />
         <path d="M13 6h8" />
         <path d="M13 18h8" />
+      </>
+    ),
+    messageSquare: (
+      <>
+        <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+        <path d="M8 10h.01" />
+        <path d="M12 10h.01" />
+        <path d="M16 10h.01" />
       </>
     ),
     pencil: (

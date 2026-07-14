@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DayReviewRating } from './dayReview';
 import {
   clampTripDays,
   getStopOutcomeKey,
@@ -165,6 +166,14 @@ describe('trip snapshot normalization', () => {
           status: 'abandoned',
         },
       },
+      day_reviews: {
+        review: {
+          date_id: '2026-07-11',
+          plan_id: 'plan-1',
+          plan_name: 'Nara',
+          rating: 'satisfied',
+        },
+      },
       weatherData: { stale: true },
     }, 0, { todayId: '2026-07-01' });
 
@@ -182,6 +191,9 @@ describe('trip snapshot normalization', () => {
       },
       stopOutcomes: {
         '2026-07-11:plan-1:stop-1': { status: StopOutcomeStatus.Abandoned },
+      },
+      dayReviews: {
+        '2026-07-11:plan-1': { rating: DayReviewRating.Satisfied },
       },
       archived: false,
     });
