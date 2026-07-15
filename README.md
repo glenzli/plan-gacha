@@ -8,7 +8,7 @@
 
 行程扭蛋是一个面向旅行途中的动态计划切换工具。它适合那种已经准备了 `n + m` 个候选行程，但每天还要根据天气、闭馆、预约、体力和临时变化重新决定去哪儿的场景。
 
-数据默认保存在浏览器 `localStorage`。当前版本是纯前端应用，不依赖后端服务。
+数据默认保存在浏览器 `localStorage`。当前版本是纯前端应用，不依赖后端服务；部署宿主也可以选择注入远端存储适配器。
 
 ### 适合解决什么
 
@@ -65,7 +65,7 @@
 - 单项编辑：只提供当前单个计划或已有计划 ID，要求 AI 输出单个计划 JSON 对象。
 - 重排行程：提供固定日期、可调整日期、剩余计划、天气和预警，让 AI 输出可导入结果。
 
-未来更自然的方向，可能是把行程扭蛋作为服务能力提供给 AI 侧，让用户直接从 AI 产品中使用。
+已经记录的每日评价只会作为节奏、体力、交通和天气偏好的软参考，不会自动变成地点黑名单或硬约束。
 
 ### 天气数据
 
@@ -84,9 +84,9 @@
 
 ### 数据与导入导出
 
-- 数据默认保存在浏览器 `localStorage`，没有账号系统或云同步。
+- 数据默认保存在浏览器 `localStorage`，没有内置账号系统或云服务；部署宿主可以选择提供下文所述的远端同步适配器。
 - `127.0.0.1:5173` 和 `localhost:5173` 是不同浏览器 origin，数据不会互通。
-- 旅行计划导出会直接下载 JSON，包含计划池和日程，不包含旅行清单；导入支持粘贴 JSON 或选择本地 JSON 文件。
+- 旅行计划导出会直接下载 JSON，包含日期、住宿、计划池、日程、地点反馈、实际游玩结果和每日评价；不包含旅行清单与天气缓存。导入支持粘贴 JSON 或选择本地 JSON 文件。
 - 天气结果只作为本地缓存保存在浏览器里，不写入旅行导出 JSON 或远端同步文件。
 - 旅行清单是全局独立数据，可以单独下载 JSON，之后可通过粘贴或选择文件导入，并选择替换或合并。
 - 合并清单时，同分类同文本视为同一项；同文本不同分类会迁移可确定的状态，并提示冲突。
@@ -95,7 +95,7 @@
 
 ### 可选远端同步适配
 
-应用本身不绑定具体远端存储服务。部署环境可以注入一个最小 `driveStorage` 适配器，让应用把完整工作区快照同步到宿主提供的远端 JSON 文件。
+应用本身不绑定具体远端存储服务。部署环境可以注入一个最小 `driveStorage` 适配器，把旅行、日程、复盘状态和清单组成的完整工作区快照同步到远端 JSON 文件；天气缓存不会上传。
 
 默认构建只在 URL 带 `?sync=1`，或本地已经记录过同步文件时启用同步入口；同时宿主必须实际提供 `driveStorage` API，否则入口不会展示。部署时可通过环境变量彻底关闭：
 
@@ -104,55 +104,9 @@ VITE_DRIVE_STORAGE_EXPOSURE=url   # 默认：URL 参数，或本地已有同步�
 VITE_DRIVE_STORAGE_EXPOSURE=off   # 完全禁用
 ```
 
-宿主需要提供 `window.driveStorage`，或让 `/drive-storage/driveStorage.js` 加载后提供它。应用侧会用 `name + appProperties.appId` 定位同步文件；如果定位到多个文件，宿主应抛出 `DriveStorageAmbiguousFileError`。最小接口如下：
+宿主需要提供 `window.driveStorage`，或让 `/drive-storage/driveStorage.js` 加载后提供它。适配器负责连接、按 `name + appProperties.appId` 定位文件，以及创建、读取和写入 JSON；完整类型约定见 [`src/types/driveStorage.ts`](src/types/driveStorage.ts)。
 
-```ts
-type DriveStorageApi = {
-  status(): { configured?: boolean; connected?: boolean };
-  isConfigured?(): boolean;
-  connect(options?: { prompt?: '' | 'consent' | 'select_account' }): Promise<unknown>;
-  disconnect?(options?: { revoke?: boolean }): Promise<unknown>;
-  getFile(fileIdOrLocator: string | DriveFileLocator): Promise<DriveFileRecord>;
-  findFile(locator: DriveFileLocator): Promise<DriveFileRecord | null>;
-  createFile(options: DriveCreateFileOptions): Promise<DriveFileRecord>;
-  readJson<T = unknown>(fileIdOrLocator: string | DriveFileLocator): Promise<T>;
-  writeJson(fileIdOrLocator: string | DriveFileLocator, data: unknown, options?: { space?: number; mimeType?: string; appProperties?: Record<string, string> }): Promise<DriveFileRecord>;
-  DriveStorageConflictError?: new (message: string, details?: { remote?: unknown; local?: unknown }) => Error;
-};
-
-type DriveFileLocator = {
-  id?: string;
-  name?: string;
-  mimeType?: string;
-  appProperties?: Record<string, string>;
-};
-
-type DriveFileRecord = {
-  id: string;
-  name: string | null;
-  mimeType: string | null;
-  modifiedTime: string | null;
-  version: string | null;
-  appProperties: Record<string, string>;
-  webViewLink: string | null;
-  canEdit: boolean | null;
-};
-
-type DriveCreateFileOptions = {
-  name: string;
-  mimeType?: string;
-  appProperties?: Record<string, string>;
-  content?: string | Blob | ArrayBuffer;
-};
-```
-
-首次同步会按 `name = "plan-gacha.state.json"` 和 `appProperties.appId = "plan-gacha"` 查找远端文件。本地为空时会直接拉取远端；本地已有内容时会进入确认流程；找不到远端文件才会创建新文件。
-
-保存前会用本地记录的 Drive `version` 和当前远端 `version` 做粗略冲突判断。由于 `driveStorage` 不再提供内容级指纹，内容是否相同只在首次定位远端文件时通过稳定 JSON 对比判断。
-
-如果本地记住的 `fileId` 已被删除或不可访问，应用会清掉本地绑定。执行“同步”保存时会重新按 locator 查找，找不到就创建新的远端文件；执行拉取或合并时会明确提示远端文件已不存在。远端文件不是合法 JSON 时会直接报错，不会进入冲突处理流程。
-
-发生冲突时，界面提供三种处理：拉取远端覆盖本地、用本地覆盖远端、或尝试自动合并。自动合并只处理当前 `appSchemaVersion` 的完整同步文件；schema 不匹配、远端格式不完整、同一个 trip/plan/date/checklist 项两边都改过时，会拒绝合并并提示原因。
+首次同步会查找 `plan-gacha.state.json`。本地为空时可以直接拉取远端；本地已有内容时会要求确认；找不到文件才会创建。冲突时可以选择远端覆盖、本地覆盖或自动合并；schema 不兼容、远端 JSON 无效或同一数据被两端同时修改时会明确报错。
 
 ### 本地开发
 
@@ -170,7 +124,9 @@ http://127.0.0.1:5173/
 ### 校验与构建
 
 ```bash
+npm run typecheck
 npm run lint
+npm test
 npm run build
 ```
 
@@ -178,7 +134,7 @@ npm run build
 
 Plan Gacha is a lightweight tool for switching travel plans dynamically during a trip. It is designed for trips where you prepare `n + m` candidate plans in advance, then decide each day based on weather, closures, reservations, energy level and last-minute changes.
 
-Data is stored in browser `localStorage` by default. The current version is a frontend-only app with no backend dependency.
+Data is stored in browser `localStorage` by default. The current version is a frontend-only app with no backend dependency; a deployment host may optionally inject a remote-storage adapter.
 
 ### What It Solves
 
@@ -235,7 +191,7 @@ Prompts are scoped to the task:
 - Single-plan editing: includes only the current plan or existing plan IDs, and asks AI to output one plan JSON object.
 - Replanning: includes fixed dates, adjustable dates, remaining plans, weather and warnings, then asks AI for an importable result.
 
-A more natural future direction may be to expose Plan Gacha as a service that users can access directly from AI products.
+Recorded daily reviews are used only as soft preferences for pacing, energy, transport and weather. They never become place blacklists or hard constraints automatically.
 
 ### Weather Data
 
@@ -254,9 +210,9 @@ Weather lookup prioritizes `location.weather_location`, city, district or coordi
 
 ### Data And Import/Export
 
-- Data is stored in browser `localStorage`; there is no account system or cloud sync.
+- Data is stored in browser `localStorage`; there is no built-in account system or cloud service. A deployment host may provide the optional remote-sync adapter described below.
 - `127.0.0.1:5173` and `localhost:5173` are different browser origins, so their local data is separate.
-- Trip export downloads a JSON file containing the plan pool and schedule. It does not include the trip checklist; import supports pasted JSON or a local JSON file.
+- Trip export downloads a JSON file containing dates, lodgings, the plan pool, schedule, place feedback, actual trip outcomes and daily reviews. It excludes the checklist and weather cache; import supports pasted JSON or a local JSON file.
 - Weather results are stored only as local browser cache. They are not written to trip export JSON or remote sync files.
 - The checklist is global standalone data. It can be downloaded separately as JSON, then imported by pasting or choosing a file, with replace or merge behavior.
 - During checklist merge, same category plus same text is treated as the same item. Same text in a different category migrates clear status matches and reports a conflict.
@@ -265,7 +221,7 @@ Weather lookup prioritizes `location.weather_location`, city, district or coordi
 
 ### Optional Remote Sync Adapter
 
-The app does not bind to a specific remote storage provider. A host can inject a minimal `driveStorage` adapter so the app can sync the full workspace snapshot to a remote JSON file owned by that host.
+The app does not bind to a specific remote storage provider. A host can inject a minimal `driveStorage` adapter to sync a complete workspace snapshot containing trips, schedules, review state and the checklist. Weather cache data is never uploaded.
 
 By default, the sync entry is enabled when the URL includes `?sync=1`, or when the browser already remembers a synced file; the host must also provide the `driveStorage` API, otherwise the entry stays hidden. Deployments can disable it completely with an environment variable:
 
@@ -274,55 +230,9 @@ VITE_DRIVE_STORAGE_EXPOSURE=url   # default: URL parameter, or a remembered sync
 VITE_DRIVE_STORAGE_EXPOSURE=off   # disable completely
 ```
 
-The host should provide `window.driveStorage`, or make `/drive-storage/driveStorage.js` provide it after loading. The app locates the sync file by `name + appProperties.appId`; if multiple files match, the host should throw `DriveStorageAmbiguousFileError`. Minimal interface:
+The host should provide `window.driveStorage`, or make `/drive-storage/driveStorage.js` provide it after loading. The adapter connects, locates files by `name + appProperties.appId`, and creates, reads and writes JSON. See [`src/types/driveStorage.ts`](src/types/driveStorage.ts) for the complete contract.
 
-```ts
-type DriveStorageApi = {
-  status(): { configured?: boolean; connected?: boolean };
-  isConfigured?(): boolean;
-  connect(options?: { prompt?: '' | 'consent' | 'select_account' }): Promise<unknown>;
-  disconnect?(options?: { revoke?: boolean }): Promise<unknown>;
-  getFile(fileIdOrLocator: string | DriveFileLocator): Promise<DriveFileRecord>;
-  findFile(locator: DriveFileLocator): Promise<DriveFileRecord | null>;
-  createFile(options: DriveCreateFileOptions): Promise<DriveFileRecord>;
-  readJson<T = unknown>(fileIdOrLocator: string | DriveFileLocator): Promise<T>;
-  writeJson(fileIdOrLocator: string | DriveFileLocator, data: unknown, options?: { space?: number; mimeType?: string; appProperties?: Record<string, string> }): Promise<DriveFileRecord>;
-  DriveStorageConflictError?: new (message: string, details?: { remote?: unknown; local?: unknown }) => Error;
-};
-
-type DriveFileLocator = {
-  id?: string;
-  name?: string;
-  mimeType?: string;
-  appProperties?: Record<string, string>;
-};
-
-type DriveFileRecord = {
-  id: string;
-  name: string | null;
-  mimeType: string | null;
-  modifiedTime: string | null;
-  version: string | null;
-  appProperties: Record<string, string>;
-  webViewLink: string | null;
-  canEdit: boolean | null;
-};
-
-type DriveCreateFileOptions = {
-  name: string;
-  mimeType?: string;
-  appProperties?: Record<string, string>;
-  content?: string | Blob | ArrayBuffer;
-};
-```
-
-On first sync, the app searches for a remote file with `name = "plan-gacha.state.json"` and `appProperties.appId = "plan-gacha"`. Empty local state pulls remote automatically; non-empty local state asks for confirmation; a new file is created only when no remote file is found.
-
-Before saving, the app compares the locally remembered Drive `version` with the current remote `version` as a coarse conflict check. Since `driveStorage` no longer provides a content fingerprint, content equality is checked only when first locating an existing remote file, using stable JSON comparison.
-
-If the remembered `fileId` was deleted or became inaccessible, the app clears the local binding. A sync/save action relocates by locator and creates a new remote file when none is found; pull or merge actions report the missing remote file explicitly. Invalid remote JSON is reported directly and never enters the conflict flow.
-
-On conflict, the UI offers three actions: pull remote over local, overwrite remote with local, or try automatic merge. Automatic merge only supports complete sync files for the current `appSchemaVersion`; schema mismatch, incomplete remote format, or two-sided edits to the same trip/plan/date/checklist item cause merge to fail with a reason.
+On first sync, the app searches for `plan-gacha.state.json`. Empty local state can pull remote directly; non-empty local state asks for confirmation; a new file is created only when no match exists. Conflicts can be resolved by taking remote, taking local or attempting an automatic merge. Incompatible schemas, invalid remote JSON and simultaneous edits to the same data are reported explicitly.
 
 ### Local Development
 
@@ -340,6 +250,8 @@ http://127.0.0.1:5173/
 ### Validate And Build
 
 ```bash
+npm run typecheck
 npm run lint
+npm test
 npm run build
 ```

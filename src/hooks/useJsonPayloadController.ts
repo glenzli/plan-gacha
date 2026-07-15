@@ -12,8 +12,12 @@ import {
   normalizeSchedule,
   normalizeTripLodgings,
   type NormalizedLodging,
+  type NormalizedPlaceFeedback,
   type NormalizedSchedule,
+  type NormalizedStopOutcomes,
 } from '../domain/trip';
+import type { NormalizedDayReviews } from '../domain/dayReview';
+import { buildTripExportPayload, readImportedTripHistory } from '../domain/tripExport';
 import { WEATHER_LABELS } from '../domain/weather';
 import {
   getSinglePlanPayload,
@@ -42,26 +46,32 @@ interface UseJsonPayloadControllerOptions {
   importTextRef: RefObject<HTMLTextAreaElement | null>;
   invalidateWeatherCache: () => void;
   isCreatingPlan: boolean;
+  dayReviews: NormalizedDayReviews;
   lodgings: NormalizedLodging[];
   normalizedPlans: NormalizedPlan[];
   notify: (message: string) => void;
+  placeFeedback: NormalizedPlaceFeedback;
   resetAiPlannerFields: () => void;
   schedule: NormalizedSchedule;
   setAiPlannerOpen: Dispatch<SetStateAction<boolean>>;
   setBatchAiOpen: Dispatch<SetStateAction<boolean>>;
   setChecklistImportConflicts: Dispatch<SetStateAction<ChecklistMergeConflict[]>>;
   setChecklistImportText: Dispatch<SetStateAction<string>>;
+  setDayReviews: Dispatch<SetStateAction<NormalizedDayReviews>>;
   setImportModalOpen: Dispatch<SetStateAction<boolean>>;
   setLodgings: Dispatch<SetStateAction<NormalizedLodging[]>>;
+  setPlaceFeedback: Dispatch<SetStateAction<NormalizedPlaceFeedback>>;
   setPlans: Dispatch<SetStateAction<unknown[]>>;
   setSchedule: Dispatch<SetStateAction<NormalizedSchedule>>;
   setStartDateStr: Dispatch<SetStateAction<string>>;
+  setStopOutcomes: Dispatch<SetStateAction<NormalizedStopOutcomes>>;
   setTripDays: Dispatch<SetStateAction<number>>;
   startDateStr: string;
   t: TranslateFn;
   tripDates: DisplayTripDate[];
   tripDays: number;
   tripName: string;
+  stopOutcomes: NormalizedStopOutcomes;
 }
 
 function getErrorMessage(error: unknown) {
@@ -82,26 +92,32 @@ export function useJsonPayloadController({
   importTextRef,
   invalidateWeatherCache,
   isCreatingPlan,
+  dayReviews,
   lodgings,
   normalizedPlans,
   notify,
+  placeFeedback,
   resetAiPlannerFields,
   schedule,
   setAiPlannerOpen,
   setBatchAiOpen,
   setChecklistImportConflicts,
   setChecklistImportText,
+  setDayReviews,
   setImportModalOpen,
   setLodgings,
+  setPlaceFeedback,
   setPlans,
   setSchedule,
   setStartDateStr,
+  setStopOutcomes,
   setTripDays,
   startDateStr,
   t,
   tripDates,
   tripDays,
   tripName,
+  stopOutcomes,
 }: UseJsonPayloadControllerOptions) {
   const assertPlanDraftOption = (value: unknown, allowedValues: Set<string>, path: string) => {
     const normalizedValue = String(value || '').trim();
@@ -204,6 +220,20 @@ export function useJsonPayloadController({
     } else if (parsed.schedule && typeof parsed.schedule === 'object') {
       touched = true;
       setSchedule((current) => ({ ...current, ...normalizeSchedule(parsed.schedule) }));
+    }
+
+    const importedHistory = readImportedTripHistory(parsed);
+    if (importedHistory.placeFeedback !== undefined) {
+      touched = true;
+      setPlaceFeedback(importedHistory.placeFeedback);
+    }
+    if (importedHistory.stopOutcomes !== undefined) {
+      touched = true;
+      setStopOutcomes(importedHistory.stopOutcomes);
+    }
+    if (importedHistory.dayReviews !== undefined) {
+      touched = true;
+      setDayReviews(importedHistory.dayReviews);
     }
 
     if (!touched && !parsed.startDateStr && !parsed.tripDays) {
@@ -326,7 +356,17 @@ export function useJsonPayloadController({
 
   const handleExportState = () => {
     try {
-      const data = { schemaVersion: APP_SCHEMA_VERSION, startDateStr, tripDays, lodgings, plans: normalizedPlans, schedule };
+      const data = buildTripExportPayload({
+        schemaVersion: APP_SCHEMA_VERSION,
+        startDateStr,
+        tripDays,
+        lodgings,
+        plans: normalizedPlans,
+        schedule,
+        placeFeedback,
+        stopOutcomes,
+        dayReviews,
+      });
       const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
       downloadJson(data, fileName);
       notify(t('jsonDownloaded'));
