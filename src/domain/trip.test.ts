@@ -174,6 +174,13 @@ describe('trip snapshot normalization', () => {
           rating: 'satisfied',
         },
       },
+      archive_summary: {
+        currency: 'jpy',
+        expenses: { food: 3000 },
+        note: 'Good trip',
+        archived_at: '2026-07-12T09:00:00.000Z',
+        updated_at: '2026-07-12T10:00:00.000Z',
+      },
       weatherData: { stale: true },
     }, 0, { todayId: '2026-07-01' });
 
@@ -194,6 +201,11 @@ describe('trip snapshot normalization', () => {
       },
       dayReviews: {
         '2026-07-11:plan-1': { rating: DayReviewRating.Satisfied },
+      },
+      archiveSummary: {
+        currency: 'JPY',
+        expenses: { food: 3000 },
+        note: 'Good trip',
       },
       archived: false,
     });

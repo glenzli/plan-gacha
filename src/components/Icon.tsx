@@ -17,6 +17,7 @@ export type IconName =
   | 'refresh'
   | 'cloud'
   | 'sparkles'
+  | 'archive'
   | 'ban'
   | 'trash'
   | 'x';
@@ -144,6 +145,13 @@ export function Icon({ name, className = '' }: IconProps) {
         <path d="m12 3 1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8Z" />
         <path d="m19 15 .8 1.7L21.5 18l-1.7.8L19 20.5l-.8-1.7-1.7-.8 1.7-.8Z" />
         <path d="m5 14 .7 1.5L7.2 16l-1.5.7L5 18.2l-.7-1.5L2.8 16l1.5-.7Z" />
+      </>
+    ),
+    archive: (
+      <>
+        <rect width="20" height="5" x="2" y="3" rx="1" />
+        <path d="M4 8v13h16V8" />
+        <path d="M10 12h4" />
       </>
     ),
     ban: (

@@ -20,6 +20,7 @@ import {
   getSmartSelectedDate,
 } from './display';
 import { getTodayId } from './date';
+import { findNearestRelevantTrip } from './tripLifecycle';
 import type { WeatherDataMap } from '../types/weatherData';
 
 export const STORAGE_KEYS = {
@@ -44,6 +45,7 @@ export interface InitialAppState {
   placeFeedback: NormalizedTripSnapshot['placeFeedback'];
   stopOutcomes: NormalizedTripSnapshot['stopOutcomes'];
   dayReviews: NormalizedTripSnapshot['dayReviews'];
+  archiveSummary: NormalizedTripSnapshot['archiveSummary'];
   selectedDate: string;
   weatherData: WeatherDataMap;
   checklistText: string;
@@ -64,14 +66,13 @@ export function loadInitialState(): InitialAppState {
   const storedTrips = safeJsonRead<unknown>(STORAGE_KEYS.trips, null);
   const loadedTrips = isCompatibleAppSchemaVersion(currentVersion) && Array.isArray(storedTrips) && storedTrips.length > 0
     ? storedTrips.map((trip, index) => normalizeTripSnapshot(trip, index))
-    : [createEmptyTripSnapshot('新旅行计划', getTodayId(), 'trip-default')];
+    : [];
 
-  const requestedActiveTripId = localStorage.getItem(STORAGE_KEYS.currentTrip) || loadedTrips[0].id;
-  const visibleLoadedTrips = loadedTrips.filter((trip) => !trip.archived);
-  const loadedActiveTrip = visibleLoadedTrips.find((trip) => trip.id === requestedActiveTripId) || visibleLoadedTrips[0] || loadedTrips[0];
-  const trips = pruneEmptyTripDrafts(loadedTrips, loadedActiveTrip.id);
-  const visibleTrips = trips.filter((trip) => !trip.archived);
-  const activeTrip = visibleTrips.find((trip) => trip.id === loadedActiveTrip.id) || visibleTrips[0] || trips[0];
+  const trips = pruneEmptyTripDrafts(loadedTrips);
+  const nearestTrip = findNearestRelevantTrip(trips, getTodayId());
+  const activeTrip = nearestTrip || normalizeTripSnapshot(
+    createEmptyTripSnapshot('新旅行计划', getTodayId(), 'trip-current-stage-empty'),
+  );
   const storedChecklistText = localStorage.getItem(STORAGE_KEYS.checklistText);
   const storedChecklistState = safeJsonRead<unknown>(STORAGE_KEYS.checklistState, null);
   const storedWeatherCache = safeJsonRead<WeatherDataMap>(STORAGE_KEYS.weatherCache, {});
@@ -88,7 +89,7 @@ export function loadInitialState(): InitialAppState {
 
   return {
     trips,
-    activeTripId: activeTrip.id,
+    activeTripId: nearestTrip?.id || '',
     tripName: activeTrip.name,
     startDate: activeTrip.startDateStr,
     tripDays: activeTrip.tripDays,
@@ -98,6 +99,7 @@ export function loadInitialState(): InitialAppState {
     placeFeedback: activeTrip.placeFeedback || {},
     stopOutcomes: activeTrip.stopOutcomes || {},
     dayReviews: activeTrip.dayReviews || {},
+    archiveSummary: activeTrip.archiveSummary,
     selectedDate: getSmartSelectedDate(activeTrip.startDateStr, activeTrip.tripDays),
     weatherData: storedWeatherCache && typeof storedWeatherCache === 'object' && !Array.isArray(storedWeatherCache)
       ? storedWeatherCache

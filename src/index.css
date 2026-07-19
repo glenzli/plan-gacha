@@ -2941,6 +2941,103 @@ label {
   overflow: hidden;
 }
 
+.archive-trip-overlay {
+  z-index: 95;
+}
+
+.archive-trip-modal {
+  width: min(42rem, 100%);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.archive-trip-header h2,
+.archive-trip-header span,
+.archive-trip-help,
+.archive-note-field {
+  margin: 0;
+}
+
+.archive-trip-header > div > span {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 750;
+}
+
+.archive-trip-body {
+  display: grid;
+  min-height: 0;
+  gap: 1rem;
+  overflow: auto;
+  padding-right: 0.12rem;
+}
+
+.archive-trip-help {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.archive-currency-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(8rem, 12rem));
+  gap: 0.65rem;
+}
+
+.archive-expense-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.archive-currency-row label,
+.archive-expense-grid label,
+.archive-note-field {
+  display: grid;
+  gap: 0.32rem;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.archive-currency-row input,
+.archive-currency-row select,
+.archive-expense-grid input,
+.archive-note-field textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.archive-currency-row input,
+.archive-currency-row select,
+.archive-expense-grid input {
+  min-height: 2.45rem;
+  padding: 0.45rem 0.6rem;
+  font-family: var(--mono);
+}
+
+.archive-currency-row select {
+  appearance: auto;
+}
+
+.archive-note-field textarea {
+  min-height: 5.5rem;
+  resize: vertical;
+  padding: 0.65rem;
+  line-height: 1.55;
+}
+
+.archive-trip-actions {
+  justify-content: flex-end;
+}
+
 .day-review-modal-header h2 {
   margin: 0.12rem 0 0;
 }
@@ -3403,6 +3500,61 @@ label {
 .archived-view-body {
   display: grid;
   gap: 0.75rem;
+}
+
+.archived-trip-summary {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.85rem;
+  border-left: 2px solid var(--accent);
+  background: var(--surface-soft);
+}
+
+.archived-trip-summary-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.archived-trip-summary h3,
+.archived-trip-summary p {
+  margin: 0;
+}
+
+.archived-trip-summary-head h3 {
+  font-size: 0.88rem;
+}
+
+.archived-trip-summary-head strong,
+.archived-expense-list strong {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+}
+
+.archived-expense-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.38rem 1rem;
+}
+
+.archived-expense-list > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.archived-expense-list em {
+  font-style: normal;
+}
+
+.archived-trip-summary p {
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
 }
 
 .archived-outcome-summary {
@@ -4225,6 +4377,16 @@ label {
 
   .archived-view-modal {
     max-height: calc(100vh - 1.3rem);
+  }
+
+  .archive-trip-modal {
+    max-height: calc(100vh - 1.3rem);
+  }
+
+  .archive-expense-grid,
+  .archived-expense-list,
+  .archive-currency-row {
+    grid-template-columns: 1fr;
   }
 
   .archived-view-actions {

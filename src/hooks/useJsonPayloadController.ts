@@ -17,6 +17,7 @@ import {
   type NormalizedStopOutcomes,
 } from '../domain/trip';
 import type { NormalizedDayReviews } from '../domain/dayReview';
+import type { TripArchiveSummary } from '../domain/tripArchive';
 import { buildTripExportPayload, readImportedTripHistory } from '../domain/tripExport';
 import { WEATHER_LABELS } from '../domain/weather';
 import {
@@ -47,6 +48,7 @@ interface UseJsonPayloadControllerOptions {
   invalidateWeatherCache: () => void;
   isCreatingPlan: boolean;
   dayReviews: NormalizedDayReviews;
+  archiveSummary: TripArchiveSummary | null;
   lodgings: NormalizedLodging[];
   normalizedPlans: NormalizedPlan[];
   notify: (message: string) => void;
@@ -58,6 +60,7 @@ interface UseJsonPayloadControllerOptions {
   setChecklistImportConflicts: Dispatch<SetStateAction<ChecklistMergeConflict[]>>;
   setChecklistImportText: Dispatch<SetStateAction<string>>;
   setDayReviews: Dispatch<SetStateAction<NormalizedDayReviews>>;
+  setArchiveSummary: Dispatch<SetStateAction<TripArchiveSummary | null>>;
   setImportModalOpen: Dispatch<SetStateAction<boolean>>;
   setLodgings: Dispatch<SetStateAction<NormalizedLodging[]>>;
   setPlaceFeedback: Dispatch<SetStateAction<NormalizedPlaceFeedback>>;
@@ -72,6 +75,7 @@ interface UseJsonPayloadControllerOptions {
   tripDays: number;
   tripName: string;
   stopOutcomes: NormalizedStopOutcomes;
+  ensureActiveTrip: () => void;
 }
 
 function getErrorMessage(error: unknown) {
@@ -93,6 +97,7 @@ export function useJsonPayloadController({
   invalidateWeatherCache,
   isCreatingPlan,
   dayReviews,
+  archiveSummary,
   lodgings,
   normalizedPlans,
   notify,
@@ -104,6 +109,7 @@ export function useJsonPayloadController({
   setChecklistImportConflicts,
   setChecklistImportText,
   setDayReviews,
+  setArchiveSummary,
   setImportModalOpen,
   setLodgings,
   setPlaceFeedback,
@@ -118,6 +124,7 @@ export function useJsonPayloadController({
   tripDays,
   tripName,
   stopOutcomes,
+  ensureActiveTrip,
 }: UseJsonPayloadControllerOptions) {
   const assertPlanDraftOption = (value: unknown, allowedValues: Set<string>, path: string) => {
     const normalizedValue = String(value || '').trim();
@@ -159,22 +166,32 @@ export function useJsonPayloadController({
 
   const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied')) => {
     let touched = false;
+    let activeTripEnsured = false;
+    const ensureTrip = () => {
+      if (activeTripEnsured) return;
+      ensureActiveTrip();
+      activeTripEnsured = true;
+    };
 
     if (parsed.startDateStr) {
+      ensureTrip();
       touched = true;
       setStartDateStr(parsed.startDateStr);
     }
     if (parsed.tripDays) {
+      ensureTrip();
       touched = true;
       setTripDays(clampTripDays(parsed.tripDays));
     }
     const importedLodgings = parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays;
     if (Array.isArray(importedLodgings)) {
+      ensureTrip();
       touched = true;
       setLodgings(normalizeTripLodgings(importedLodgings));
     }
 
     if (Array.isArray(parsed.plans)) {
+      ensureTrip();
       touched = true;
       setPlans((current) => {
         const next = [...current];
@@ -200,6 +217,7 @@ export function useJsonPayloadController({
       }, {} as NormalizedSchedule);
 
       if (Object.keys(assigned).length) {
+        ensureTrip();
         touched = true;
         setSchedule((current) => ({ ...current, ...assigned }));
       }
@@ -214,26 +232,36 @@ export function useJsonPayloadController({
       }, {} as NormalizedSchedule);
 
       if (Object.keys(importedSchedule).length) {
+        ensureTrip();
         touched = true;
         setSchedule((current) => ({ ...current, ...importedSchedule }));
       }
     } else if (parsed.schedule && typeof parsed.schedule === 'object') {
+      ensureTrip();
       touched = true;
       setSchedule((current) => ({ ...current, ...normalizeSchedule(parsed.schedule) }));
     }
 
     const importedHistory = readImportedTripHistory(parsed);
     if (importedHistory.placeFeedback !== undefined) {
+      ensureTrip();
       touched = true;
       setPlaceFeedback(importedHistory.placeFeedback);
     }
     if (importedHistory.stopOutcomes !== undefined) {
+      ensureTrip();
       touched = true;
       setStopOutcomes(importedHistory.stopOutcomes);
     }
     if (importedHistory.dayReviews !== undefined) {
+      ensureTrip();
       touched = true;
       setDayReviews(importedHistory.dayReviews);
+    }
+    if (importedHistory.archiveSummary !== undefined) {
+      ensureTrip();
+      touched = true;
+      setArchiveSummary(importedHistory.archiveSummary);
     }
 
     if (!touched && !parsed.startDateStr && !parsed.tripDays) {
@@ -366,6 +394,7 @@ export function useJsonPayloadController({
         placeFeedback,
         stopOutcomes,
         dayReviews,
+        archiveSummary,
       });
       const fileName = `${sanitizeFileNamePart(tripName || t('unnamedTrip'))}-${startDateStr || 'trip'}.json`;
       downloadJson(data, fileName);

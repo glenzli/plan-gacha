@@ -158,12 +158,11 @@ export function formatMiniDate(dateId: string) {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
-export function getSmartSelectedDate(startDate: string, tripDays: number) {
+export function getSmartSelectedDate(startDate: string, tripDays: number, today = getTodayId()) {
   const tripDateIds = createTripDates(startDate, tripDays).map((date) => date.id);
-  const today = getTodayId();
-
   if (tripDateIds.includes(today)) return today;
-  return tripDateIds[0] || startDate;
+  if (today < startDate) return tripDateIds[0] || startDate;
+  return tripDateIds[tripDateIds.length - 1] || startDate;
 }
 
 export function uniq<T>(values: T[]) {

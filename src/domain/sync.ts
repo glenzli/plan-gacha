@@ -6,6 +6,7 @@ import {
 } from './checklist';
 import { addDays } from './date';
 import { normalizeDayReviews } from './dayReview';
+import { normalizeTripArchiveSummary } from './tripArchive';
 import { normalizePlan, type TripDateLike } from './plan';
 import {
   normalizePlaceFeedback,
@@ -143,11 +144,9 @@ export function normalizeAppSnapshotForSync(snapshot: any, language: Language = 
     });
   });
 
-  if (!trips.length) throw createSyncMergeError('merge_invalid_snapshot', { source });
-
   const activeTripId = trips.some((trip: any) => trip.id === snapshot.activeTripId)
     ? snapshot.activeTripId
-    : trips.find((trip: any) => !trip.archived)?.id || trips[0].id;
+    : trips.find((trip: any) => !trip.archived)?.id || trips[0]?.id || '';
   const checklistText = normalizeChecklistText(snapshot.checklistText ?? snapshot.checklist ?? snapshot.packingList, '');
   const checklistGroups = parseChecklistText(checklistText, language);
 
@@ -313,6 +312,22 @@ function mergeLodgingsForSync(localLodgings: any[], remoteLodgings: any[], path:
   return result;
 }
 
+function mergeArchiveSummaryForSync(localSummary: any, remoteSummary: any, path: string) {
+  const local = normalizeTripArchiveSummary(localSummary);
+  const remote = normalizeTripArchiveSummary(remoteSummary);
+  if (!local) return remote;
+  if (!remote) return local;
+  if (jsonEqual(local, remote)) return local;
+
+  const localTime = Date.parse(local.updatedAt);
+  const remoteTime = Date.parse(remote.updatedAt);
+  if (Number.isFinite(localTime) && Number.isFinite(remoteTime) && localTime !== remoteTime) {
+    return localTime > remoteTime ? local : remote;
+  }
+
+  throw createSyncMergeError('merge_data_conflict', { path: `${path}.archiveSummary` });
+}
+
 function mergeTripForSync(localTrip: any, remoteTrip: any) {
   if (jsonEqual(localTrip, remoteTrip)) return localTrip;
   const path = `trips.${localTrip.id}`;
@@ -328,6 +343,7 @@ function mergeTripForSync(localTrip: any, remoteTrip: any) {
     placeFeedback: mergePlaceFeedbackForSync(localTrip.placeFeedback, remoteTrip.placeFeedback, path),
     stopOutcomes: mergeStopOutcomesForSync(localTrip.stopOutcomes, remoteTrip.stopOutcomes, path),
     dayReviews: mergeDayReviewsForSync(localTrip.dayReviews, remoteTrip.dayReviews, path),
+    archiveSummary: mergeArchiveSummaryForSync(localTrip.archiveSummary, remoteTrip.archiveSummary, path),
     archived: mergeScalarValue(localTrip.archived, remoteTrip.archived, `${path}.archived`),
   };
 }
@@ -366,7 +382,7 @@ export function mergeAppSnapshots(localSnapshot: any, remoteSnapshot: any, langu
     ? local.activeTripId
     : trips.some((trip) => trip.id === remote.activeTripId)
       ? remote.activeTripId
-      : trips.find((trip) => !trip.archived)?.id || trips[0]?.id;
+      : trips.find((trip) => !trip.archived)?.id || trips[0]?.id || '';
   const checklist = mergeChecklistPayload(
     local.checklistText,
     local.checklistState,

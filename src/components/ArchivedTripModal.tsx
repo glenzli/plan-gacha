@@ -13,6 +13,11 @@ import {
 import { formatWeatherDataSummary, getWeatherIconCondition, getWeatherLocationSummaryRows } from '../domain/weather';
 import type { WeatherEvaluation } from '../domain/weather';
 import { findDayReview, getDayReviewsForDate } from '../domain/dayReview';
+import {
+  getTripExpenseTotal,
+  hasTripArchiveSummaryContent,
+  TRIP_EXPENSE_CATEGORIES,
+} from '../domain/tripArchive';
 import type { PlanRenderer, TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
 
@@ -49,6 +54,19 @@ function createArchivedTripDates(startDateStr: string, tripDays: number, languag
   });
 }
 
+function formatExpense(amount: number, currency: string, language: string) {
+  if (!currency) return amount.toLocaleString(getLocale(language));
+  try {
+    return new Intl.NumberFormat(getLocale(language), {
+      style: 'currency',
+      currency,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString(getLocale(language))}`;
+  }
+}
+
 export function ArchivedTripModal({
   evaluateWeather,
   formatTripRange,
@@ -73,6 +91,8 @@ export function ArchivedTripModal({
   const abandonedStopCount = Object.values(trip.stopOutcomes || {})
     .filter((entry) => entry.status === StopOutcomeStatus.Abandoned).length;
   const reviewedDayCount = new Set(Object.values(trip.dayReviews || {}).map((review) => review.dateId)).size;
+  const archiveSummary = trip.archiveSummary;
+  const expenseTotal = getTripExpenseTotal(archiveSummary);
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -104,6 +124,30 @@ export function ArchivedTripModal({
         </div>
 
         <div className="archived-view-body">
+          {hasTripArchiveSummaryContent(archiveSummary) && (
+            <section className="archived-trip-summary">
+              <div className="archived-trip-summary-head">
+                <h3>{t('tripSummary')}</h3>
+                {expenseTotal > 0 && (
+                  <strong>{t('totalExpense')}: {formatExpense(expenseTotal, archiveSummary?.currency || '', language)}</strong>
+                )}
+              </div>
+              {expenseTotal > 0 && (
+                <div className="archived-expense-list">
+                  {TRIP_EXPENSE_CATEGORIES.flatMap((category) => {
+                    const amount = archiveSummary?.expenses?.[category] || 0;
+                    return amount > 0 ? [(
+                      <span key={category}>
+                        <em>{t(`expenseCategory.${category}`)}</em>
+                        <strong>{formatExpense(amount, archiveSummary?.currency || '', language)}</strong>
+                      </span>
+                    )] : [];
+                  })}
+                </div>
+              )}
+              {archiveSummary?.note && <p>{archiveSummary.note}</p>}
+            </section>
+          )}
           {archiveDates.map((date) => {
             const plan = archivePlansById.get(archiveSchedule[date.id]?.planId);
             const abandoned = archiveSchedule[date.id]?.status === ScheduleEntryStatus.Abandoned;

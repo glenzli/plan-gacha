@@ -7,6 +7,7 @@ function createSnapshot(
   placeFeedback: Record<string, unknown>,
   stopOutcomes: Record<string, unknown> = {},
   dayReviews: Record<string, unknown> = {},
+  archiveSummary: Record<string, unknown> | null = null,
 ) {
   return {
     appSchemaVersion: '1.0',
@@ -23,6 +24,7 @@ function createSnapshot(
       placeFeedback,
       stopOutcomes,
       dayReviews,
+      archiveSummary,
       archived: false,
     }],
     checklistText: '',
@@ -119,5 +121,29 @@ describe('trip outcome sync', () => {
     };
 
     expect(mergedTrip.dayReviews[key].rating).toBe(DayReviewRating.Satisfied);
+  });
+
+  it('uses the latest optional archive summary', () => {
+    const local = createSnapshot({}, {}, {}, {
+      currency: 'JPY',
+      expenses: { food: 5000 },
+      note: 'Local note',
+      archivedAt: '2026-07-12T09:00:00.000Z',
+      updatedAt: '2026-07-12T09:00:00.000Z',
+    });
+    const remote = createSnapshot({}, {}, {}, {
+      currency: 'JPY',
+      expenses: { food: 6500 },
+      note: 'Remote note',
+      archivedAt: '2026-07-12T09:00:00.000Z',
+      updatedAt: '2026-07-12T10:00:00.000Z',
+    });
+
+    const merged = mergeAppSnapshots(local, remote);
+    const mergedTrip = merged.trips[0] as { archiveSummary: { note: string; expenses: { food: number } } };
+    expect(mergedTrip.archiveSummary).toMatchObject({
+      note: 'Remote note',
+      expenses: { food: 6500 },
+    });
   });
 });

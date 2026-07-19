@@ -18,6 +18,7 @@ interface TripHeaderProps {
   getTripDisplay: (trip: Partial<NormalizedTripSnapshot>, isCurrentTrip?: boolean) => TripDisplay;
   hasInitializedPlans: boolean;
   onOpenDriveSync: () => void;
+  onArchiveTrip: VoidFn;
   onOpenTripEditor: () => void;
   openAiPlanner: (mode: 'replan' | 'generate') => void;
   openChecklist: () => void;
@@ -42,6 +43,7 @@ export function TripHeader({
   getTripDisplay,
   hasInitializedPlans,
   onOpenDriveSync,
+  onArchiveTrip,
   onOpenTripEditor,
   openAiPlanner,
   openChecklist,
@@ -154,6 +156,17 @@ export function TripHeader({
           {driveFeatureEnabled && Boolean(driveStorage) && (
             <button className="icon-btn drive-sync-btn" type="button" onClick={onOpenDriveSync} aria-label={t('driveSync')} title={t('driveSync')}>
               <Icon name="cloud" />
+            </button>
+          )}
+          {hasInitializedPlans && (
+            <button
+              className="icon-btn archive-shortcut-btn"
+              type="button"
+              onClick={onArchiveTrip}
+              aria-label={t('archive')}
+              title={t('archive')}
+            >
+              <Icon name="archive" />
             </button>
           )}
           <button

@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next';
 import en from './locales/en.json';
 import zh from './locales/zh.json';
 
-const urlLanguage = new URLSearchParams(window.location.search).get('lang');
+const urlLanguage = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search).get('lang');
 const initialLanguage: 'zh' | 'en' = urlLanguage === 'en' || urlLanguage === 'zh' ? urlLanguage : 'zh';
 
 i18n

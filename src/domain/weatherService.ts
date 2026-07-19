@@ -6,6 +6,7 @@ import {
   type TripDateLike,
 } from './plan';
 import { getWeatherLocationLabel, type WeatherLocationLike } from './weather';
+import { getTodayId } from './date';
 
 const WEATHER_FETCH_TIMEOUT_MS = 20000;
 const WEATHER_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
@@ -232,14 +233,55 @@ function parseForecastDaily(data: AnyRecord) {
   );
 }
 
-function isWeatherCacheFresh(entry: AnyRecord, tripDates: TripDateLike[]) {
-  if (!entry?.dailyByDate || !entry.fetchedAt) return false;
-
+function isWeatherCacheTimestampFresh(entry: AnyRecord) {
+  if (!entry?.fetchedAt) return false;
   const fetchedAt = new Date(entry.fetchedAt).getTime();
   if (!Number.isFinite(fetchedAt)) return false;
-  if (Date.now() - fetchedAt > WEATHER_CACHE_TTL_MS) return false;
+  return Date.now() - fetchedAt <= WEATHER_CACHE_TTL_MS;
+}
 
-  return tripDates.every((date) => Boolean(entry.dailyByDate[date.id]));
+export function getWeatherFetchDateIds(
+  entry: AnyRecord,
+  tripDates: TripDateLike[],
+  forceRefresh = false,
+  todayId = getTodayId(),
+) {
+  const cacheFresh = isWeatherCacheTimestampFresh(entry);
+  return tripDates
+    .map((date) => date.id)
+    .filter((dateId) => {
+      const hasCachedDay = Boolean(entry?.dailyByDate?.[dateId]);
+      if (dateId < todayId) return !hasCachedDay;
+      return forceRefresh || !hasCachedDay || !cacheFresh;
+    });
+}
+
+function isWeatherCacheFresh(entry: AnyRecord, tripDates: TripDateLike[]) {
+  return getWeatherFetchDateIds(entry, tripDates).length === 0;
+}
+
+export function mergeWeatherCacheEntry(
+  cachedEntry: AnyRecord,
+  fetchedEntry: AnyRecord,
+  tripDates: TripDateLike[],
+  todayId = getTodayId(),
+) {
+  const dailyByDate = {
+    ...(cachedEntry?.dailyByDate || {}),
+    ...(fetchedEntry?.dailyByDate || {}),
+  };
+
+  tripDates.forEach((date) => {
+    if (date.id < todayId && cachedEntry?.dailyByDate?.[date.id]) {
+      dailyByDate[date.id] = cachedEntry.dailyByDate[date.id];
+    }
+  });
+
+  return {
+    ...(cachedEntry || {}),
+    ...(fetchedEntry || {}),
+    dailyByDate,
+  };
 }
 
 async function fetchJson(url: URL, errorPrefix: string) {
@@ -563,7 +605,7 @@ export async function fetchWeatherForPlans(
 
   const uniqueLocations = Array.from(locationsByKey.values());
   const nextWeatherData: Record<string, any> = {};
-  const locationsToFetch: WeatherLocation[] = [];
+  const locationsToFetch: Array<{ location: WeatherLocation; dateIds: string[] }> = [];
 
   logWeatherDebug('batch:start', {
     forceRefresh: Boolean(options.forceRefresh),
@@ -586,7 +628,8 @@ export async function fetchWeatherForPlans(
     const key = getWeatherLocationKey(location);
     const cachedEntry = cachedWeatherData[key];
 
-    if (!options.forceRefresh && isWeatherCacheFresh(cachedEntry, tripDates)) {
+    const dateIds = getWeatherFetchDateIds(cachedEntry, tripDates, Boolean(options.forceRefresh));
+    if (!dateIds.length) {
       nextWeatherData[key] = cachedEntry;
       logWeatherDebug('batch:cache-hit', {
         location: summarizeLocation(location),
@@ -595,38 +638,47 @@ export async function fetchWeatherForPlans(
       return;
     }
 
-    locationsToFetch.push(location);
+    locationsToFetch.push({ location, dateIds });
   });
 
   const results = await mapSettledWithConcurrency(
     locationsToFetch,
     WEATHER_FETCH_CONCURRENCY,
-    async (location) => ({
+    async ({ location, dateIds }) => ({
       key: getWeatherLocationKey(location),
       label: getWeatherLocationLabel(location),
-      data: await fetchWeatherForLocation(location, startDateStr, endDate, tripDates.map((date) => date.id)),
+      data: await fetchWeatherForLocation(
+        location,
+        dateIds[0] || startDateStr,
+        dateIds[dateIds.length - 1] || endDate,
+        dateIds,
+      ),
     }),
   );
 
   const errors: string[] = [];
 
   results.forEach((result, index) => {
-    const location = locationsToFetch[index];
+    const { location } = locationsToFetch[index];
     const key = getWeatherLocationKey(location);
 
     if (result.status === 'fulfilled') {
-      nextWeatherData[result.value.key] = result.value.data;
+      nextWeatherData[result.value.key] = mergeWeatherCacheEntry(
+        cachedWeatherData[key],
+        result.value.data,
+        tripDates,
+      );
       return;
     }
 
     const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
     const cachedEntry = cachedWeatherData[key];
-    if (!options.forceRefresh && cachedEntry?.dailyByDate) nextWeatherData[key] = cachedEntry;
+    if (cachedEntry?.dailyByDate) nextWeatherData[key] = cachedEntry;
     errors.push(`${getWeatherLocationLabel(location)}：${reason}`);
     logWeatherDebug('batch:location-error', {
       location: summarizeLocation(location),
       reason,
-      usedCachedFallback: Boolean(!options.forceRefresh && cachedEntry?.dailyByDate),
+      usedCachedFallback: Boolean(cachedEntry?.dailyByDate),
     });
   });
 
@@ -639,7 +691,7 @@ export async function fetchWeatherForPlans(
     enumerable: false,
   });
   Object.defineProperty(nextWeatherData, WEATHER_CACHE_HIT_KEY, {
-    value: !options.forceRefresh && locationsToFetch.length === 0 && uniqueLocations.length > 0,
+    value: locationsToFetch.length === 0 && uniqueLocations.length > 0,
     enumerable: false,
   });
 

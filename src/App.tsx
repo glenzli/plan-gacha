@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiPlannerModal } from './components/AiPlannerModal';
+import { ArchiveTripModal } from './components/ArchiveTripModal';
 import { ArchivedTripRows } from './components/ArchivedTripRows';
 import { ArchivedTripModal } from './components/ArchivedTripModal';
 import { AssignmentImpactModal } from './components/AssignmentImpactModal';
@@ -39,6 +40,15 @@ import {
   createEmptyTripSnapshot,
   createExampleTripSnapshot,
 } from './domain/exampleData';
+import {
+  createTripArchiveSummary,
+  type TripArchiveSummary,
+  type TripArchiveSummaryDraft,
+} from './domain/tripArchive';
+import {
+  findNearestRelevantTrip,
+  isTripEnded,
+} from './domain/tripLifecycle';
 import {
   APP_SCHEMA_VERSION,
   type AppSnapshot,
@@ -159,6 +169,7 @@ function App() {
   const [placeFeedback, setPlaceFeedback] = useState<NormalizedPlaceFeedback>(initial.placeFeedback);
   const [stopOutcomes, setStopOutcomes] = useState<NormalizedStopOutcomes>(initial.stopOutcomes);
   const [dayReviews, setDayReviews] = useState<NormalizedDayReviews>(initial.dayReviews);
+  const [archiveSummary, setArchiveSummary] = useState<TripArchiveSummary | null>(initial.archiveSummary);
   const [selectedDateId, setSelectedDateId] = useState(initial.selectedDate);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
@@ -171,6 +182,8 @@ function App() {
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState<string | null>(null);
   const [dayReviewTarget, setDayReviewTarget] = useState<DayReviewTarget | null>(null);
+  const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [archivePromptIsAutomatic, setArchivePromptIsAutomatic] = useState(false);
 
   const dayTileRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
   const aiPlannerQuestionRef = useRef<HTMLTextAreaElement | null>(null);
@@ -178,6 +191,7 @@ function App() {
   const importTextRef = useRef<HTMLTextAreaElement | null>(null);
   const lodgingSectionRef = useRef<HTMLDivElement | null>(null);
   const driveCallbacksRef = useRef<DriveSyncCallbacks | null>(null);
+  const archivePromptedTripIdsRef = useRef(new Set<string>());
   const { toast, notify } = useToast();
   const t: TranslateFn = useMemo(() => (key, vars) => translate(key, language, vars), [language]);
   const {
@@ -253,6 +267,7 @@ function App() {
     () => plans.map((plan, index) => normalizePlan(plan, index, tripDates)),
     [plans, tripDates],
   );
+  const hasActiveTrip = Boolean(activeTripId);
   const hasInitializedPlans = normalizedPlans.length > 0;
   const {
     weatherData,
@@ -514,21 +529,30 @@ function App() {
       placeFeedback,
       stopOutcomes,
       dayReviews,
+      archiveSummary,
       checklistText: '',
       checklistState: {},
       archived: activeTripArchived,
     };
     const persistedTrips = pruneEmptyTripDrafts(
-      trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip)),
-      activeTripId,
+      hasActiveTrip
+        ? trips.map((trip) => (trip.id === activeTripId ? currentTrip : trip))
+        : trips,
+      hasActiveTrip ? activeTripId : undefined,
     ).map(stripChecklistFromTripSnapshot);
 
     localStorage.setItem(STORAGE_KEYS.schemaVersion, APP_SCHEMA_VERSION);
     localStorage.setItem(STORAGE_KEYS.trips, JSON.stringify(persistedTrips));
-    localStorage.setItem(STORAGE_KEYS.currentTrip, activeTripId);
+    if (hasActiveTrip) {
+      localStorage.setItem(STORAGE_KEYS.currentTrip, activeTripId);
+    } else {
+      localStorage.removeItem(STORAGE_KEYS.currentTrip);
+    }
   }, [
     activeTripId,
     activeTripArchived,
+    archiveSummary,
+    hasActiveTrip,
     t,
     normalizedPlans,
     lodgings,
@@ -553,6 +577,7 @@ function App() {
     placeFeedback,
     stopOutcomes,
     dayReviews,
+    archiveSummary,
     checklistText: '',
     checklistState: {},
     archived: activeTripArchived,
@@ -570,12 +595,48 @@ function App() {
     setPlaceFeedback(normalizedTrip.placeFeedback || {});
     setStopOutcomes(normalizedTrip.stopOutcomes || {});
     setDayReviews(normalizedTrip.dayReviews || {});
+    setArchiveSummary(normalizedTrip.archiveSummary);
     setDayReviewTarget(null);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
     clearWeatherError();
   };
 
+  const showCurrentStageEmpty = () => {
+    const emptyTrip = normalizeTripSnapshot(
+      createEmptyTripSnapshot(
+        language === 'en' ? 'New trip' : '新旅行计划',
+        getTodayId(),
+        'trip-current-stage-empty',
+      ),
+    );
+    setActiveTripId('');
+    setTripName(emptyTrip.name);
+    setStartDateStr(emptyTrip.startDateStr);
+    setTripDays(emptyTrip.tripDays);
+    setPlans([]);
+    setSchedule({});
+    setLodgings([]);
+    setPlaceFeedback({});
+    setStopOutcomes({});
+    setDayReviews({});
+    setArchiveSummary(null);
+    setDayReviewTarget(null);
+    setSelectedDateId(emptyTrip.startDateStr);
+    clearWeatherError();
+  };
+
+  const ensureActiveTrip = () => {
+    if (hasActiveTrip) return;
+    const nextTrip = normalizeTripSnapshot(createEmptyTripSnapshot(
+      language === 'en' ? `Trip ${trips.length + 1}` : `旅行计划 ${trips.length + 1}`,
+      startDateStr || getTodayId(),
+    ));
+    setTrips((current) => [...pruneEmptyTripDrafts(current), nextTrip]);
+    applyTripSnapshot(nextTrip);
+  };
+
   const saveCurrentTripInto = (tripList: NormalizedTripSnapshot[]): NormalizedTripSnapshot[] => {
+    if (!hasActiveTrip) return tripList;
     const currentTrip = getCurrentTripSnapshot();
     return tripList
       .map((trip) => (trip.id === activeTripId ? currentTrip : trip));
@@ -615,19 +676,16 @@ function App() {
 
     const importedTrips = snapshot.trips
       .map((trip: unknown, index: number) => normalizeTripSnapshot(trip, index));
-    if (!importedTrips.length) throw new Error(t('driveInvalidSnapshot'));
 
-    const preferredTripId = snapshot.activeTripId || importedTrips[0].id;
-    const visibleImportedTrips = importedTrips.filter((trip: NormalizedTripSnapshot) => !trip.archived);
-    const activeTrip = visibleImportedTrips.find((trip: NormalizedTripSnapshot) => trip.id === preferredTripId)
-      || visibleImportedTrips[0]
-      || importedTrips.find((trip: NormalizedTripSnapshot) => trip.id === preferredTripId)
-      || importedTrips[0];
-    const nextTrips: NormalizedTripSnapshot[] = pruneEmptyTripDrafts(importedTrips, activeTrip.id);
-    const nextActiveTrip = nextTrips.find((trip) => trip.id === activeTrip.id) || nextTrips[0];
+    const nextTrips: NormalizedTripSnapshot[] = pruneEmptyTripDrafts(importedTrips);
+    const nextActiveTrip = findNearestRelevantTrip(nextTrips, getTodayId());
 
     setTrips(nextTrips);
-    applyTripSnapshot(nextActiveTrip);
+    if (nextActiveTrip) {
+      applyTripSnapshot(nextActiveTrip);
+    } else {
+      showCurrentStageEmpty();
+    }
     clearWeatherData();
     applyChecklistSnapshot(
       snapshot.checklistText ?? snapshot.checklist ?? snapshot.packingList,
@@ -660,6 +718,23 @@ function App() {
   };
 
   const createNewTrip = () => {
+    if (!hasActiveTrip) {
+      const nextTrip = normalizeTripSnapshot(createEmptyTripSnapshot(
+        language === 'en' ? `Trip ${trips.length + 1}` : `旅行计划 ${trips.length + 1}`,
+        getTodayId(),
+      ));
+      setTrips((current) => [...pruneEmptyTripDrafts(current), nextTrip]);
+      applyTripSnapshot(nextTrip);
+      startUiTransition(() => {
+        setTripMenuOpen(false);
+        setEditorTab('itinerary');
+        setEditorOpen(true);
+        setBatchAiOpen(false);
+      });
+      notify(t('newTripCreated'));
+      return;
+    }
+
     if (!hasInitializedPlans) {
       startUiTransition(() => {
         setTripMenuOpen(false);
@@ -687,7 +762,15 @@ function App() {
     const hasCurrentContent = normalizedPlans.length > 0 || lodgings.length > 0 || Object.keys(schedule).length > 0;
     if (hasCurrentContent && !window.confirm(t('overwriteExampleConfirm'))) return;
 
-    const exampleTrip = createExampleTripSnapshot(t('exampleTripName'), startDateStr, activeTripId);
+    const exampleTrip = normalizeTripSnapshot(createExampleTripSnapshot(
+      t('exampleTripName'),
+      startDateStr,
+      activeTripId || undefined,
+    ));
+    if (!hasActiveTrip) {
+      setTrips((current) => [...pruneEmptyTripDrafts(current), exampleTrip]);
+      applyTripSnapshot(exampleTrip);
+    }
     setTripName(exampleTrip.name);
     setTripDays(exampleTrip.tripDays);
     setPlans(exampleTrip.plans);
@@ -696,6 +779,7 @@ function App() {
     setPlaceFeedback(exampleTrip.placeFeedback || {});
     setStopOutcomes(exampleTrip.stopOutcomes || {});
     setDayReviews(exampleTrip.dayReviews || {});
+    setArchiveSummary(null);
     setDayReviewTarget(null);
     clearWeatherData();
     setSelectedDateId(exampleTrip.startDateStr);
@@ -767,6 +851,7 @@ function App() {
     handleTripImportFile,
   } = useJsonPayloadController({
     aiPlannerResultRef,
+    archiveSummary,
     checklistState,
     checklistText,
     closePlanEditor,
@@ -774,6 +859,7 @@ function App() {
     editorPlanId,
     importTextRef,
     isCreatingPlan,
+    ensureActiveTrip,
     lodgings,
     normalizedPlans,
     notify,
@@ -785,6 +871,7 @@ function App() {
     setChecklistImportConflicts,
     setChecklistImportText,
     setDayReviews,
+    setArchiveSummary,
     setImportModalOpen,
     invalidateWeatherCache: clearWeatherData,
     setLodgings,
@@ -841,22 +928,51 @@ function App() {
 
   const applyTripListAfterCurrentRemoved = (nextTrips: NormalizedTripSnapshot[], message: string) => {
     const tripsWithContent = nextTrips.filter((trip: NormalizedTripSnapshot) => !isEmptyTripDraft(trip));
-    const nextTrip = tripsWithContent.find((trip: NormalizedTripSnapshot) => !trip.archived && trip.id !== activeTripId) || createEmptyTripSnapshot(language === 'en' ? `Trip ${tripsWithContent.length + 1}` : `旅行计划 ${tripsWithContent.length + 1}`, getTodayId());
-    const finalTrips = tripsWithContent.some((trip: NormalizedTripSnapshot) => trip.id === nextTrip.id) ? tripsWithContent : [...tripsWithContent, nextTrip];
+    const nextTrip = findNearestRelevantTrip(tripsWithContent, getTodayId());
 
-    setTrips(finalTrips);
-    applyTripSnapshot(nextTrip);
+    setTrips(tripsWithContent);
+    if (nextTrip) {
+      applyTripSnapshot(nextTrip);
+    } else {
+      showCurrentStageEmpty();
+    }
     setEditorOpen(false);
     notify(message);
   };
 
-  const archiveCurrentTrip = () => {
-    if (!window.confirm(t('archiveTripConfirm', { name: tripName || t('unnamedTrip') }))) return;
+  const requestArchiveCurrentTrip = (automatic = false) => {
+    if (!hasActiveTrip) return;
+    setArchivePromptIsAutomatic(automatic);
+    setArchiveModalOpen(true);
+    setEditorOpen(false);
+  };
 
-    const archivedTrip = { ...getCurrentTripSnapshot(), archived: true };
+  const archiveCurrentTrip = (draft: TripArchiveSummaryDraft) => {
+    const archivedTrip = {
+      ...getCurrentTripSnapshot(),
+      archiveSummary: createTripArchiveSummary({
+        ...draft,
+        archivedAt: archiveSummary?.archivedAt || draft.archivedAt,
+      }),
+      archived: true,
+    };
     const updatedTrips = trips.map((trip) => (trip.id === activeTripId ? archivedTrip : trip));
+    setArchiveModalOpen(false);
     applyTripListAfterCurrentRemoved(updatedTrips, t('tripArchived'));
   };
+
+  useEffect(() => {
+    if (
+      !hasActiveTrip
+      || activeTripArchived
+      || !isTripEnded({ startDateStr, tripDays }, getTodayId())
+      || archivePromptedTripIdsRef.current.has(activeTripId)
+    ) return;
+
+    archivePromptedTripIdsRef.current.add(activeTripId);
+    setArchivePromptIsAutomatic(true);
+    setArchiveModalOpen(true);
+  }, [activeTripArchived, activeTripId, hasActiveTrip, startDateStr, tripDays]);
 
   const deleteCurrentTrip = () => {
     const currentTripIsEmpty = !hasInitializedPlans && lodgings.length === 0 && Object.keys(schedule).length === 0;
@@ -1119,6 +1235,7 @@ function App() {
 
   const renderEmptyPlanState = () => (
     <EmptyPlanState
+      currentStageEmpty={!hasActiveTrip}
       onImport={() => startUiTransition(() => setImportModalOpen(true))}
       onLoadExample={loadExampleTrip}
       onOpenAi={openBatchAiGenerator}
@@ -1171,8 +1288,10 @@ function App() {
     };
   };
 
-  const activeTripDisplay = getTripDisplay(activeTripOption || {}, true);
-  const tripMenuDisabled = activeTripDisplay.isEmpty && visibleTrips.length <= 1;
+  const activeTripDisplay = hasActiveTrip
+    ? getTripDisplay(activeTripOption || {}, true)
+    : { isEmpty: true, name: t('currentStageNoPlan'), meta: '' };
+  const tripMenuDisabled = visibleTrips.length === 0;
 
   return (
     <div className="app-shell">
@@ -1184,6 +1303,7 @@ function App() {
         driveStorage={driveStorage}
         getTripDisplay={getTripDisplay}
         hasInitializedPlans={hasInitializedPlans}
+        onArchiveTrip={() => requestArchiveCurrentTrip(false)}
         onOpenDriveSync={() => startUiTransition(() => setDrivePanelOpen(true))}
         onOpenTripEditor={() => {
           startUiTransition(() => {
@@ -1280,7 +1400,7 @@ function App() {
           aiPlannerResultRef={aiPlannerResultRef}
           applyAiPlannerResult={applyAiPlannerResult}
           applyPlanEditDraft={applyPlanEditDraft}
-          archiveCurrentTrip={archiveCurrentTrip}
+          archiveCurrentTrip={() => requestArchiveCurrentTrip(false)}
           batchAiOpen={batchAiOpen}
           closePlanEditor={closePlanEditor}
           copyBatchAiPrompt={copyBatchAiPrompt}
@@ -1365,6 +1485,18 @@ function App() {
           t={t}
           trip={archivedViewTrip}
           weatherData={weatherData}
+        />
+      )}
+
+      {archiveModalOpen && hasActiveTrip && (
+        <ArchiveTripModal
+          key={activeTripId}
+          endedPrompt={archivePromptIsAutomatic}
+          initialSummary={archiveSummary}
+          onClose={() => setArchiveModalOpen(false)}
+          onSubmit={archiveCurrentTrip}
+          t={t}
+          tripName={tripName || t('unnamedTrip')}
         />
       )}
 

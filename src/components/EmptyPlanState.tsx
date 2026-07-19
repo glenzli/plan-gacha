@@ -1,6 +1,7 @@
 import type { RenderNode, TranslateFn, VoidFn } from '../types/ui';
 
 interface EmptyPlanStateProps {
+  currentStageEmpty: boolean;
   onImport: VoidFn;
   onLoadExample: VoidFn;
   onOpenAi: VoidFn;
@@ -9,6 +10,7 @@ interface EmptyPlanStateProps {
 }
 
 export function EmptyPlanState({
+  currentStageEmpty,
   onImport,
   onLoadExample,
   onOpenAi,
@@ -19,8 +21,8 @@ export function EmptyPlanState({
     <main className="empty-plan-layout">
       <section className="empty-plan-panel">
         <p className="eyebrow">{t('planSetup')}</p>
-        <h2>{t('emptyTitle')}</h2>
-        <p>{t('emptyDescription')}</p>
+        <h2>{t(currentStageEmpty ? 'currentStageNoPlan' : 'emptyTitle')}</h2>
+        <p>{t(currentStageEmpty ? 'currentStageNoPlanDescription' : 'emptyDescription')}</p>
         <div className="empty-plan-actions">
           <button className="btn btn-primary" type="button" onClick={onOpenAi}>
             {t('aiGenerateShort')}

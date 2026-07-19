@@ -8,6 +8,7 @@ import {
   type NormalizedSchedule,
   type NormalizedStopOutcomes,
 } from './trip';
+import { normalizeTripArchiveSummary, type TripArchiveSummary } from './tripArchive';
 
 type AnyRecord = Record<string, unknown>;
 
@@ -21,12 +22,14 @@ export interface TripExportPayload {
   placeFeedback: NormalizedPlaceFeedback;
   stopOutcomes: NormalizedStopOutcomes;
   dayReviews: NormalizedDayReviews;
+  archiveSummary: TripArchiveSummary | null;
 }
 
 export interface ImportedTripHistory {
   placeFeedback?: NormalizedPlaceFeedback;
   stopOutcomes?: NormalizedStopOutcomes;
   dayReviews?: NormalizedDayReviews;
+  archiveSummary?: TripArchiveSummary | null;
 }
 
 function isRecord(value: unknown): value is AnyRecord {
@@ -50,6 +53,7 @@ export function buildTripExportPayload(options: TripExportPayload): TripExportPa
     placeFeedback: options.placeFeedback,
     stopOutcomes: options.stopOutcomes,
     dayReviews: options.dayReviews,
+    archiveSummary: options.archiveSummary,
   };
 }
 
@@ -59,10 +63,12 @@ export function readImportedTripHistory(value: unknown): ImportedTripHistory {
   const placeFeedback = readAliasedField(value, 'placeFeedback', 'place_feedback');
   const stopOutcomes = readAliasedField(value, 'stopOutcomes', 'stop_outcomes');
   const dayReviews = readAliasedField(value, 'dayReviews', 'day_reviews');
+  const archiveSummary = readAliasedField(value, 'archiveSummary', 'archive_summary');
 
   return {
     ...(placeFeedback.present ? { placeFeedback: normalizePlaceFeedback(placeFeedback.value) } : {}),
     ...(stopOutcomes.present ? { stopOutcomes: normalizeStopOutcomes(stopOutcomes.value) } : {}),
     ...(dayReviews.present ? { dayReviews: normalizeDayReviews(dayReviews.value) } : {}),
+    ...(archiveSummary.present ? { archiveSummary: normalizeTripArchiveSummary(archiveSummary.value) } : {}),
   };
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DayReviewRating } from './dayReview';
 import { PlaceFeedbackStatus, StopOutcomeStatus } from './trip';
+import { TripExpenseCategory } from './tripArchive';
 import { buildTripExportPayload, readImportedTripHistory } from './tripExport';
 
 describe('trip export payload', () => {
@@ -44,12 +45,20 @@ describe('trip export payload', () => {
           updatedAt: '2026-07-10T12:00:00.000Z',
         },
       },
+      archiveSummary: {
+        currency: 'JPY',
+        expenses: { [TripExpenseCategory.Food]: 8000 },
+        note: 'Good trip',
+        archivedAt: '2026-07-10T12:30:00.000Z',
+        updatedAt: '2026-07-10T12:30:00.000Z',
+      },
     });
 
     expect(readImportedTripHistory(payload)).toEqual({
       placeFeedback: payload.placeFeedback,
       stopOutcomes: payload.stopOutcomes,
       dayReviews: payload.dayReviews,
+      archiveSummary: payload.archiveSummary,
     });
   });
 

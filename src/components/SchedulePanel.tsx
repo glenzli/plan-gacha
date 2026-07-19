@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useEffect, useRef } from 'react';
 import type { RefObject, ReactNode } from 'react';
 import { MobileRiskPanel } from './RiskPanels';
 import { WeatherIcon } from './PlanContent';
@@ -94,6 +94,22 @@ export function SchedulePanel({
   tripDates: DisplayTripDate[];
   weatherData: WeatherDataMap;
 }) {
+  const miniDayRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+
+  useEffect(() => {
+    if (!selectedDate || !window.matchMedia('(max-width: 560px)').matches) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      miniDayRefs.current.get(selectedDate.id)?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+        block: 'nearest',
+        inline: 'center',
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [selectedDate]);
+
   return (
     <aside className="side-panel schedule-panel">
       <div className="panel-header">
@@ -114,6 +130,11 @@ export function SchedulePanel({
               key={date.id}
               type="button"
               aria-label={`D${date.dayNumber} ${formatMiniDate(date.id)} ${calendarState.ariaLabel}`}
+              aria-current={selected ? 'date' : undefined}
+              ref={(node) => {
+                if (node) miniDayRefs.current.set(date.id, node);
+                else miniDayRefs.current.delete(date.id);
+              }}
               onClick={() => selectScheduleDate(date.id, { scroll: true })}
             >
               <strong>D{date.dayNumber}</strong>
