@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AiPlannerModal } from './components/AiPlannerModal';
+import { ArchiveLibraryModal } from './components/ArchiveLibraryModal';
 import { ArchiveTripModal } from './components/ArchiveTripModal';
 import { ArchivedTripRows } from './components/ArchivedTripRows';
 import { ArchivedTripModal } from './components/ArchivedTripModal';
@@ -180,6 +181,7 @@ function App() {
   const [aiPlannerMode, setAiPlannerMode] = useState<AiPlannerMode>('replan');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
+  const [archiveLibraryOpen, setArchiveLibraryOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState<string | null>(null);
   const [dayReviewTarget, setDayReviewTarget] = useState<DayReviewTarget | null>(null);
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
@@ -990,6 +992,7 @@ function App() {
     setTrips(saveCurrentTripInto(restoredTrips));
     applyTripSnapshot(restoredTrip);
     setEditorOpen(false);
+    setArchiveLibraryOpen(false);
     setArchivedViewTripId(null);
     notify(t('archivedRestored'));
   };
@@ -1298,12 +1301,17 @@ function App() {
       <TripHeader
         activeTripDisplay={activeTripDisplay}
         activeTripId={activeTripId}
+        archivedTripCount={archivedTrips.length}
         createNewTrip={createNewTrip}
         driveFeatureEnabled={driveFeatureEnabled}
         driveStorage={driveStorage}
         getTripDisplay={getTripDisplay}
         hasInitializedPlans={hasInitializedPlans}
         onArchiveTrip={() => requestArchiveCurrentTrip(false)}
+        onOpenArchiveLibrary={() => {
+          setTripMenuOpen(false);
+          setArchiveLibraryOpen(true);
+        }}
         onOpenDriveSync={() => startUiTransition(() => setDrivePanelOpen(true))}
         onOpenTripEditor={() => {
           startUiTransition(() => {
@@ -1469,6 +1477,18 @@ function App() {
           t={t}
           toggleChecklistDone={toggleChecklistDone}
           toggleChecklistSkipped={toggleChecklistSkipped}
+        />
+      )}
+
+      {archiveLibraryOpen && archivedTrips.length > 0 && (
+        <ArchiveLibraryModal
+          archivedTrips={archivedTrips}
+          formatTripRange={formatTripRange}
+          language={language}
+          onClose={() => setArchiveLibraryOpen(false)}
+          onRestore={restoreArchivedTrip}
+          onView={setArchivedViewTripId}
+          t={t}
         />
       )}
 

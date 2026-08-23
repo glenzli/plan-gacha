@@ -18,6 +18,7 @@ export type IconName =
   | 'cloud'
   | 'sparkles'
   | 'archive'
+  | 'history'
   | 'ban'
   | 'trash'
   | 'x';
@@ -152,6 +153,13 @@ export function Icon({ name, className = '' }: IconProps) {
         <rect width="20" height="5" x="2" y="3" rx="1" />
         <path d="M4 8v13h16V8" />
         <path d="M10 12h4" />
+      </>
+    ),
+    history: (
+      <>
+        <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+        <path d="M3 3v5h5" />
+        <path d="M12 7v5l3 2" />
       </>
     ),
     ban: (

@@ -7,6 +7,7 @@ interface ArchivedTripRowsProps {
   language: string;
   onRestore: (tripId: string) => void;
   onView: (tripId: string) => void;
+  showHeading?: boolean;
   t: TranslateFn;
 }
 
@@ -16,16 +17,20 @@ export function ArchivedTripRows({
   language,
   onRestore,
   onView,
+  showHeading = true,
   t,
 }: ArchivedTripRowsProps) {
   if (!archivedTrips.length) return null;
 
   return (
     <div className="archived-trip-list">
-      <strong>{t('archived')}</strong>
+      {showHeading && <strong>{t('archived')}</strong>}
       {archivedTrips.map((trip) => (
         <div className="archived-trip-row" key={trip.id}>
-          <span>{trip.name} · {formatTripRange(trip.startDateStr, trip.tripDays, language)}</span>
+          <div className="archived-trip-copy">
+            <strong>{trip.name}</strong>
+            <span>{formatTripRange(trip.startDateStr, trip.tripDays, language)}</span>
+          </div>
           <div className="archived-trip-actions">
             <button className="btn btn-small btn-outline" type="button" onClick={() => onView(trip.id)}>
               {t('view')}

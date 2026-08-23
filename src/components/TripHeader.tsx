@@ -12,12 +12,14 @@ interface TripDisplay {
 interface TripHeaderProps {
   activeTripDisplay: TripDisplay;
   activeTripId: string;
+  archivedTripCount: number;
   createNewTrip: () => void;
   driveFeatureEnabled: boolean;
   driveStorage: unknown;
   getTripDisplay: (trip: Partial<NormalizedTripSnapshot>, isCurrentTrip?: boolean) => TripDisplay;
   hasInitializedPlans: boolean;
   onOpenDriveSync: () => void;
+  onOpenArchiveLibrary: VoidFn;
   onArchiveTrip: VoidFn;
   onOpenTripEditor: () => void;
   openAiPlanner: (mode: 'replan' | 'generate') => void;
@@ -37,12 +39,14 @@ interface TripHeaderProps {
 export function TripHeader({
   activeTripDisplay,
   activeTripId,
+  archivedTripCount,
   createNewTrip,
   driveFeatureEnabled,
   driveStorage,
   getTripDisplay,
   hasInitializedPlans,
   onOpenDriveSync,
+  onOpenArchiveLibrary,
   onArchiveTrip,
   onOpenTripEditor,
   openAiPlanner,
@@ -117,6 +121,19 @@ export function TripHeader({
           </button>
         </div>
         <div className="trip-actions">
+          {archivedTripCount > 0 && (
+            <button
+              className="icon-btn archive-library-shortcut"
+              type="button"
+              onClick={onOpenArchiveLibrary}
+              aria-label={t('openArchiveLibrary', { count: archivedTripCount })}
+              title={t('openArchiveLibrary', { count: archivedTripCount })}
+            >
+              <Icon name="history" />
+              <span>{t('archived')}</span>
+              <em>{archivedTripCount}</em>
+            </button>
+          )}
           {hasInitializedPlans && (
             <>
               <button

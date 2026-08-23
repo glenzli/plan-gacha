@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="background" x1="72" y1="44" x2="446" y2="470" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171426" />
+      <stop offset="1" stop-color="#3b3156" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(138 78) rotate(47) scale(390)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8f83aa" stop-opacity=".24" />
+      <stop offset="1" stop-color="#8f83aa" stop-opacity="0" />
+    </radialGradient>
+    <linearGradient id="paper" x1="172" y1="112" x2="352" y2="402" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#faf7f0" />
+      <stop offset="1" stop-color="#e8e2d9" />
+    </linearGradient>
+    <linearGradient id="paper-edge" x1="176" y1="394" x2="362" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a89fb3" />
+      <stop offset="1" stop-color="#776e87" />
+    </linearGradient>
+    <linearGradient id="destination" x1="310" y1="156" x2="354" y2="210" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#df7b6d" />
+      <stop offset="1" stop-color="#bd564e" />
+    </linearGradient>
+    <filter id="stack-shadow" x="92" y="70" width="350" height="390" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#0c0918" flood-opacity=".46" />
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#background)" />
+  <rect width="512" height="512" rx="112" fill="url(#glow)" />
+
+  <g filter="url(#stack-shadow)">
+    <rect x="143" y="112" width="238" height="292" rx="48" fill="#4d425f" transform="rotate(12 262 258)" />
+    <rect x="139" y="106" width="238" height="292" rx="48" fill="#786c8b" transform="rotate(3 258 252)" />
+
+    <g transform="rotate(-8 258 250)">
+      <rect x="142" y="117" width="238" height="292" rx="48" fill="url(#paper-edge)" />
+      <rect x="136" y="100" width="238" height="292" rx="48" fill="url(#paper)" stroke="#fff" stroke-opacity=".3" stroke-width="2" />
+
+      <path d="M185 302c20-7 22-44 49-55 32-13 48 34 78 15 27-17 14-56 35-76" fill="none" stroke="#39324f" stroke-linecap="round" stroke-width="17" />
+      <circle cx="185" cy="302" r="11" fill="#8d83a0" />
+      <circle cx="269" cy="252" r="7" fill="#39324f" />
+      <circle cx="347" cy="186" r="28" fill="url(#destination)" />
+      <circle cx="347" cy="186" r="9" fill="#faf7f0" />
+    </g>
+  </g>
+</svg>

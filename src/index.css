@@ -1,5 +1,9 @@
 :root {
   color-scheme: light;
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
   --bg: #f8f9fa;
   --panel: #ffffff;
   --surface: #ffffff;
@@ -97,6 +101,7 @@ button {
 
 .app-shell {
   min-height: 100vh;
+  min-height: 100dvh;
   max-width: 100%;
   overflow-x: hidden;
   background: var(--bg);
@@ -110,7 +115,7 @@ button {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 1rem;
+  padding: calc(1rem + var(--safe-area-top)) calc(1rem + var(--safe-area-right)) 1rem calc(1rem + var(--safe-area-left));
   background: rgba(255, 255, 255, 0.96);
   border-bottom: 1px solid var(--border);
   box-shadow: 0 1px 2px rgba(9, 9, 11, 0.04);
@@ -228,6 +233,38 @@ h3 {
   border-color: transparent;
   background: var(--surface);
   box-shadow: 0 1px 2px rgba(9, 9, 11, 0.05);
+}
+
+.trip-actions .archive-library-shortcut {
+  display: inline-flex;
+  width: auto;
+  gap: 0.38rem;
+  padding: 0 0.58rem;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.trip-actions .archive-library-shortcut:hover:not(:disabled) {
+  background: #e0e7ff;
+}
+
+.archive-library-shortcut span,
+.archive-library-shortcut em {
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.archive-library-shortcut em {
+  display: inline-grid;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  place-items: center;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--accent-strong);
 }
 
 .ai-replan-btn {
@@ -2884,7 +2921,7 @@ label {
   z-index: 80;
   display: grid;
   place-items: center;
-  padding: 1rem;
+  padding: calc(1rem + var(--safe-area-top)) calc(1rem + var(--safe-area-right)) calc(1rem + var(--safe-area-bottom)) calc(1rem + var(--safe-area-left));
   background: rgba(9, 9, 11, 0.36);
   backdrop-filter: blur(3px);
 }
@@ -2894,6 +2931,7 @@ label {
   gap: 1rem;
   width: min(42rem, 100%);
   max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem - var(--safe-area-top) - var(--safe-area-bottom));
   overflow: auto;
   padding: 1rem;
   border: 1px solid var(--border);
@@ -3917,6 +3955,19 @@ label {
   background: var(--surface-soft);
 }
 
+.archived-trip-copy {
+  display: grid;
+  gap: 0.18rem;
+  min-width: 0;
+}
+
+.archived-trip-copy strong {
+  overflow: hidden;
+  font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .plan-review-row div {
   display: grid;
   gap: 0.15rem;
@@ -3935,13 +3986,24 @@ label {
 }
 
 .plan-review-row span,
-.archived-trip-row span {
+.archived-trip-copy span {
   min-width: 0;
   overflow: hidden;
   color: var(--muted);
   font-size: 0.78rem;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.archive-library-modal {
+  max-width: 40rem;
+}
+
+.archive-library-description {
+  display: block;
+  margin-top: 0.18rem;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .archived-trip-actions {
@@ -4160,7 +4222,7 @@ label {
 
 @media (min-width: 720px) {
   .trip-header {
-    padding: 1rem 1.25rem;
+    padding: calc(1rem + var(--safe-area-top)) calc(1.25rem + var(--safe-area-right)) 1rem calc(1.25rem + var(--safe-area-left));
   }
 
   .main-panel,
@@ -4185,11 +4247,13 @@ label {
 
   .app-layout {
     height: calc(100vh - 4.55rem);
+    height: calc(100dvh - 4.55rem - var(--safe-area-top));
     grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr) minmax(18rem, 21rem);
   }
 
   .empty-plan-layout {
     min-height: calc(100vh - 4.55rem);
+    min-height: calc(100dvh - 4.55rem - var(--safe-area-top));
   }
 
   .side-panel,
@@ -4224,7 +4288,7 @@ label {
 
 @media (max-width: 560px) {
   :root {
-    --mobile-header-height: 5.95rem;
+    --mobile-header-height: calc(5.95rem + var(--safe-area-top));
     --mobile-calendar-height: 4.35rem;
   }
 
@@ -4253,7 +4317,7 @@ label {
     grid-template-columns: minmax(0, 1fr);
     align-items: center;
     min-height: var(--mobile-header-height);
-    padding: 0.35rem 0.7rem;
+    padding: calc(0.35rem + var(--safe-area-top)) calc(0.7rem + var(--safe-area-right)) 0.35rem calc(0.7rem + var(--safe-area-left));
   }
 
   .trip-brand {
@@ -4291,6 +4355,16 @@ label {
     width: 2rem;
     min-width: 2rem;
     height: 2rem;
+  }
+
+  .trip-actions .archive-library-shortcut {
+    width: auto;
+    min-width: 3.3rem;
+    padding: 0 0.38rem;
+  }
+
+  .archive-library-shortcut span {
+    display: none;
   }
 
   .trip-menu-trigger {
@@ -4377,10 +4451,12 @@ label {
 
   .archived-view-modal {
     max-height: calc(100vh - 1.3rem);
+    max-height: calc(100dvh - 1.3rem - var(--safe-area-top) - var(--safe-area-bottom));
   }
 
   .archive-trip-modal {
     max-height: calc(100vh - 1.3rem);
+    max-height: calc(100dvh - 1.3rem - var(--safe-area-top) - var(--safe-area-bottom));
   }
 
   .archive-expense-grid,
@@ -4395,11 +4471,12 @@ label {
 
   .modal-overlay {
     align-items: end;
-    padding: 0.65rem;
+    padding: calc(0.65rem + var(--safe-area-top)) calc(0.65rem + var(--safe-area-right)) calc(0.65rem + var(--safe-area-bottom)) calc(0.65rem + var(--safe-area-left));
   }
 
   .ai-planner-modal {
     max-height: calc(100vh - 1.3rem);
+    max-height: calc(100dvh - 1.3rem - var(--safe-area-top) - var(--safe-area-bottom));
   }
 
   .ai-mode-tabs button {

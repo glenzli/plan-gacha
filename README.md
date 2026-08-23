@@ -30,7 +30,8 @@
 - 每日行程评价：已执行的每日行程可以记录满意度、节奏与体力等标签和简短备注；评价按日期和当时的计划保存，后续换计划也不会覆盖历史反馈。
 - 历史日程边界：已经过去且实际执行的计划不会在后续日期重复出现；回补历史记录时，仍可从所选日期开始向后调整。
 - 旅行清单：作为独立的长期清单维护，默认空白，可手动编辑、填入示例或导入 JSON，支持勾选完成、本次不需要和一键重置本次状态。
-- 归档只读：已归档旅行可以在编辑界面查看，不参与顶部计划切换，适合保留历史行程。
+- 归档只读：顶部“已归档”入口集中展示历史旅行；归档内容可只读查看或恢复，不参与当前行程切换。
+- 可安装 Web App：通过浏览器安装或“添加到主屏幕”后，以 PWA `standalone` 模式运行；当前未启用离线缓存。
 - 多语言：支持中文和英文，可通过 `?lang=zh` 或 `?lang=en` 切换。
 
 ### 使用方式
@@ -121,6 +122,8 @@ npm run dev
 http://127.0.0.1:5173/
 ```
 
+PWA 安装需要通过 HTTPS（本地开发环境可使用 `localhost`）。安装后的应用会隐藏浏览器地址栏；不同浏览器或系统可能隔离其本地存储，因此首次安装后请确认行程数据是否需要导入或同步。
+
 ### 校验与构建
 
 ```bash
@@ -156,7 +159,8 @@ Data is stored in browser `localStorage` by default. The current version is a fr
 - Daily trip reviews: completed days can record satisfaction, pacing and energy tags, plus a short note. Reviews stay tied to the date and the plan used at that time, so later plan changes preserve the original feedback.
 - Historical boundary: plans already completed on past dates cannot be selected again later, while corrections can still replan from the selected historical date forward.
 - Trip checklist: maintain a standalone long-term checklist. It starts empty, can be edited manually, filled from an example or imported from JSON, and supports done/skipped status plus one-click status reset.
-- Read-only archive: archived trips can be viewed from the editor, stay out of the top trip switcher and work well for keeping travel history.
+- Read-only archive: a persistent Archived entry in the header opens all historical trips; each trip can be viewed read-only or restored, and stays out of the current-trip switcher.
+- Installable web app: after browser installation or Add to Home Screen, the PWA runs with `standalone` display; offline caching is not enabled yet.
 - Multilingual UI: supports Chinese and English through `?lang=zh` or `?lang=en`.
 
 ### How To Use
@@ -246,6 +250,8 @@ Default dev URL:
 ```text
 http://127.0.0.1:5173/
 ```
+
+PWA installation requires HTTPS (`localhost` is accepted for local development). The installed app hides browser chrome; browsers and operating systems may isolate its local storage, so confirm whether trip data needs to be imported or synced after installation.
 
 ### Validate And Build
 
