@@ -81,6 +81,8 @@ describe('transit normalization', () => {
 
     expect(formatStopTransfer(transfer)).toBe('近铁电车 · ５０分钟');
     expect(formatStopTransferDeparture(transfer, '', 'zh')).toBe('约 12:10');
+    expect(normalizeStopTransfer({ mode: '出租车', preferred_route_mode: 'walking' })?.preferredRouteMode).toBe('walking');
+    expect(normalizeStopTransfer({ mode: '出租车', preferred_route_mode: 'teleport' })?.preferredRouteMode).toBeNull();
   });
 });
 

@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import {
   BookingStatus,
   formatStopTransfer,
@@ -14,10 +14,14 @@ import {
   type NormalizedStopOutcomes,
 } from '../domain/trip';
 import {
-  getGoogleMapsDirectionsUrl,
-  getGoogleMapsUrl,
+  getMapDirectionsLink,
+  getMainlandRouteAlternative,
+  getMapSearchLink,
+  getPreferredMapRouteMode,
   getLocationCopyText,
+  type MapRouteMode,
 } from '../domain/locationLinks';
+import type { MapPreferences } from '../domain/mapPreferences';
 import {
   getWeatherIconLabel,
 } from '../domain/weather';
@@ -40,6 +44,7 @@ interface PlanStopsProps {
   placeFeedback?: NormalizedPlaceFeedback;
   stopOutcomes?: NormalizedStopOutcomes;
   readOnly?: boolean;
+  mapPreferences: MapPreferences;
 }
 
 interface BookingTypeMeta {
@@ -85,15 +90,39 @@ export function PlanStops({
   placeFeedback = {},
   stopOutcomes = {},
   readOnly = false,
+  mapPreferences,
 }: PlanStopsProps) {
+  const [openRouteStopId, setOpenRouteStopId] = useState<string | null>(null);
   if (!plan?.stops.length) return null;
 
   return (
     <ol className="stop-list" aria-label={t('stopsAria', { name: plan.name })}>
       {plan.stops.map((stop, index) => {
         const previousStop = index > 0 ? plan.stops[index - 1] : null;
-        const routeUrl = previousStop ? getGoogleMapsDirectionsUrl(previousStop.location, stop.location) : '';
-        const mapsUrl = getGoogleMapsUrl(stop.location);
+        const preferredRouteMode = getPreferredMapRouteMode(stop.transferFromPrevious);
+        const routeModes: MapRouteMode[] = preferredRouteMode
+          ? [preferredRouteMode, ...(['transit', 'driving', 'walking'] as MapRouteMode[]).filter((mode) => mode !== preferredRouteMode)]
+          : ['transit', 'driving', 'walking'];
+        const routeLinks = previousStop
+          ? routeModes.map((mode) => ({ mode, ...getMapDirectionsLink(previousStop.location, stop.location, mapPreferences, mode) }))
+          : [];
+        const directRoute = preferredRouteMode
+          ? routeLinks.find(({ mode, url }) => mode === preferredRouteMode && Boolean(url))
+          : undefined;
+        const directRouteLabel = directRoute
+          ? `${t('openRouteInMaps')} · ${t(`routeMode${directRoute.mode.charAt(0).toUpperCase()}${directRoute.mode.slice(1)}`)} · ${t(directRoute.provider === 'apple' ? 'appleMapsName' : directRoute.provider === 'tencent' ? 'tencentMapsName' : directRoute.provider === 'amap' ? 'amapName' : 'googleMapsName')}`
+          : '';
+        const routeAlternatives = previousStop && routeLinks[0]?.provider === 'amap'
+          ? routeModes.map((mode) => ({ mode, ...getMainlandRouteAlternative(previousStop.location, stop.location, mode) }))
+            .filter((link) => Boolean(link.url))
+          : [];
+        const hasRoute = [...routeAlternatives, ...routeLinks].some((link) => Boolean(link.url));
+        const hasMissingCoordinateRoute = routeLinks.some(({ provider, url }) => !url && (provider === 'amap' || provider === 'tencent'));
+        const mapsLink = getMapSearchLink(stop.location, mapPreferences);
+        const mapLabel = mapsLink.provider === 'amap' ? t('openInAmap')
+          : mapsLink.provider === 'apple' ? t('openInAppleMaps') : t('openInMaps');
+        const showRouteProviders = routeAlternatives.length > 0
+          || routeLinks.some(({ provider }) => provider === 'apple' || provider === 'tencent');
         const copyValue = getLocationCopyText(stop.location);
         const transferText = formatStopTransfer(stop.transferFromPrevious);
         const transferDepartureText = formatStopTransferDeparture(stop.transferFromPrevious, stop.time, language);
@@ -145,26 +174,68 @@ export function PlanStops({
                     </span>
                   </span>
                   <span className="stop-location-actions">
-                    {routeUrl && (
-                      <a
-                        className="stop-location-action"
-                        href={routeUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={t('openRouteInMaps')}
-                        title={t('openRouteInMaps')}
-                      >
-                        <Icon name="route" />
-                      </a>
+                    {previousStop && (
+                      <span className="stop-route-menu">
+                        {directRoute ? (
+                          <a
+                            className="stop-location-action"
+                            href={directRoute.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={directRouteLabel}
+                            title={directRouteLabel}
+                          >
+                            <Icon name="route" />
+                          </a>
+                        ) : (
+                          <button
+                            className="stop-location-action"
+                            type="button"
+                            aria-label={t('openRouteInMaps')}
+                            title={t('openRouteInMaps')}
+                            aria-expanded={openRouteStopId === stop.id}
+                            onClick={() => setOpenRouteStopId(openRouteStopId === stop.id ? null : stop.id)}
+                          >
+                            <Icon name="route" />
+                          </button>
+                        )}
+                        {directRoute && <button
+                          className="stop-location-action stop-route-options-trigger"
+                          type="button"
+                          aria-label={t('chooseOtherRoute')}
+                          title={t('chooseOtherRoute')}
+                          aria-expanded={openRouteStopId === stop.id}
+                          onClick={() => setOpenRouteStopId(openRouteStopId === stop.id ? null : stop.id)}
+                        >
+                          <Icon name="chevronDown" />
+                        </button>}
+                        {openRouteStopId === stop.id && <span className="stop-route-options">
+                          {hasRoute ? <>
+                            {routeLinks.filter(({ url }) => Boolean(url)).map(({ mode, provider, url }) => (
+                              <a key={`${provider}-${mode}`} href={url} target="_blank" rel="noreferrer" onClick={() => setOpenRouteStopId(null)}>
+                                {t(`routeMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)}{showRouteProviders && ` · ${t(provider === 'apple' ? 'appleMapsName' : provider === 'tencent' ? 'tencentMapsName' : provider === 'amap' ? 'amapName' : 'googleMapsName')}`}
+                              </a>
+                            ))}
+                            {routeAlternatives.map(({ mode, provider, url }) => (
+                              <a key={`${provider}-${mode}`} href={url} target="_blank" rel="noreferrer" onClick={() => setOpenRouteStopId(null)}>
+                                {t(`routeMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)} · {t(provider === 'apple' ? 'appleMapsName' : 'tencentMapsName')}
+                              </a>
+                            ))}
+                            {hasMissingCoordinateRoute && <span>{t('mapRouteNeedsCoordinates')}</span>}
+                          </> : (
+                            <span>{t('mapRouteNeedsCoordinates')}</span>
+                          )}
+                        </span>}
+                      </span>
                     )}
-                    {mapsUrl && (
+                    {mapsLink.url && (
                       <a
                         className="stop-location-action"
-                        href={mapsUrl}
+                        href={mapsLink.url}
                         target="_blank"
                         rel="noreferrer"
-                        aria-label={t('openInMaps')}
-                        title={t('openInMaps')}
+                        aria-label={mapLabel}
+                        title={mapLabel}
                       >
                         <Icon name="mapPin" />
                       </a>

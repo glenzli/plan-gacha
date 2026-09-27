@@ -11,7 +11,9 @@ export type IconName =
   | 'pencil'
   | 'copy'
   | 'mapPin'
+  | 'settings'
   | 'route'
+  | 'chevronDown'
   | 'home'
   | 'plus'
   | 'refresh'
@@ -107,12 +109,22 @@ export function Icon({ name, className = '' }: IconProps) {
         <circle cx="12" cy="10" r="3" />
       </>
     ),
+    settings: (
+      <>
+        <path d="M12 2.5v2m0 15v2M4.2 4.2l1.4 1.4m12.8 12.8 1.4 1.4M2.5 12h2m15 0h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4" />
+        <circle cx="12" cy="12" r="6" />
+        <circle cx="12" cy="12" r="2" />
+      </>
+    ),
     route: (
       <>
         <circle cx="6" cy="18" r="2" />
         <circle cx="18" cy="6" r="2" />
         <path d="M8 18h3a3 3 0 0 0 0-6h2a3 3 0 0 0 3-3V8" />
       </>
+    ),
+    chevronDown: (
+      <path d="m6 9 6 6 6-6" />
     ),
     home: (
       <>

@@ -1,5 +1,5 @@
 import { Icon } from './Icon';
-import { DayReviewSummary } from './DayReview';
+import { DayReviewSummary, type DayReviewTarget } from './DayReview';
 import { WeatherIcon } from './PlanContent';
 import { addDays, parseDateId } from '../domain/date';
 import { normalizePlan, type NormalizedPlan } from '../domain/plan';
@@ -27,6 +27,8 @@ interface ArchivedTripModalProps {
   getPriorityLabel: (priority: string, language: string) => string;
   language: string;
   onClose: () => void;
+  onEditSummary: (tripId: string) => void;
+  onEditDayReview: (target: DayReviewTarget) => void;
   renderPlanBookings: PlanRenderer;
   renderPlanNotes: PlanRenderer;
   renderPlanStops: PlanRenderer;
@@ -73,6 +75,8 @@ export function ArchivedTripModal({
   getPriorityLabel,
   language,
   onClose,
+  onEditSummary,
+  onEditDayReview,
   renderPlanBookings,
   renderPlanNotes,
   renderPlanStops,
@@ -116,7 +120,7 @@ export function ArchivedTripModal({
             )}
           </div>
           <div className="archived-view-actions">
-            <span className="readonly-badge">{t('readOnly')}</span>
+            <span className="readonly-badge">{t('itineraryReadOnly')}</span>
             <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')}>
               <Icon name="x" />
             </button>
@@ -124,30 +128,30 @@ export function ArchivedTripModal({
         </div>
 
         <div className="archived-view-body">
-          {hasTripArchiveSummaryContent(archiveSummary) && (
-            <section className="archived-trip-summary">
-              <div className="archived-trip-summary-head">
-                <h3>{t('tripSummary')}</h3>
-                {expenseTotal > 0 && (
-                  <strong>{t('totalExpense')}: {formatExpense(expenseTotal, archiveSummary?.currency || '', language)}</strong>
-                )}
+          <section className="archived-trip-summary">
+            <div className="archived-trip-summary-head">
+              <h3>{t('tripSummary')}</h3>
+              <button className="btn btn-small btn-outline" type="button" onClick={() => onEditSummary(trip.id)}>
+                {t(hasTripArchiveSummaryContent(archiveSummary) ? 'editTripSummary' : 'addTripSummary')}
+              </button>
+            </div>
+            {expenseTotal > 0 && <strong className="archived-expense-total">{t('totalExpense')}: {formatExpense(expenseTotal, archiveSummary?.currency || '', language)}</strong>}
+            {expenseTotal > 0 && (
+              <div className="archived-expense-list">
+                {TRIP_EXPENSE_CATEGORIES.flatMap((category) => {
+                  const amount = archiveSummary?.expenses?.[category] || 0;
+                  return amount > 0 ? [(
+                    <span key={category}>
+                      <em>{t(`expenseCategory.${category}`)}</em>
+                      <strong>{formatExpense(amount, archiveSummary?.currency || '', language)}</strong>
+                    </span>
+                  )] : [];
+                })}
               </div>
-              {expenseTotal > 0 && (
-                <div className="archived-expense-list">
-                  {TRIP_EXPENSE_CATEGORIES.flatMap((category) => {
-                    const amount = archiveSummary?.expenses?.[category] || 0;
-                    return amount > 0 ? [(
-                      <span key={category}>
-                        <em>{t(`expenseCategory.${category}`)}</em>
-                        <strong>{formatExpense(amount, archiveSummary?.currency || '', language)}</strong>
-                      </span>
-                    )] : [];
-                  })}
-                </div>
-              )}
-              {archiveSummary?.note && <p>{archiveSummary.note}</p>}
-            </section>
-          )}
+            )}
+            {archiveSummary?.note && <p>{archiveSummary.note}</p>}
+            {!hasTripArchiveSummaryContent(archiveSummary) && <p>{t('emptyTripSummary')}</p>}
+          </section>
           {archiveDates.map((date) => {
             const plan = archivePlansById.get(archiveSchedule[date.id]?.planId);
             const abandoned = archiveSchedule[date.id]?.status === ScheduleEntryStatus.Abandoned;
@@ -197,7 +201,20 @@ export function ArchivedTripModal({
                     })}
                     {renderPlanBookings(plan, { readOnly: true })}
                     {renderPlanNotes(plan)}
-                    {dayReview && <DayReviewSummary review={dayReview} t={t} />}
+                    {!abandoned && (
+                      <div className="archived-review-section">
+                        {dayReview && <DayReviewSummary review={dayReview} t={t} />}
+                        <button className="btn btn-small btn-outline" type="button" onClick={() => onEditDayReview({
+                          tripId: trip.id,
+                          dateId: date.id,
+                          dateLabel: date.display,
+                          planId: plan.id,
+                          planName: plan.name,
+                        })}>
+                          {t(dayReview ? 'editDayReview' : 'reviewDay')}
+                        </button>
+                      </div>
+                    )}
                     {weather && (() => {
                       const weatherCondition = getWeatherIconCondition(weather.snapshot);
                       const weatherRows = getWeatherLocationSummaryRows(weather.snapshot, language);
@@ -234,7 +251,16 @@ export function ArchivedTripModal({
                     <div>
                       {previousReviews.map((review) => (
                         <section key={review.key}>
-                          <strong>{review.planName || review.planId}</strong>
+                          <div className="archived-previous-review-head">
+                            <strong>{review.planName || review.planId}</strong>
+                            <button className="btn btn-small btn-outline" type="button" onClick={() => onEditDayReview({
+                              tripId: trip.id,
+                              dateId: date.id,
+                              dateLabel: date.display,
+                              planId: review.planId,
+                              planName: review.planName || review.planId,
+                            })}>{t('editDayReview')}</button>
+                          </div>
                           <DayReviewSummary review={review} t={t} />
                         </section>
                       ))}

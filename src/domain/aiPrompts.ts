@@ -20,7 +20,7 @@ export function getPlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
           "time": "09:30",
           "title": "Stop title",
           "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": { "query": "Only fill an administrative city/ward when this stop is in a different city/ward from the plan location; never use scenic spot, station, river, shop, or museum names", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
-          "transfer_from_previous": { "depart_at": "09:00", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "note": "Default to walk for normal point-to-point walking. Use sightseeing_walk only when the walk itself is a planned scenic activity." },
+          "transfer_from_previous": { "depart_at": "09:00", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "note": "Default to walk for normal point-to-point walking. Use sightseeing_walk only when the walk itself is a planned scenic activity." },
           "opening_hours": "Only the opening/business hours relevant to the planned arrival time, e.g. 10:00-17:00; leave empty if unknown or unreliable",
           "note": "What happens at this stop",
           "weather_relevant": true
@@ -67,7 +67,7 @@ export function getPlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
           "time": "09:30",
           "title": "节点标题",
           "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": { "query": "仅在跨城或明显不同区县时填写行政地点；同计划地点留空；不要写景点、车站、河流、商场、博物馆名", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
-          "transfer_from_previous": { "depart_at": "09:00", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "note": "普通点到点步行默认写步行。只有这段步行本身就是独立观景/逛街/散步项目时，才写游玩型步行。" },
+          "transfer_from_previous": { "depart_at": "09:00", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "note": "普通点到点步行默认写步行。只有这段步行本身就是独立观景/逛街/散步项目时，才写游玩型步行。" },
           "opening_hours": "只写和计划到达时间相关的开放/营业时间，例如 10:00-17:00；不确定或不可靠时留空",
           "note": "这个节点做什么",
           "weather_relevant": true
@@ -109,7 +109,7 @@ export function getSinglePlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
   "description": "What to do",
   "priority": "must | preferred | backup | optional",
   "location": { "label": "Display place", "address": "", "weather_location": { "query": "City/Ward, Prefecture, Country", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
-  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": { "query": "Leave empty unless this stop needs a different administrative weather city/ward", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
+  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": { "query": "Leave empty unless this stop needs a different administrative weather city/ward", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
   "weather_rules": {
@@ -131,7 +131,7 @@ export function getSinglePlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
   "description": "当天做什么",
   "priority": "must | preferred | backup | optional",
   "location": { "label": "地点展示名", "address": "", "weather_location": { "query": "行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
-  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": { "query": "除非该节点需要不同的行政天气城市/区县，否则留空", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
+  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": { "query": "除非该节点需要不同的行政天气城市/区县，否则留空", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
   "weather_rules": {
@@ -207,6 +207,7 @@ export function compactTransferForAi(transfer: any) {
   return pruneEmptyAiValue({
     depart_at: transfer.departAt,
     mode: transfer.mode,
+    preferred_route_mode: transfer.preferredRouteMode,
     duration: transfer.duration,
     note: transfer.note,
   });
@@ -324,12 +325,12 @@ Output rules:
 1. Only output importable JSON, with no Markdown or explanation.
 2. Follow the JSON format below. Use empty arrays for optional list fields when absent.
 3. Fill available_dates, closed_dates, weather_rules and conflicts from the trip constraints and the user request.
-4. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. For Japan, use query like "Kawachi-Nagano, Osaka, Japan", country_code "JP", and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
+4. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. Always set its country_code to the actual country, such as "CN" for mainland China or "JP" for Japan, so map links use the right service. For Japan, use query like "Kawachi-Nagano, Osaka, Japan" and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
 5. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
 6. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links. For restaurants that require or strongly benefit from reservation, add a restaurant_reservation booking with status pending unless already booked, plus a short note about when/why to reserve.
 7. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
 8. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
-9. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
+9. For each stop after the first, fill transfer_from_previous.mode with the actual transport and preferred_route_mode with the map navigation category: walking, transit, or driving. Walking and sightseeing_walk map to walking; train, metro, bus and ferry map to transit; taxi and car map to driving. This preference controls the default directions link, so choose the intended route rather than leaving it blank. Fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Give only a rough duration, not turn-by-turn directions; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
 10. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
 11. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
 12. Do not call a plan a "loop" just because it starts and ends at lodging. Use loop only for a real circular sightseeing route.
@@ -366,12 +367,12 @@ ${JSON.stringify({
 1. 只输出可导入 JSON，不要 Markdown 或解释。
 2. 严格按下面格式补齐字段；可选数组没有内容时用空数组。
 3. 根据旅行限制和用户需求填写 available_dates、closed_dates、weather_rules、conflicts。
-4. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 country_code "JP"、admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
+4. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。务必写实际国家的 country_code，例如中国大陆为 "CN"、日本为 "JP"，以便地图链接选择对应服务。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
 5. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
 6. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。餐厅如果需要预约，或强烈建议预约/排队风险较高，也写 restaurant_reservation 类型的 booking；除非已订好，否则 status 用 pending，并在 note 简要说明何时/为什么要预约。
 7. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
 8. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
-9. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间。stops.time 已经是到达/开始当前 stop 的时间，不要在 transfer_from_previous 里重复。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是一个明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
+9. 从第二个 stop 起，每段 transfer_from_previous.mode 写实际交通工具，并填写 preferred_route_mode 作为地图默认导航方式，只能选 walking、transit、driving。步行和游玩型步行选 walking；高铁、地铁、公交、轮渡选 transit；出租车和自驾选 driving。这个字段决定点击路线图标时默认打开哪种路径，请按计划意图填写，不要留空。depart_at 尽量填写，因为界面会显示出发时间；stops.time 已经是到达/开始当前 stop 的时间，不要在这里重复。只写粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
 10. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
 11. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
 12. 不要因为从酒店出发、回酒店结束，就把计划命名为“环线”；只有真实闭环游览路线才可以叫环线。
@@ -496,12 +497,12 @@ ${userRequest}
 
 ${language === 'en' ? `Requirements:
 1. ${isCreatingPlan ? 'The new plan id must not duplicate existing_plan_ids.' : 'Keep the current plan id unless the user explicitly asks to change it.'}
-2. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. For Japan, use query like "Kawachi-Nagano, Osaka, Japan", country_code "JP", and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
+2. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. Always set its country_code to the actual country, such as "CN" for mainland China or "JP" for Japan, so map links use the right service. For Japan, use query like "Kawachi-Nagano, Osaka, Japan" and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
 3. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
 4. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links. For restaurants that require or strongly benefit from reservation, add a restaurant_reservation booking with status pending unless already booked, plus a short note about when/why to reserve.
 5. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
 6. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
-7. For transfer_from_previous, fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Only fill the main transport mode and rough duration. Do not write detailed turn-by-turn routes; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
+7. For each stop after the first, fill transfer_from_previous.mode with the actual transport and preferred_route_mode with the map navigation category: walking, transit, or driving. Walking and sightseeing_walk map to walking; train, metro, bus and ferry map to transit; taxi and car map to driving. This preference controls the default directions link, so choose the intended route rather than leaving it blank. Fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Give only a rough duration, not turn-by-turn directions; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
 8. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
 9. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
 10. Do not call a plan a "loop" just because it starts and ends at lodging. Use loop only for a real circular sightseeing route.
@@ -517,12 +518,12 @@ ${language === 'en' ? `Requirements:
 Single plan JSON format:
 ${schema}` : `要求：
 1. ${isCreatingPlan ? '新增计划 id 不要和 existing_plan_ids 重复。' : '除非用户明确要求，否则保留当前计划 id。'}
-2. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 country_code "JP"、admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
+2. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。务必写实际国家的 country_code，例如中国大陆为 "CN"、日本为 "JP"，以便地图链接选择对应服务。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
 3. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
 4. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。餐厅如果需要预约，或强烈建议预约/排队风险较高，也写 restaurant_reservation 类型的 booking；除非已订好，否则 status 用 pending，并在 note 简要说明何时/为什么要预约。
 5. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
 6. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
-7. transfer_from_previous 尽量填写 depart_at，因为界面会显示出发时间。stops.time 已经是到达/开始当前 stop 的时间，不要在 transfer_from_previous 里重复。只写从上一 stop 到当前 stop 的主要交通工具和粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是一个明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
+7. 从第二个 stop 起，每段 transfer_from_previous.mode 写实际交通工具，并填写 preferred_route_mode 作为地图默认导航方式，只能选 walking、transit、driving。步行和游玩型步行选 walking；高铁、地铁、公交、轮渡选 transit；出租车和自驾选 driving。这个字段决定点击路线图标时默认打开哪种路径，请按计划意图填写，不要留空。depart_at 尽量填写，因为界面会显示出发时间；stops.time 已经是到达/开始当前 stop 的时间，不要在这里重复。只写粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
 8. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
 9. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
 10. 不要因为从酒店出发、回酒店结束，就把计划命名为“环线”；只有真实闭环游览路线才可以叫环线。

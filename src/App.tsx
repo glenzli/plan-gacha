@@ -11,11 +11,13 @@ import { ChecklistImportModal } from './components/ChecklistImportModal';
 import { ChecklistModal } from './components/ChecklistModal';
 import { CurrentPlanCard } from './components/CurrentPlanCard';
 import { DayReviewModal, type DayReviewTarget } from './components/DayReview';
+import { updateArchivedDayReview, updateArchivedTripSummary } from './domain/archivedTripEdits';
 import { DriveSyncModal } from './components/DriveSyncModal';
 import { DriveSyncPanel } from './components/DriveSyncPanel';
 import { EmptyPlanState } from './components/EmptyPlanState';
 import { JsonImportModal } from './components/JsonImportModal';
 import { MainDayPanel } from './components/MainDayPanel';
+import { MapSettingsModal } from './components/MapSettingsModal';
 import {
   PlanBookings,
   PlanNotes,
@@ -118,6 +120,7 @@ import {
   STORAGE_KEYS,
   loadInitialState,
 } from './domain/appStorage';
+import { loadMapPreferences, saveMapPreferences, type MapProvider, type MapRegion } from './domain/mapPreferences';
 import {
   evaluateWeather,
   getCalendarDayState,
@@ -183,8 +186,11 @@ function App() {
   const [mobileRisksOpen, setMobileRisksOpen] = useState(false);
   const [archiveLibraryOpen, setArchiveLibraryOpen] = useState(false);
   const [archivedViewTripId, setArchivedViewTripId] = useState<string | null>(null);
+  const [archivedSummaryTripId, setArchivedSummaryTripId] = useState<string | null>(null);
   const [dayReviewTarget, setDayReviewTarget] = useState<DayReviewTarget | null>(null);
   const [archiveModalOpen, setArchiveModalOpen] = useState(false);
+  const [mapSettingsOpen, setMapSettingsOpen] = useState(false);
+  const [mapPreferences, setMapPreferences] = useState(loadMapPreferences);
   const [archivePromptIsAutomatic, setArchivePromptIsAutomatic] = useState(false);
 
   const dayTileRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
@@ -314,11 +320,14 @@ function App() {
     && !selectedDayAbandoned
     && selectedDate.id <= getTodayId(),
   );
+  const targetDayReviews = dayReviewTarget?.tripId
+    ? trips.find((trip) => trip.id === dayReviewTarget.tripId && trip.archived)?.dayReviews || {}
+    : dayReviews;
   const editedDayReview = dayReviewTarget
-    ? findDayReview(dayReviewTarget.dateId, dayReviewTarget.planId, dayReviews)
+    ? findDayReview(dayReviewTarget.dateId, dayReviewTarget.planId, targetDayReviews)
     : undefined;
   const previousDayReviews = dayReviewTarget
-    ? getDayReviewsForDate(dayReviewTarget.dateId, dayReviews)
+    ? getDayReviewsForDate(dayReviewTarget.dateId, targetDayReviews)
       .filter((review) => review.planId !== dayReviewTarget.planId)
     : [];
   const { planImageBusy, shareCurrentPlanImage } = usePlanImageShare({
@@ -408,6 +417,7 @@ function App() {
     () => archivedTrips.find((trip) => trip.id === archivedViewTripId) || null,
     [archivedTrips, archivedViewTripId],
   );
+  const archivedSummaryTrip = archivedTrips.find((trip) => trip.id === archivedSummaryTripId) || null;
   const activeTripOption = trips.find((trip) => trip.id === activeTripId);
   const activeTripArchived = activeTripOption?.archived || false;
   const planAssignments = useMemo(() => {
@@ -963,6 +973,13 @@ function App() {
     applyTripListAfterCurrentRemoved(updatedTrips, t('tripArchived'));
   };
 
+  const saveArchivedSummary = (draft: TripArchiveSummaryDraft) => {
+    if (!archivedSummaryTrip) return;
+    setTrips((current) => updateArchivedTripSummary(current, archivedSummaryTrip.id, draft));
+    setArchivedSummaryTripId(null);
+    notify(t('tripSummarySaved'));
+  };
+
   useEffect(() => {
     if (
       !hasActiveTrip
@@ -1081,20 +1098,32 @@ function App() {
     note: string;
   }) => {
     if (!dayReviewTarget) return;
-    const key = getDayReviewKey(dayReviewTarget.dateId, dayReviewTarget.planId);
-    setDayReviews((current) => ({
-      ...current,
-      [key]: {
-        key,
+    if (dayReviewTarget.tripId) {
+      const tripId = dayReviewTarget.tripId;
+      setTrips((current) => updateArchivedDayReview(current, tripId, {
         dateId: dayReviewTarget.dateId,
         planId: dayReviewTarget.planId,
         planName: dayReviewTarget.planName,
         rating,
         tags,
         note,
-        updatedAt: new Date().toISOString(),
-      },
-    }));
+      }));
+    } else {
+      const key = getDayReviewKey(dayReviewTarget.dateId, dayReviewTarget.planId);
+      setDayReviews((current) => ({
+        ...current,
+        [key]: {
+          key,
+          dateId: dayReviewTarget.dateId,
+          planId: dayReviewTarget.planId,
+          planName: dayReviewTarget.planName,
+          rating,
+          tags,
+          note,
+          updatedAt: new Date().toISOString(),
+        },
+      }));
+    }
     setDayReviewTarget(null);
     notify(t('dayReviewSaved'));
   };
@@ -1154,6 +1183,7 @@ function App() {
       plan={plan}
       t={t}
       language={language}
+      mapPreferences={mapPreferences}
       onCopyPlace={(copyValue) => copyText(copyValue, t('placeCopied'))}
       dateId={options.dateId}
       onToggleStopAbandoned={toggleStopAbandoned}
@@ -1313,6 +1343,10 @@ function App() {
           setArchiveLibraryOpen(true);
         }}
         onOpenDriveSync={() => startUiTransition(() => setDrivePanelOpen(true))}
+        onOpenMapSettings={() => {
+          setTripMenuOpen(false);
+          setMapSettingsOpen(true);
+        }}
         onOpenTripEditor={() => {
           startUiTransition(() => {
             setTripMenuOpen(false);
@@ -1458,6 +1492,19 @@ function App() {
         />
       )}
 
+      {mapSettingsOpen && (
+        <MapSettingsModal
+          preferences={mapPreferences}
+          onChange={(region: MapRegion, provider: MapProvider) => {
+            const next = { ...mapPreferences, [region]: provider };
+            if (saveMapPreferences(next)) setMapPreferences(next);
+            else notify(t('mapSettingsSaveFailed'));
+          }}
+          onClose={() => setMapSettingsOpen(false)}
+          t={t}
+        />
+      )}
+
       {checklistOpen && (
         <ChecklistModal
           checklistDraftRef={checklistDraftRef}
@@ -1499,6 +1546,8 @@ function App() {
           getPriorityLabel={getPriorityLabel}
           language={language}
           onClose={() => setArchivedViewTripId(null)}
+          onEditSummary={setArchivedSummaryTripId}
+          onEditDayReview={setDayReviewTarget}
           renderPlanBookings={renderPlanBookings}
           renderPlanNotes={renderPlanNotes}
           renderPlanStops={renderPlanStops}
@@ -1517,6 +1566,19 @@ function App() {
           onSubmit={archiveCurrentTrip}
           t={t}
           tripName={tripName || t('unnamedTrip')}
+        />
+      )}
+
+      {archivedSummaryTrip && (
+        <ArchiveTripModal
+          key={archivedSummaryTrip.id}
+          editing
+          endedPrompt={false}
+          initialSummary={archivedSummaryTrip.archiveSummary}
+          onClose={() => setArchivedSummaryTripId(null)}
+          onSubmit={saveArchivedSummary}
+          t={t}
+          tripName={archivedSummaryTrip.name}
         />
       )}
 
@@ -1560,7 +1622,7 @@ function App() {
 
       {dayReviewTarget && (
         <DayReviewModal
-          key={`${dayReviewTarget.dateId}:${dayReviewTarget.planId}`}
+          key={`${dayReviewTarget.tripId || 'active'}:${dayReviewTarget.dateId}:${dayReviewTarget.planId}`}
           currentReview={editedDayReview}
           onClose={() => setDayReviewTarget(null)}
           onSave={saveDayReview}

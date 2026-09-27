@@ -12,6 +12,8 @@ describe('AI prompt schemas', () => {
 
     expect(schema).toContain('weather_location');
     expect(schema).toContain('transfer_from_previous');
+    expect(schema).toContain('preferred_route_mode');
+    expect(getPlanJsonSchema('en')).toContain('preferred_route_mode');
     expect(schema).toContain('restaurant_reservation');
     expect(schema).not.toContain('"tags"');
   });
@@ -32,6 +34,8 @@ describe('single plan prompts', () => {
     });
 
     expect(prompt).toContain('只输出单个计划 JSON 对象');
+    expect(prompt).toContain('preferred_route_mode');
+    expect(prompt).toContain('walking、transit、driving');
     expect(prompt).toContain('用户需求，请优先处理：\n改成雨天可执行方案');
     expect(prompt).toContain('Kawachi-Nagano, Osaka, Japan');
     expect(prompt).not.toContain('existing_plan_ids');
@@ -52,7 +56,7 @@ describe('AI compaction helpers', () => {
           time: '10:00',
           title: 'Museum',
           location: { label: 'Museum', address: '' },
-          transferFromPrevious: { departAt: '09:30', mode: 'train', duration: '30 min', note: '' },
+          transferFromPrevious: { departAt: '09:30', mode: 'train', preferredRouteMode: 'transit', duration: '30 min', note: '' },
           openingHours: '10:00-17:00',
           note: '',
           weatherRelevant: true,
@@ -86,6 +90,7 @@ describe('AI compaction helpers', () => {
           transfer_from_previous: {
             depart_at: '09:30',
             mode: 'train',
+            preferred_route_mode: 'transit',
             duration: '30 min',
           },
           opening_hours: '10:00-17:00',
@@ -116,6 +121,7 @@ describe('planning prompts', () => {
     });
 
     expect(prompt).toContain('Only output importable JSON');
+    expect(prompt).toContain('preferred_route_mode');
     expect(prompt).toContain('existing_plan_ids_should_not_duplicate');
     expect(prompt).toContain('existing_plan');
     expect(prompt).toContain('past_day_reviews are soft preferences');

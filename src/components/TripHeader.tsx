@@ -19,6 +19,7 @@ interface TripHeaderProps {
   getTripDisplay: (trip: Partial<NormalizedTripSnapshot>, isCurrentTrip?: boolean) => TripDisplay;
   hasInitializedPlans: boolean;
   onOpenDriveSync: () => void;
+  onOpenMapSettings: VoidFn;
   onOpenArchiveLibrary: VoidFn;
   onArchiveTrip: VoidFn;
   onOpenTripEditor: () => void;
@@ -46,6 +47,7 @@ export function TripHeader({
   getTripDisplay,
   hasInitializedPlans,
   onOpenDriveSync,
+  onOpenMapSettings,
   onOpenArchiveLibrary,
   onArchiveTrip,
   onOpenTripEditor,
@@ -175,6 +177,9 @@ export function TripHeader({
               <Icon name="cloud" />
             </button>
           )}
+          <button className="icon-btn" type="button" onClick={onOpenMapSettings} aria-label={t('mapSettingsTitle')} title={t('mapSettingsTitle')}>
+            <Icon name="settings" />
+          </button>
           {hasInitializedPlans && (
             <button
               className="icon-btn archive-shortcut-btn"

@@ -41,13 +41,21 @@ export interface NormalizedLocation extends WeatherLocationLike {
   countryCode?: string;
   admin1?: string;
   admin2?: string;
+  mapPoint?: {
+    latitude: number;
+    longitude: number;
+    coordinateSystem: 'GCJ-02';
+  };
 }
+
+export type PreferredRouteMode = 'transit' | 'driving' | 'walking';
 
 export interface StopTransfer {
   departAt: string;
   arriveAt: string;
   duration: string;
   mode: string;
+  preferredRouteMode?: PreferredRouteMode | null;
   note: string;
 }
 
@@ -115,6 +123,7 @@ export const QINGDAO_LOCATION: NormalizedLocation = {
   label: '青岛市',
   query: 'Qingdao',
   weatherLabel: '青岛市',
+  countryCode: 'CN',
   latitude: 36.0671,
   longitude: 120.3826,
   address: '',
@@ -124,6 +133,7 @@ export const WEIHAI_LOCATION: NormalizedLocation = {
   label: '威海市',
   query: 'Weihai',
   weatherLabel: '威海市',
+  countryCode: 'CN',
   latitude: 37.5135,
   longitude: 122.1217,
   address: '',
@@ -133,6 +143,7 @@ export const YANTAI_LOCATION: NormalizedLocation = {
   label: '烟台市',
   query: 'Yantai',
   weatherLabel: '烟台市',
+  countryCode: 'CN',
   latitude: 37.4638,
   longitude: 121.4479,
   address: '',
@@ -358,6 +369,15 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
   }
 
   if (isRecord(location)) {
+    const rawMapPoint = location.mapPoint || location.map_point;
+    const mapLatitude = isRecord(rawMapPoint) ? normalizeCoordinate(rawMapPoint.latitude ?? rawMapPoint.lat) : undefined;
+    const mapLongitude = isRecord(rawMapPoint) ? normalizeCoordinate(rawMapPoint.longitude ?? rawMapPoint.lon ?? rawMapPoint.lng) : undefined;
+    const coordinateSystem = isRecord(rawMapPoint) ? rawMapPoint.coordinateSystem ?? rawMapPoint.coordinate_system : undefined;
+    const mapPoint = mapLatitude !== undefined && mapLongitude !== undefined &&
+      Math.abs(mapLatitude) <= 90 && Math.abs(mapLongitude) <= 180 &&
+      !(mapLatitude === 0 && mapLongitude === 0) && coordinateSystem === 'GCJ-02'
+      ? { latitude: mapLatitude, longitude: mapLongitude, coordinateSystem: 'GCJ-02' as const }
+      : undefined;
     const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
     const weatherLocationObject = isRecord(weatherLocation) ? weatherLocation : null;
     const weatherLocationText = typeof weatherLocation === 'string' ? weatherLocation : '';
@@ -440,6 +460,7 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
       admin1,
       admin2,
       address: location.address || location.addr || location.full_address || '',
+      mapPoint,
     };
   }
 
@@ -532,13 +553,14 @@ function hasOwnWeatherSource(location: unknown) {
 }
 
 function normalizeStopLocation(rawLocation: unknown, fallbackLocation: NormalizedLocation): NormalizedLocation {
-  if (!rawLocation) return fallbackLocation;
+  if (!rawLocation) return { ...fallbackLocation, mapPoint: undefined };
 
   if (typeof rawLocation === 'string') {
     return {
       ...fallbackLocation,
       label: rawLocation,
       weatherLabel: getWeatherLocationLabel(fallbackLocation),
+      mapPoint: undefined,
     };
   }
 
@@ -552,6 +574,7 @@ function normalizeStopLocation(rawLocation: unknown, fallbackLocation: Normalize
     label: displayLocation.label,
     weatherLabel: getWeatherLocationLabel(fallbackLocation),
     address: displayLocation.address || fallbackLocation.address || '',
+    mapPoint: displayLocation.mapPoint,
   };
 }
 
@@ -565,6 +588,9 @@ export function normalizeStopTransfer(value: unknown): StopTransfer | null {
   if (!isRecord(value)) return null;
   const duration = String(value.duration || value.time || value.travel_time || value.travelTime || '').trim();
   const mode = String(value.mode || value.method || value.transport || '').trim();
+  const rawPreferredRouteMode = String(value.preferred_route_mode || value.preferredRouteMode || '').trim().toLowerCase();
+  const preferredRouteMode: PreferredRouteMode | null = rawPreferredRouteMode === 'walking' || rawPreferredRouteMode === 'driving' || rawPreferredRouteMode === 'transit'
+    ? rawPreferredRouteMode : null;
   const note = String(value.note || value.description || value.detail || '').trim();
   const departAt = String(
     value.depart_at || value.departAt || value.departure || value.depart || value.departure_at || value.departureAt || value.departure_time || value.departureTime || value.start_at || value.startAt || value.start_time || value.startTime || '',
@@ -572,8 +598,8 @@ export function normalizeStopTransfer(value: unknown): StopTransfer | null {
   const arriveAt = String(
     value.arrive_at || value.arriveAt || value.arrival || value.arrive || value.arrival_at || value.arrivalAt || value.arrival_time || value.arrivalTime || value.end_at || value.endAt || value.end_time || value.endTime || '',
   ).trim();
-  if (!duration && !mode && !note && !departAt && !arriveAt) return null;
-  return { departAt, arriveAt, duration, mode, note };
+  if (!duration && !mode && !preferredRouteMode && !note && !departAt && !arriveAt) return null;
+  return { departAt, arriveAt, duration, mode, preferredRouteMode, note };
 }
 
 export function formatStopTransfer(transfer?: StopTransfer | null) {

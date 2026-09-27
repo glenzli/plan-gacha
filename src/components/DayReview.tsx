@@ -12,6 +12,7 @@ import type { TranslateFn } from '../types/ui';
 import { Icon } from './Icon';
 
 export interface DayReviewTarget {
+  tripId?: string;
   dateId: string;
   dateLabel: string;
   planId: string;

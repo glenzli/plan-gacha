@@ -30,6 +30,7 @@ function isCommonCurrency(currency: string) {
 
 interface ArchiveTripModalProps {
   endedPrompt: boolean;
+  editing?: boolean;
   initialSummary: TripArchiveSummary | null;
   onClose: () => void;
   onSubmit: (draft: TripArchiveSummaryDraft) => void;
@@ -39,6 +40,7 @@ interface ArchiveTripModalProps {
 
 export function ArchiveTripModal({
   endedPrompt,
+  editing = false,
   initialSummary,
   onClose,
   onSubmit,
@@ -76,8 +78,8 @@ export function ArchiveTripModal({
       <form className="modal archive-trip-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header archive-trip-header">
           <div>
-            <p className="eyebrow">{t('archive')}</p>
-            <h2>{endedPrompt ? t('tripEndedArchiveTitle') : t('archiveTripTitle')}</h2>
+            <p className="eyebrow">{editing ? t('tripSummary') : t('archive')}</p>
+            <h2>{editing ? t('editTripSummary') : endedPrompt ? t('tripEndedArchiveTitle') : t('archiveTripTitle')}</h2>
             <span>{tripName}</span>
           </div>
           <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')}>
@@ -86,7 +88,7 @@ export function ArchiveTripModal({
         </div>
 
         <div className="archive-trip-body">
-          <p className="archive-trip-help">{t('archiveTripHelp')}</p>
+          <p className="archive-trip-help">{t(editing ? 'editTripSummaryHelp' : 'archiveTripHelp')}</p>
           <div className="archive-currency-row">
             <label>
               <span>{t('expenseCurrency')}</span>
@@ -141,10 +143,10 @@ export function ArchiveTripModal({
 
         <div className="modal-actions archive-trip-actions">
           <button className="btn btn-outline" type="button" onClick={onClose}>
-            {endedPrompt ? t('archiveLater') : t('cancel')}
+            {endedPrompt && !editing ? t('archiveLater') : t('cancel')}
           </button>
           <button className="btn btn-primary" type="submit">
-            {t('confirmArchive')}
+            {t(editing ? 'saveTripSummary' : 'confirmArchive')}
           </button>
         </div>
       </form>
