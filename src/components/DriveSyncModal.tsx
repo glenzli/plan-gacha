@@ -20,7 +20,7 @@ export function DriveSyncModal({
             <p className="eyebrow">{t('driveSync')}</p>
             <h2>{t('driveSync')}</h2>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')}>
+          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')} title={t('close')}>
             <Icon name="x" />
           </button>
         </div>

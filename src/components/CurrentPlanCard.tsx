@@ -72,6 +72,7 @@ export function CurrentPlanCard({
             language={language}
             getPlanBookingBadge={getPlanBookingBadge}
           />
+          {selectedPlan && <button className="btn btn-small btn-outline current-edit-button" type="button" onClick={() => openPlanEditor(selectedPlan.id)} title={t('editSinglePlan')} data-screenshot-exclude="true"><Icon name="pencil" />{t('editItinerary')}</button>}
         </div>
         <p className="current-plan-summary">{selectedPlan?.description || t('currentPlanHelp')}</p>
         {selectedPlan && isAbandoned && (
@@ -110,16 +111,6 @@ export function CurrentPlanCard({
             data-screenshot-exclude="true"
           >
             <Icon name="camera" />
-          </button>
-          <button
-            className="icon-btn compact-icon-btn"
-            type="button"
-            onClick={() => openPlanEditor(selectedPlan.id)}
-            aria-label={`${t('editSinglePlan')} ${selectedPlan.name}`}
-            title={t('editSinglePlan')}
-            data-screenshot-exclude="true"
-          >
-            <Icon name="pencil" />
           </button>
           <button
             className={`icon-btn compact-icon-btn current-abandon-btn ${isAbandoned ? 'is-active' : ''}`}

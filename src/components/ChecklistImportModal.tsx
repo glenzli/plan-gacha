@@ -38,7 +38,7 @@ export function ChecklistImportModal({
             <p className="eyebrow">{t('checklist')}</p>
             <h2>{t('checklistImportTitle')}</h2>
           </div>
-          <button className="icon-btn" type="button" onClick={closeChecklistImport} aria-label={t('close')}>
+          <button className="icon-btn" type="button" onClick={closeChecklistImport} aria-label={t('close')} title={t('close')}>
             <Icon name="x" />
           </button>
         </div>

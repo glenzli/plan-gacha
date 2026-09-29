@@ -1,13 +1,17 @@
-import type { RefObject, ReactNode } from 'react';
+import { useEffect, useState, type RefObject, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { LodgingEditor } from './LodgingEditor';
 import { PlanEditorDetail } from './PlanEditor';
 import { TripItineraryEditorPanel } from './TripItineraryEditorPanel';
 import { TripSettingsPanel } from './TripSettingsPanel';
 import type { DisplayTripDate } from '../domain/display';
+import type { PlanEditDraft } from '../domain/planEditing';
 import type { NormalizedPlan } from '../domain/plan';
-import type { NormalizedLodging } from '../domain/trip';
+import type { NormalizedLodging, NormalizedSchedule } from '../domain/trip';
+import { getMapRegion } from '../domain/locationLinks';
+import type { MapPreferences, MapRegion } from '../domain/mapPreferences';
 import type { AiModeText, EditorTab, PlanRenderer, TranslateFn } from '../types/ui';
+import type { WeatherDataMap } from '../types/weatherData';
 
 interface TripEditorModalProps {
   activeTripId: string;
@@ -20,7 +24,7 @@ interface TripEditorModalProps {
   batchAiOpen: boolean;
   closePlanEditor: () => void;
   copyBatchAiPrompt: () => void;
-  copyPlanAiPrompt: (question: string) => void;
+  copyPlanAiPrompt: (question: string, draft: NormalizedPlan, assignedDay: string) => void;
   deleteCurrentTrip: () => void;
   editorPlan: NormalizedPlan | null | undefined;
   editorPlanId: string | null;
@@ -34,6 +38,7 @@ interface TripEditorModalProps {
   loadExampleTrip: () => void;
   lodgingSectionRef: RefObject<HTMLDivElement | null>;
   lodgings: NormalizedLodging[];
+  mapPreferences: MapPreferences;
   normalizedPlans: NormalizedPlan[];
   onChangeEndDate: (date: string) => void;
   onChangeStartDate: (date: string) => void;
@@ -43,6 +48,7 @@ interface TripEditorModalProps {
   onOpenPlanEditor: (planId?: string) => void;
   onRemovePlan: (planId: string) => void;
   onSaveLodgings: (lodgings: NormalizedLodging[]) => void;
+  parsePlanDraft: (json: string) => PlanEditDraft;
   onSelectTab: (tab: EditorTab) => void;
   onToggleBatchAi: () => void;
   planAssignments: Map<string, string>;
@@ -50,11 +56,13 @@ interface TripEditorModalProps {
   renderPlanBookings: PlanRenderer;
   renderPlanNotes: PlanRenderer;
   renderPlanStops: PlanRenderer;
+  schedule: NormalizedSchedule;
   startDateStr: string;
   t: TranslateFn;
   tripDays: number;
   tripDates: DisplayTripDate[];
   tripName: string;
+  weatherData: WeatherDataMap;
 }
 
 export function TripEditorModal({
@@ -82,6 +90,7 @@ export function TripEditorModal({
   loadExampleTrip,
   lodgingSectionRef,
   lodgings,
+  mapPreferences,
   normalizedPlans,
   onChangeEndDate,
   onChangeStartDate,
@@ -91,6 +100,7 @@ export function TripEditorModal({
   onOpenPlanEditor,
   onRemovePlan,
   onSaveLodgings,
+  parsePlanDraft,
   onSelectTab,
   onToggleBatchAi,
   planAssignments,
@@ -98,16 +108,44 @@ export function TripEditorModal({
   renderPlanBookings,
   renderPlanNotes,
   renderPlanStops,
+  schedule,
   startDateStr,
   t,
   tripDays,
   tripDates,
   tripName,
+  weatherData,
 }: TripEditorModalProps) {
+  const [planDirty, setPlanDirty] = useState(false);
+  const [pendingExit, setPendingExit] = useState<'back' | 'close' | null>(null);
+  const requestExit = (target: 'back' | 'close') => {
+    if (planDirty && editorPlanId) setPendingExit(target);
+    else if (target === 'back') closePlanEditor();
+    else onClose();
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      if (pendingExit) setPendingExit(null);
+      else if (planDirty && editorPlanId) setPendingExit('close');
+      else onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [pendingExit, planDirty, editorPlanId, onClose]);
+  const tripMapRegions = new Set(normalizedPlans.map((plan) => getMapRegion(plan.location)).filter((region) => region !== 'unknown'));
+  const lodgingMapRegion: MapRegion = tripMapRegions.size === 1 ? [...tripMapRegions][0] ?? 'unknown' : 'unknown';
+  const tripCities = new Set(normalizedPlans.map((plan) => plan.location.admin2 || plan.location.weatherLabel).filter(Boolean));
+  const lodgingSearchRegion = tripCities.size === 1 ? [...tripCities][0] ?? '' : '';
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={() => requestExit('close')}>
       <div
         className={`modal trip-editor-modal ${editorPlanId ? 'is-plan-detail' : 'is-trip-detail'}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={editorPlanId ? t('editSinglePlan') : t('editPlan')}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="panel-header">
@@ -115,7 +153,7 @@ export function TripEditorModal({
             <p className="eyebrow">{t('planSetup')}</p>
             <h2>{editorPlanId ? (isCreatingPlan ? t('addPlan') : t('editSinglePlan')) : t('editPlan')}</h2>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('closeEditor')}>
+          <button className="icon-btn" type="button" onClick={() => requestExit('close')} aria-label={t('closeEditor')} title={t('closeEditor')}>
             <Icon name="x" />
           </button>
         </div>
@@ -143,10 +181,17 @@ export function TripEditorModal({
               isCreatingPlan={isCreatingPlan}
               editorPlan={editorPlan}
               initialDraftJson={getPlanEditorDraftJson(editorPlanId)}
+              language={language}
               t={t}
-              onBack={closePlanEditor}
+              onBack={() => requestExit('back')}
               onCopyPrompt={copyPlanAiPrompt}
               onApplyDraft={applyPlanEditDraft}
+              parseDraft={parsePlanDraft}
+              onDirtyChange={setPlanDirty}
+              plans={normalizedPlans}
+              schedule={schedule}
+              tripDates={tripDates}
+              weatherData={weatherData}
               renderPlanStops={renderPlanStops}
               renderPlanBookings={renderPlanBookings}
               renderPlanNotes={renderPlanNotes}
@@ -155,6 +200,9 @@ export function TripEditorModal({
             <div className="editor-section" ref={lodgingSectionRef}>
               <LodgingEditor
                 lodgings={lodgings}
+                mapPreferences={mapPreferences}
+                mapRegionHint={lodgingMapRegion}
+                mapSearchRegion={lodgingSearchRegion}
                 startDateStr={startDateStr}
                 endDateStr={endDateStr}
                 t={t}
@@ -199,6 +247,18 @@ export function TripEditorModal({
           </div>
         )}
       </div>
+      {pendingExit && (
+        <div className="modal-overlay editor-leave-overlay" onClick={(event) => event.stopPropagation()}>
+          <div className="modal editor-leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-plan-title" aria-describedby="leave-plan-help">
+            <h3 id="leave-plan-title">{t('leavePlanTitle')}</h3>
+            <p id="leave-plan-help">{t('leavePlanHelp')}</p>
+            <div className="modal-actions">
+              <button className="btn btn-outline" type="button" onClick={() => { const target = pendingExit; setPendingExit(null); setPlanDirty(false); if (target === 'back') closePlanEditor(); else onClose(); }}>{t('discardPlanEdits')}</button>
+              <button className="btn btn-primary" type="button" autoFocus onClick={() => setPendingExit(null)}>{t('keepEditingPlan')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -3008,8 +3008,8 @@ label {
 }
 
 .trip-editor-modal.is-plan-detail {
-  width: min(72rem, 100%);
-  max-width: 72rem;
+  width: min(46rem, 100%);
+  max-width: 46rem;
 }
 
 .trip-editor-modal.is-trip-detail {
@@ -3842,13 +3842,97 @@ label {
   gap: 0.85rem;
 }
 
+.plan-editor-pane[hidden] { display: none !important; }
+.plan-editor-topline,
+.stop-editor-heading,
+.stop-order-notice,
+.plan-editor-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+.editor-draft-status,
+.plan-editor-savebar > span { font-size: 0.78rem; color: var(--muted); }
+.plan-editor-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  padding: 0.8rem 0.2rem 0.25rem;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+.plan-editor-savebar .btn { flex-shrink: 0; }
+.plan-content-editor,
+.stop-editor-fields,
+.stop-transfer-editor { display: grid; min-width: 0; gap: 0.7rem; }
+.plan-content-editor label,
+.stop-transfer-editor label,
+.stop-extra-fields > label,
+.plan-editor-ai-pane > label { display: grid; min-width: 0; gap: 0.3rem; font-size: 0.82rem; }
+.plan-content-editor .input,
+.plan-content-editor .textarea { width: 100%; min-width: 0; }
+.plan-content-editor .constraint-any-weather { display: flex; }
+.plan-info-editor > label { margin-top: 0.65rem; }
+.plan-description-input,
+.stop-note-input { min-height: 4.5rem; }
+.stop-editor-heading h4,
+.plan-content-editor > p { margin: 0; }
+.stop-editor,
+.stop-transfer-editor {
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+.stop-editor > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  list-style: none;
+  cursor: pointer;
+}
+.stop-editor > summary::-webkit-details-marker { display: none; }
+.stop-editor > summary::after { content: '+'; margin-left: auto; color: var(--muted); }
+.stop-editor[open] > summary::after { content: '−'; }
+.stop-editor[open] > summary { margin-bottom: 0.75rem; }
+.stop-editor-number { font-family: var(--mono); color: var(--muted); font-size: 0.8rem; }
+.stop-editor-summary { display: grid; gap: 0.15rem; min-width: 0; font-size: 0.86rem; overflow-wrap: anywhere; }
+.stop-editor-summary > span { font-size: 0.76rem; color: var(--muted); }
+.stop-editor-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.65rem; }
+.stop-editor-actions,
+.plan-result-actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.stop-editor-actions > .icon-btn { margin-left: auto; }
+.stop-extra-fields > summary { cursor: pointer; color: var(--muted); font-size: 0.8rem; }
+.stop-extra-fields[open] > summary { margin-bottom: 0.65rem; }
+.stop-transfer-editor legend { font-size: 0.82rem; font-weight: 650; }
+.stop-transfer-editor { background: var(--surface); }
+.stop-transfer-editor > p { margin: 0; }
+.editor-inline-notice,
+.stop-order-notice {
+  margin: 0;
+  padding: 0.65rem;
+  border: 1px solid var(--signal-warning-border);
+  border-radius: var(--radius-sm);
+  background: var(--signal-warning-soft);
+  font-size: 0.8rem;
+}
+.stop-order-notice > button { flex-shrink: 0; }
+.editor-leave-overlay { z-index: 110; }
+.editor-leave-dialog { max-width: 28rem; }
+.editor-leave-dialog h3,
+.editor-leave-dialog p { margin: 0; }
+.editor-leave-dialog p { color: var(--muted); }
+.current-edit-button { margin-left: auto; flex-shrink: 0; }
+
 .plan-back-btn {
   justify-self: start;
 }
 
 .plan-editor-split {
   display: grid;
-  grid-template-columns: minmax(0, 1.12fr) minmax(18rem, 0.88fr);
+  grid-template-columns: minmax(0, 1fr) minmax(15rem, 0.7fr);
   gap: 0.85rem;
   align-items: start;
 }
@@ -3871,6 +3955,25 @@ label {
 .plan-editor-mode-tabs {
   width: 100%;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plan-editor-mode-tabs.has-constraints {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.plan-editor-heading h3,
+.plan-editor-heading p {
+  margin: 0;
+}
+
+.plan-editor-heading p,
+.editor-help {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.plan-editor-heading p {
+  margin-top: 0.25rem;
 }
 
 .plan-editor-mode {
@@ -3916,6 +4019,180 @@ label {
 .plan-editor-current .stop-list,
 .plan-editor-current .plan-notes {
   margin-top: 0;
+}
+
+.plan-editor-preview {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.plan-editor-preview > summary,
+.constraint-details > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.plan-editor-preview > section {
+  margin-top: 0.75rem;
+}
+
+.plan-editor-current {
+  background: var(--surface);
+}
+
+.plan-constraint-editor {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.plan-constraint-editor > p,
+.constraint-fieldset p,
+.constraint-details p {
+  margin: 0;
+}
+
+.constraint-priority,
+.constraint-weather-row,
+.constraint-date-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.8fr);
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.constraint-priority > span,
+.constraint-date-row > span,
+.constraint-weather-row > span {
+  font-size: 0.84rem;
+  font-weight: 650;
+}
+
+.constraint-fieldset,
+.constraint-details {
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.constraint-fieldset legend {
+  padding: 0 0.2rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.constraint-fieldset p,
+.constraint-details p {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.constraint-date-list,
+.constraint-weather-list,
+.constraint-checkbox-list {
+  display: grid;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
+
+.constraint-date-list {
+  max-height: 16rem;
+  overflow: auto;
+}
+
+.constraint-date-row,
+.constraint-weather-row {
+  min-width: 0;
+}
+
+.constraint-date-row .input,
+.constraint-weather-row .input,
+.constraint-priority .input {
+  width: 100%;
+}
+
+.constraint-details[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.constraint-checkbox-list label,
+.constraint-any-weather {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+  font-size: 0.82rem;
+}
+
+.constraint-checkbox-list input,
+.constraint-any-weather input {
+  accent-color: var(--accent);
+}
+
+.constraint-any-weather {
+  margin: 0.75rem 0;
+}
+
+.constraint-error {
+  margin-top: 0.6rem !important;
+  color: var(--coral-strong) !important;
+}
+
+.constraint-impact {
+  padding: 0.75rem;
+  border: 1px solid var(--signal-good-border);
+  border-radius: var(--radius);
+  background: var(--signal-good-soft);
+  font-size: 0.82rem;
+}
+
+.constraint-impact.has-impact {
+  border-color: var(--signal-warning-border);
+  background: var(--signal-warning-soft);
+}
+
+.constraint-impact p {
+  margin: 0.3rem 0;
+}
+
+.constraint-impact ul {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.constraint-impact li span {
+  display: block;
+}
+
+.trip-start-panel {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-soft);
+}
+
+.trip-start-panel p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.83rem;
+}
+
+.trip-start-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.trip-start-panel > .btn {
+  justify-self: start;
 }
 
 .plan-raw-json-editor .panel-header.compact {
@@ -4029,6 +4306,13 @@ label {
 .lodging-row-footer {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
+}
+
+.lodging-row-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
 }
 
 .lodging-actions {
@@ -4389,6 +4673,16 @@ label {
 }
 
 @media (max-width: 560px) {
+  .trip-start-options {
+    grid-template-columns: 1fr;
+  }
+
+  .constraint-priority,
+  .constraint-weather-row,
+  .constraint-date-row {
+    grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.85fr);
+  }
+
   :root {
     --mobile-header-height: calc(5.95rem + var(--safe-area-top));
     --mobile-calendar-height: 4.35rem;
@@ -4826,7 +5120,7 @@ label {
     grid-template-columns: 1fr;
   }
 
-  .lodging-row-footer .icon-btn {
+  .lodging-row-actions {
     justify-self: end;
   }
 

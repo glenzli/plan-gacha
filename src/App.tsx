@@ -120,7 +120,7 @@ import {
   STORAGE_KEYS,
   loadInitialState,
 } from './domain/appStorage';
-import { loadMapPreferences, saveMapPreferences, type MapProvider, type MapRegion } from './domain/mapPreferences';
+import { loadMapPreferences, saveMapPreferences, type MapPreferences } from './domain/mapPreferences';
 import {
   evaluateWeather,
   getCalendarDayState,
@@ -730,6 +730,7 @@ function App() {
   };
 
   const createNewTrip = () => {
+    setEditorPlanId(null);
     if (!hasActiveTrip) {
       const nextTrip = normalizeTripSnapshot(createEmptyTripSnapshot(
         language === 'en' ? `Trip ${trips.length + 1}` : `旅行计划 ${trips.length + 1}`,
@@ -741,7 +742,7 @@ function App() {
         setTripMenuOpen(false);
         setEditorTab('itinerary');
         setEditorOpen(true);
-        setBatchAiOpen(false);
+        setBatchAiOpen(true);
       });
       notify(t('newTripCreated'));
       return;
@@ -752,7 +753,7 @@ function App() {
         setTripMenuOpen(false);
         setEditorTab('itinerary');
         setEditorOpen(true);
-        setBatchAiOpen(false);
+        setBatchAiOpen(true);
       });
       notify(t('emptyPlanNotice'));
       return;
@@ -765,7 +766,7 @@ function App() {
       setTripMenuOpen(false);
       setEditorTab('itinerary');
       setEditorOpen(true);
-      setBatchAiOpen(false);
+      setBatchAiOpen(true);
     });
     notify(t('newTripCreated'));
   };
@@ -856,6 +857,7 @@ function App() {
   const {
     applyAiPlannerResult,
     applyPlanEditDraft,
+    parseSinglePlanDraft,
     handleChecklistImportFile,
     handleExportChecklist,
     handleExportState,
@@ -1460,6 +1462,7 @@ function App() {
           loadExampleTrip={loadExampleTrip}
           lodgingSectionRef={lodgingSectionRef}
           lodgings={lodgings}
+          mapPreferences={mapPreferences}
           normalizedPlans={normalizedPlans}
           onChangeEndDate={changeEditorEndDate}
           onChangeStartDate={changeEditorStartDate}
@@ -1469,6 +1472,7 @@ function App() {
           onOpenPlanEditor={openPlanEditor}
           onRemovePlan={removePlan}
           onSaveLodgings={saveLodgings}
+          parsePlanDraft={parseSinglePlanDraft}
           onSelectTab={selectEditorTab}
           onToggleBatchAi={toggleBatchAiPanel}
           planAssignments={planAssignments}
@@ -1476,11 +1480,13 @@ function App() {
           renderPlanBookings={renderPlanBookings}
           renderPlanNotes={renderPlanNotes}
           renderPlanStops={renderPlanStops}
+          schedule={schedule}
           startDateStr={startDateStr}
           t={t}
           tripDays={tripDays}
           tripDates={tripDates}
           tripName={tripName}
+          weatherData={weatherData}
         />
       )}
 
@@ -1495,8 +1501,8 @@ function App() {
       {mapSettingsOpen && (
         <MapSettingsModal
           preferences={mapPreferences}
-          onChange={(region: MapRegion, provider: MapProvider) => {
-            const next = { ...mapPreferences, [region]: provider };
+          onChange={(provider: MapPreferences['mainlandChina']) => {
+            const next = { ...mapPreferences, mainlandChina: provider };
             if (saveMapPreferences(next)) setMapPreferences(next);
             else notify(t('mapSettingsSaveFailed'));
           }}

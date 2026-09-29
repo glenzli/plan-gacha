@@ -1,18 +1,13 @@
 import { QINGDAO_LOCATION, WEIHAI_LOCATION, YANTAI_LOCATION, type NormalizedLocation, type PreferredRouteMode, type StopTransfer } from './plan';
 import { DEFAULT_MAP_PREFERENCES, type MapPreferences, type MapProvider, type MapRegion } from './mapPreferences';
+import { wgs84ToGcj02 } from './coordinates';
 
 export interface MapLink {
   url: string;
-  provider: MapProvider | MainlandRouteProvider;
+  provider: MapProvider;
 }
 
 export type MapRouteMode = PreferredRouteMode;
-export type MainlandRouteProvider = 'apple' | 'tencent';
-
-export interface MainlandRouteLink {
-  url: string;
-  provider: MainlandRouteProvider;
-}
 
 export function inferMapRouteMode(value?: string | null): MapRouteMode | null {
   const mode = String(value || '').trim().toLowerCase();
@@ -45,8 +40,34 @@ export function getMapRegion(location?: Partial<NormalizedLocation> | null): Map
   return 'unknown';
 }
 
-export function getMapProvider(location?: Partial<NormalizedLocation> | null, preferences: MapPreferences = DEFAULT_MAP_PREFERENCES): MapProvider {
-  return preferences[getMapRegion(location)];
+export function getMapProvider(
+  location?: Partial<NormalizedLocation> | null,
+  preferences: MapPreferences = DEFAULT_MAP_PREFERENCES,
+  fallbackRegion: MapRegion = 'unknown',
+): MapProvider {
+  const region = getMapRegion(location);
+  return preferences[region === 'unknown' ? fallbackRegion : region];
+}
+
+export function getMapProviderNameKey(provider: MapLink['provider']) {
+  if (provider === 'amap') return 'amapName';
+  if (provider === 'baidu') return 'baiduMapsName';
+  return 'googleMapsName';
+}
+
+function getGcjPoint(location?: Partial<NormalizedLocation> | null, fallbackRegion: MapRegion = 'unknown') {
+  const point = location?.mapPoint;
+  if (!point) return null;
+  if (point.coordinateSystem === 'GCJ-02') return point;
+  const region = getMapRegion(location);
+  return region === 'mainlandChina' || (region === 'unknown' && fallbackRegion === 'mainlandChina')
+    ? wgs84ToGcj02(point) : null;
+}
+
+function getGoogleRoutePlace(location?: Partial<NormalizedLocation> | null) {
+  const point = location?.mapPoint;
+  if (point?.coordinateSystem === 'WGS84') return `${point.latitude},${point.longitude}`;
+  return getLocationSearchText(location);
 }
 
 export function getLocationSearchText(location?: Partial<NormalizedLocation> | null) {
@@ -71,68 +92,77 @@ export function getGoogleMapsDirectionsUrl(
   origin?: Partial<NormalizedLocation> | null,
   destination?: Partial<NormalizedLocation> | null,
   mode: MapRouteMode = 'transit',
+  via: Partial<NormalizedLocation>[] = [],
 ) {
-  const originText = getLocationSearchText(origin);
-  const destinationText = getLocationSearchText(destination);
+  const originText = getGoogleRoutePlace(origin);
+  const destinationText = getGoogleRoutePlace(destination);
   if (!originText || !destinationText) return '';
-  return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originText)}&destination=${encodeURIComponent(destinationText)}&travelmode=${mode}`;
+  if (via.length > 3 || (via.length && mode !== 'driving')) return '';
+  const waypoints = via.map(getGoogleRoutePlace);
+  if (waypoints.some((point) => !point)) return '';
+  const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(originText)}&destination=${encodeURIComponent(destinationText)}&travelmode=${mode}`
+    + (waypoints.length ? `&waypoints=${encodeURIComponent(waypoints.join('|'))}` : '');
+  return url.length <= 2048 ? url : '';
 }
 
 export function getAmapDirectionsUrl(
   origin?: Partial<NormalizedLocation> | null,
   destination?: Partial<NormalizedLocation> | null,
   mode: MapRouteMode = 'transit',
+  via: Partial<NormalizedLocation>[] = [],
 ) {
-  const from = origin?.mapPoint;
-  const to = destination?.mapPoint;
-  if (!from || !to || from.coordinateSystem !== 'GCJ-02' || to.coordinateSystem !== 'GCJ-02') return '';
+  const from = getGcjPoint(origin);
+  const to = getGcjPoint(destination);
+  if (!from || !to || via.length > 1 || (via.length && mode !== 'driving')) return '';
+  const viaRegion = getMapRegion(origin) === 'mainlandChina' && getMapRegion(destination) === 'mainlandChina'
+    ? 'mainlandChina' : 'unknown';
+  const viaPoint = via.length ? getGcjPoint(via[0], viaRegion) : null;
+  if (via.length && !viaPoint) return '';
   const fromText = `${from.longitude},${from.latitude},${getLocationSearchText(origin)}`;
   const toText = `${to.longitude},${to.latitude},${getLocationSearchText(destination)}`;
   const amapMode = mode === 'transit' ? 'bus' : mode === 'driving' ? 'car' : 'walk';
-  return `https://uri.amap.com/navigation?from=${encodeURIComponent(fromText)}&to=${encodeURIComponent(toText)}&mode=${amapMode}&src=plan-gacha&callnative=1`;
+  const viaText = viaPoint ? `&via=${encodeURIComponent(`${viaPoint.longitude},${viaPoint.latitude},${getLocationSearchText(via[0])}`)}` : '';
+  return `https://uri.amap.com/navigation?from=${encodeURIComponent(fromText)}&to=${encodeURIComponent(toText)}${viaText}&mode=${amapMode}&src=plan-gacha&callnative=1`;
 }
 
-export function getAppleMapsDirectionsUrl(
-  origin?: Partial<NormalizedLocation> | null,
-  destination?: Partial<NormalizedLocation> | null,
-  mode: 'walking' | 'driving' = 'walking',
-) {
-  const from = getLocationSearchText(origin);
-  const to = getLocationSearchText(destination);
-  if (!from || !to) return '';
-  return `https://maps.apple.com/?saddr=${encodeURIComponent(from)}&daddr=${encodeURIComponent(to)}&dirflg=${mode === 'walking' ? 'w' : 'd'}`;
-}
-
-export function getAppleMapsSearchUrl(location?: Partial<NormalizedLocation> | null) {
-  const query = getLocationSearchText(location);
-  return query ? `https://maps.apple.com/?q=${encodeURIComponent(query)}` : '';
-}
-
-export function getTencentMapsDirectionsUrl(
-  origin?: Partial<NormalizedLocation> | null,
-  destination?: Partial<NormalizedLocation> | null,
-  mode: 'transit' | 'driving' = 'transit',
-) {
-  const from = origin?.mapPoint;
-  const to = destination?.mapPoint;
-  if (!from || !to || from.coordinateSystem !== 'GCJ-02' || to.coordinateSystem !== 'GCJ-02') return '';
-  const fromName = getLocationSearchText(origin);
-  const toName = getLocationSearchText(destination);
-  if (!fromName || !toName) return '';
-  const type = mode === 'transit' ? 'bus' : 'drive';
-  return `https://apis.map.qq.com/uri/v1/routeplan?type=${type}&from=${encodeURIComponent(fromName)}&fromcoord=${from.latitude},${from.longitude}&to=${encodeURIComponent(toName)}&tocoord=${to.latitude},${to.longitude}&referer=plan-gacha`;
-}
-
-export function getMainlandRouteAlternative(
-  origin: Partial<NormalizedLocation> | null | undefined,
-  destination: Partial<NormalizedLocation> | null | undefined,
-  mode: MapRouteMode,
-): MainlandRouteLink {
-  if (getMapRegion(origin) !== 'mainlandChina' || getMapRegion(destination) !== 'mainlandChina') {
-    return { url: '', provider: mode === 'walking' ? 'apple' : 'tencent' };
+function getBaiduRoutePlace(location: Partial<NormalizedLocation>) {
+  const point = getGcjPoint(location);
+  if (point) {
+    const name = location.label || getLocationSearchText(location);
+    return `name:${name}|latlng:${point.latitude},${point.longitude}`;
   }
-  if (mode === 'walking') return { url: getAppleMapsDirectionsUrl(origin, destination), provider: 'apple' };
-  return { url: getTencentMapsDirectionsUrl(origin, destination, mode), provider: 'tencent' };
+  return getLocationSearchText(location);
+}
+
+function getBaiduRegion(location?: Partial<NormalizedLocation> | null) {
+  return String(location?.admin2 || location?.weatherLabel || location?.weather_label || '').trim();
+}
+
+export function getBaiduMapsDirectionsUrl(
+  origin?: Partial<NormalizedLocation> | null,
+  destination?: Partial<NormalizedLocation> | null,
+  mode: MapRouteMode = 'transit',
+  via: Partial<NormalizedLocation>[] = [],
+) {
+  if (!origin || !destination || !getLocationSearchText(origin) || !getLocationSearchText(destination) || via.length) return '';
+  const params = new URLSearchParams({
+    origin: getBaiduRoutePlace(origin),
+    destination: getBaiduRoutePlace(destination),
+    mode,
+    output: 'html',
+    src: 'webapp.plan.gacha',
+  });
+  if (getGcjPoint(origin) || getGcjPoint(destination)) {
+    params.set('coord_type', 'gcj02');
+  }
+  const originRegion = getBaiduRegion(origin);
+  const destinationRegion = getBaiduRegion(destination);
+  if (originRegion && destinationRegion && originRegion === destinationRegion) params.set('region', originRegion);
+  else {
+    if (originRegion) params.set('origin_region', originRegion);
+    if (destinationRegion) params.set('destination_region', destinationRegion);
+  }
+  return `https://api.map.baidu.com/direction?${params}`;
 }
 
 export function getAmapSearchUrl(location?: Partial<NormalizedLocation> | null) {
@@ -140,15 +170,26 @@ export function getAmapSearchUrl(location?: Partial<NormalizedLocation> | null) 
   return keyword ? `https://uri.amap.com/search?keyword=${encodeURIComponent(keyword)}&view=map&src=plan-gacha` : '';
 }
 
-export function getMapSearchLink(location: Partial<NormalizedLocation> | null | undefined, preferences: MapPreferences): MapLink {
-  const provider = getMapProvider(location, preferences);
-  if (provider === 'recommended') {
-    return getMapRegion(location) === 'mainlandChina'
-      ? { url: getAppleMapsSearchUrl(location), provider: 'apple' }
-      : { url: getGoogleMapsUrl(location), provider: 'google' };
-  }
+export function getBaiduMapsSearchUrl(location?: Partial<NormalizedLocation> | null) {
+  const query = getLocationSearchText(location);
+  if (!query) return '';
+  const params = new URLSearchParams({ query, output: 'html', src: 'webapp.plan.gacha' });
+  const region = getBaiduRegion(location);
+  if (region) params.set('region', region);
+  return `https://api.map.baidu.com/place/search?${params}`;
+}
+
+export function getMapSearchLink(
+  location: Partial<NormalizedLocation> | null | undefined,
+  preferences: MapPreferences,
+  fallbackRegion: MapRegion = 'unknown',
+): MapLink {
+  const locationRegion = getMapRegion(location);
+  const region = locationRegion === 'unknown' ? fallbackRegion : locationRegion;
+  const provider = preferences[region];
   return {
-    url: provider === 'amap' ? getAmapSearchUrl(location) : getGoogleMapsUrl(location),
+    url: provider === 'amap' ? getAmapSearchUrl(location)
+      : provider === 'baidu' ? getBaiduMapsSearchUrl(location) : getGoogleMapsUrl(location),
     provider,
   };
 }
@@ -158,19 +199,15 @@ export function getMapDirectionsLink(
   destination: Partial<NormalizedLocation> | null | undefined,
   preferences: MapPreferences,
   mode: MapRouteMode = 'transit',
+  via: Partial<NormalizedLocation>[] = [],
 ): MapLink {
   const provider = getMapProvider(destination, preferences);
   const hasBothPlaces = Boolean(getLocationSearchText(origin) && getLocationSearchText(destination));
-  if (provider === 'recommended') {
-    if (!hasBothPlaces) return { url: '', provider: mode === 'walking' ? 'apple' : 'tencent' };
-    if (getMapRegion(origin) === 'mainlandChina' && getMapRegion(destination) === 'mainlandChina') {
-      return getMainlandRouteAlternative(origin, destination, mode);
-    }
-    return { url: getGoogleMapsDirectionsUrl(origin, destination, mode), provider: 'google' };
-  }
   if (!hasBothPlaces) return { url: '', provider };
   return {
-    url: provider === 'amap' ? getAmapDirectionsUrl(origin, destination, mode) : getGoogleMapsDirectionsUrl(origin, destination, mode),
+    url: provider === 'amap' ? getAmapDirectionsUrl(origin, destination, mode, via)
+      : provider === 'baidu' ? getBaiduMapsDirectionsUrl(origin, destination, mode, via)
+        : getGoogleMapsDirectionsUrl(origin, destination, mode, via),
     provider,
   };
 }

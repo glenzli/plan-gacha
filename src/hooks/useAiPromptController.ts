@@ -5,7 +5,7 @@ import {
   compactLocationForAi,
   compactLodgingForAi,
   compactPlanForAi,
-  compactTransferForAi,
+  compactStopRouteForAi,
   getLodgingContextForDate,
 } from '../domain/aiPrompts';
 import { evaluateWeather, getDayInsight } from '../domain/dayInsight';
@@ -25,7 +25,6 @@ import type {
   NormalizedPlan,
   PlanBooking,
   PlanReminder,
-  PlanStop,
 } from '../domain/plan';
 import type { RiskGroup } from '../domain/risk';
 import {
@@ -168,15 +167,7 @@ export function useAiPromptController({
       closed_dates: plan.closed_dates,
       weather_rules: plan.weather_rules,
       location: compactLocationForAi(plan.location),
-      stops: plan.stops.map((stop: PlanStop) => ({
-        time: stop.time,
-        title: stop.title,
-        location: stop.location.label,
-        address: stop.location.address || '',
-        transfer_from_previous: compactTransferForAi(stop.transferFromPrevious),
-        opening_hours: stop.openingHours,
-        note: stop.note,
-      })),
+      stops: plan.stops.map(compactStopRouteForAi),
       bookings: plan.bookings.map((booking: PlanBooking) => ({
         title: booking.title,
         type: booking.type,
@@ -248,9 +239,9 @@ export function useAiPromptController({
     copyText(buildAiPlanningPrompt('generate'), t('aiPromptCopied', { label: aiGenerateText.label }));
   };
 
-  const buildPlanAiPrompt = (planQuestion: string = '') => {
-    const currentPlan = editorPlan
-      ? compactPlanForAi(editorPlan, planAssignments.get(editorPlan.id) || null)
+  const buildPlanAiPrompt = (planQuestion: string = '', draftPlan = editorPlan, assignedDay?: string) => {
+    const currentPlan = draftPlan
+      ? compactPlanForAi(draftPlan, assignedDay ?? planAssignments.get(draftPlan.id) ?? null)
       : null;
     const planUserRequest = planQuestion.trim() || (isCreatingPlan
       ? (language === 'en' ? 'Add a plan that fits the current trip.' : '请新增一个适合当前旅行的计划。')
@@ -265,6 +256,7 @@ export function useAiPromptController({
         trip: tripContext,
         lodgings: lodgings.map(compactLodgingForAi),
         existing_plan_ids: normalizedPlans.map((plan) => plan.id),
+        draft_plan: currentPlan,
         blacklisted_places: blacklistedPlaces,
         abandoned_stops: abandonedStops,
         past_day_reviews: pastDayReviews,
@@ -286,8 +278,8 @@ export function useAiPromptController({
     });
   };
 
-  const copyPlanAiPrompt = (planQuestion: string = '') => {
-    copyText(buildPlanAiPrompt(planQuestion), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
+  const copyPlanAiPrompt = (planQuestion: string = '', draftPlan?: NormalizedPlan, assignedDay?: string) => {
+    copyText(buildPlanAiPrompt(planQuestion, draftPlan, assignedDay), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
   };
 
   return {

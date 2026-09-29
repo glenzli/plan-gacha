@@ -5,6 +5,7 @@ import {
   type WeatherCondition,
   type WeatherLocationLike,
 } from './weather';
+import type { MapPoint } from './coordinates';
 
 export type Language = 'zh' | 'en' | string;
 
@@ -41,11 +42,7 @@ export interface NormalizedLocation extends WeatherLocationLike {
   countryCode?: string;
   admin1?: string;
   admin2?: string;
-  mapPoint?: {
-    latitude: number;
-    longitude: number;
-    coordinateSystem: 'GCJ-02';
-  };
+  mapPoint?: MapPoint;
 }
 
 export type PreferredRouteMode = 'transit' | 'driving' | 'walking';
@@ -57,6 +54,7 @@ export interface StopTransfer {
   mode: string;
   preferredRouteMode?: PreferredRouteMode | null;
   note: string;
+  via?: NormalizedLocation[];
 }
 
 export interface PlanStop {
@@ -372,11 +370,12 @@ export function normalizeLocation(location: unknown, area = ''): NormalizedLocat
     const rawMapPoint = location.mapPoint || location.map_point;
     const mapLatitude = isRecord(rawMapPoint) ? normalizeCoordinate(rawMapPoint.latitude ?? rawMapPoint.lat) : undefined;
     const mapLongitude = isRecord(rawMapPoint) ? normalizeCoordinate(rawMapPoint.longitude ?? rawMapPoint.lon ?? rawMapPoint.lng) : undefined;
-    const coordinateSystem = isRecord(rawMapPoint) ? rawMapPoint.coordinateSystem ?? rawMapPoint.coordinate_system : undefined;
+    const rawCoordinateSystem = isRecord(rawMapPoint) ? rawMapPoint.coordinateSystem ?? rawMapPoint.coordinate_system : undefined;
+    const coordinateSystem = String(rawCoordinateSystem || '').trim().toUpperCase();
     const mapPoint = mapLatitude !== undefined && mapLongitude !== undefined &&
       Math.abs(mapLatitude) <= 90 && Math.abs(mapLongitude) <= 180 &&
-      !(mapLatitude === 0 && mapLongitude === 0) && coordinateSystem === 'GCJ-02'
-      ? { latitude: mapLatitude, longitude: mapLongitude, coordinateSystem: 'GCJ-02' as const }
+      !(mapLatitude === 0 && mapLongitude === 0) && (coordinateSystem === 'GCJ-02' || coordinateSystem === 'WGS84' || coordinateSystem === 'WGS-84')
+      ? { latitude: mapLatitude, longitude: mapLongitude, coordinateSystem: (coordinateSystem === 'GCJ-02' ? 'GCJ-02' : 'WGS84') as MapPoint['coordinateSystem'] }
       : undefined;
     const weatherLocation = location.weatherLocation || location.weather_location || location.weather;
     const weatherLocationObject = isRecord(weatherLocation) ? weatherLocation : null;
@@ -582,7 +581,7 @@ export function normalizeStopTransfer(value: unknown): StopTransfer | null {
   if (!value) return null;
   if (typeof value === 'string') {
     const duration = value.trim();
-    return duration ? { departAt: '', arriveAt: '', duration, mode: '', note: '' } : null;
+    return duration ? { departAt: '', arriveAt: '', duration, mode: '', note: '', via: [] } : null;
   }
 
   if (!isRecord(value)) return null;
@@ -592,14 +591,18 @@ export function normalizeStopTransfer(value: unknown): StopTransfer | null {
   const preferredRouteMode: PreferredRouteMode | null = rawPreferredRouteMode === 'walking' || rawPreferredRouteMode === 'driving' || rawPreferredRouteMode === 'transit'
     ? rawPreferredRouteMode : null;
   const note = String(value.note || value.description || value.detail || '').trim();
+  const rawVia = value.via || value.waypoints || value.route_via || value.routeVia;
+  const via = (Array.isArray(rawVia) ? rawVia : rawVia ? [rawVia] : [])
+    .map((point) => normalizeLocation(point))
+    .filter((point) => Boolean(point.label && (point.mapPoint || point.address || point.query)));
   const departAt = String(
     value.depart_at || value.departAt || value.departure || value.depart || value.departure_at || value.departureAt || value.departure_time || value.departureTime || value.start_at || value.startAt || value.start_time || value.startTime || '',
   ).trim();
   const arriveAt = String(
     value.arrive_at || value.arriveAt || value.arrival || value.arrive || value.arrival_at || value.arrivalAt || value.arrival_time || value.arrivalTime || value.end_at || value.endAt || value.end_time || value.endTime || '',
   ).trim();
-  if (!duration && !mode && !preferredRouteMode && !note && !departAt && !arriveAt) return null;
-  return { departAt, arriveAt, duration, mode, preferredRouteMode, note };
+  if (!duration && !mode && !preferredRouteMode && !note && !departAt && !arriveAt && !via.length) return null;
+  return { departAt, arriveAt, duration, mode, preferredRouteMode, note, via };
 }
 
 export function formatStopTransfer(transfer?: StopTransfer | null) {

@@ -69,6 +69,12 @@ describe('location normalization', () => {
     expect(getWeatherLocationKey(location)).not.toBe('0,0');
     expect(getWeatherLocationKey(location)).toContain('jp');
   });
+
+  it('keeps only explicitly tagged navigation points, including GPS points', () => {
+    expect(normalizeLocation({ label: '入口', weather_location: { latitude: 42.3, longitude: 126.4 } }).mapPoint).toBeUndefined();
+    expect(normalizeLocation({ label: '入口', map_point: { latitude: 42.3, longitude: 126.4, coordinate_system: 'WGS-84' } }).mapPoint)
+      .toEqual({ latitude: 42.3, longitude: 126.4, coordinateSystem: 'WGS84' });
+  });
 });
 
 describe('transit normalization', () => {
@@ -83,6 +89,14 @@ describe('transit normalization', () => {
     expect(formatStopTransferDeparture(transfer, '', 'zh')).toBe('约 12:10');
     expect(normalizeStopTransfer({ mode: '出租车', preferred_route_mode: 'walking' })?.preferredRouteMode).toBe('walking');
     expect(normalizeStopTransfer({ mode: '出租车', preferred_route_mode: 'teleport' })?.preferredRouteMode).toBeNull();
+  });
+
+  it('preserves ordered driving waypoints with their own coordinate systems', () => {
+    const transfer = normalizeStopTransfer({
+      mode: '自驾',
+      via: [{ label: '驼靖线入口', map_point: { longitude: 126.4, latitude: 42.3, coordinate_system: 'WGS84' } }],
+    });
+    expect(transfer?.via?.[0].mapPoint).toEqual({ longitude: 126.4, latitude: 42.3, coordinateSystem: 'WGS84' });
   });
 });
 

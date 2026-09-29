@@ -37,7 +37,7 @@ export function ArchiveLibraryModal({
             <h2 id="archive-library-title">{t('archiveLibraryTitle')}</h2>
             <span className="archive-library-description">{t('archiveLibraryDescription')}</span>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')}>
+          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')} title={t('close')}>
             <Icon name="x" />
           </button>
         </div>

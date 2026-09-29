@@ -201,7 +201,7 @@ export function TripHeader({
           >
             <Icon name="pencil" />
           </button>
-          <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')}>
+          <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')} title={t('createTrip')}>
             <Icon name="plus" />
           </button>
         </div>

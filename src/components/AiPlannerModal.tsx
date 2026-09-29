@@ -28,7 +28,7 @@ export function AiPlannerModal({
             <p className="eyebrow">{t('aiPlanning')}</p>
             <h2>{t('aiReplan')}</h2>
           </div>
-          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('closeAiPlanning')}>
+          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('closeAiPlanning')} title={t('closeAiPlanning')}>
             <Icon name="x" />
           </button>
         </div>

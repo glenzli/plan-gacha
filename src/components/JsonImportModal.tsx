@@ -21,7 +21,7 @@ export function JsonImportModal({
       <div className="modal" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <h2>{t('importJsonTitle')}</h2>
-          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')}>
+          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')} title={t('close')}>
             <Icon name="x" />
           </button>
         </div>

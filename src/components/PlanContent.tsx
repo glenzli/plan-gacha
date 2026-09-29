@@ -15,8 +15,10 @@ import {
 } from '../domain/trip';
 import {
   getMapDirectionsLink,
-  getMainlandRouteAlternative,
+  getMapProvider,
+  getMapRegion,
   getMapSearchLink,
+  getMapProviderNameKey,
   getPreferredMapRouteMode,
   getLocationCopyText,
   type MapRouteMode,
@@ -103,26 +105,33 @@ export function PlanStops({
         const routeModes: MapRouteMode[] = preferredRouteMode
           ? [preferredRouteMode, ...(['transit', 'driving', 'walking'] as MapRouteMode[]).filter((mode) => mode !== preferredRouteMode)]
           : ['transit', 'driving', 'walking'];
+        const via = stop.transferFromPrevious?.via || [];
         const routeLinks = previousStop
-          ? routeModes.map((mode) => ({ mode, ...getMapDirectionsLink(previousStop.location, stop.location, mapPreferences, mode) }))
+          ? routeModes.map((mode) => ({ mode, ...getMapDirectionsLink(previousStop.location, stop.location, mapPreferences, mode, via) }))
           : [];
         const directRoute = preferredRouteMode
           ? routeLinks.find(({ mode, url }) => mode === preferredRouteMode && Boolean(url))
           : undefined;
         const directRouteLabel = directRoute
-          ? `${t('openRouteInMaps')} · ${t(`routeMode${directRoute.mode.charAt(0).toUpperCase()}${directRoute.mode.slice(1)}`)} · ${t(directRoute.provider === 'apple' ? 'appleMapsName' : directRoute.provider === 'tencent' ? 'tencentMapsName' : directRoute.provider === 'amap' ? 'amapName' : 'googleMapsName')}`
+          ? `${t('openRouteInMaps')} · ${t(`routeMode${directRoute.mode.charAt(0).toUpperCase()}${directRoute.mode.slice(1)}`)} · ${t(getMapProviderNameKey(directRoute.provider))}`
           : '';
-        const routeAlternatives = previousStop && routeLinks[0]?.provider === 'amap'
-          ? routeModes.map((mode) => ({ mode, ...getMainlandRouteAlternative(previousStop.location, stop.location, mode) }))
-            .filter((link) => Boolean(link.url))
+        const selectedProvider = getMapProvider(stop.location, mapPreferences);
+        const otherMainlandProvider = selectedProvider === 'amap' ? 'baidu' : selectedProvider === 'baidu' ? 'amap' : null;
+        const routeAlternatives = previousStop && otherMainlandProvider
+          && getMapRegion(previousStop.location) === 'mainlandChina'
+          && getMapRegion(stop.location) === 'mainlandChina'
+          ? routeModes.map((mode) => ({ mode, ...getMapDirectionsLink(
+            previousStop.location, stop.location,
+            { ...mapPreferences, mainlandChina: otherMainlandProvider }, mode, via,
+          ) })).filter((link) => Boolean(link.url))
           : [];
         const hasRoute = [...routeAlternatives, ...routeLinks].some((link) => Boolean(link.url));
-        const hasMissingCoordinateRoute = routeLinks.some(({ provider, url }) => !url && (provider === 'amap' || provider === 'tencent'));
+        const hasMissingCoordinateRoute = selectedProvider === 'amap' && !routeLinks.some(({ url }) => Boolean(url)) && via.length <= 1;
+        const hasUnsupportedWaypoints = via.length > 0 && !routeLinks.some(({ url }) => Boolean(url)) && !hasMissingCoordinateRoute;
         const mapsLink = getMapSearchLink(stop.location, mapPreferences);
         const mapLabel = mapsLink.provider === 'amap' ? t('openInAmap')
-          : mapsLink.provider === 'apple' ? t('openInAppleMaps') : t('openInMaps');
-        const showRouteProviders = routeAlternatives.length > 0
-          || routeLinks.some(({ provider }) => provider === 'apple' || provider === 'tencent');
+          : mapsLink.provider === 'baidu' ? t('openInBaidu') : t('openInMaps');
+        const showRouteProviders = routeAlternatives.length > 0;
         const copyValue = getLocationCopyText(stop.location);
         const transferText = formatStopTransfer(stop.transferFromPrevious);
         const transferDepartureText = formatStopTransferDeparture(stop.transferFromPrevious, stop.time, language);
@@ -213,17 +222,18 @@ export function PlanStops({
                           {hasRoute ? <>
                             {routeLinks.filter(({ url }) => Boolean(url)).map(({ mode, provider, url }) => (
                               <a key={`${provider}-${mode}`} href={url} target="_blank" rel="noreferrer" onClick={() => setOpenRouteStopId(null)}>
-                                {t(`routeMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)}{showRouteProviders && ` · ${t(provider === 'apple' ? 'appleMapsName' : provider === 'tencent' ? 'tencentMapsName' : provider === 'amap' ? 'amapName' : 'googleMapsName')}`}
+                                {t(`routeMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)}{showRouteProviders && ` · ${t(getMapProviderNameKey(provider))}`}
                               </a>
                             ))}
                             {routeAlternatives.map(({ mode, provider, url }) => (
                               <a key={`${provider}-${mode}`} href={url} target="_blank" rel="noreferrer" onClick={() => setOpenRouteStopId(null)}>
-                                {t(`routeMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)} · {t(provider === 'apple' ? 'appleMapsName' : 'tencentMapsName')}
+                                {t(`routeMode${mode.charAt(0).toUpperCase()}${mode.slice(1)}`)} · {t(getMapProviderNameKey(provider))}
                               </a>
                             ))}
                             {hasMissingCoordinateRoute && <span>{t('mapRouteNeedsCoordinates')}</span>}
+                            {hasUnsupportedWaypoints && <span>{t('mapRouteWaypointsUnsupported')}</span>}
                           </> : (
-                            <span>{t('mapRouteNeedsCoordinates')}</span>
+                            <span>{t(hasUnsupportedWaypoints ? 'mapRouteWaypointsUnsupported' : 'mapRouteNeedsCoordinates')}</span>
                           )}
                         </span>}
                       </span>

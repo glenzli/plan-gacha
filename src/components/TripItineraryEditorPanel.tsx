@@ -60,11 +60,12 @@ export function TripItineraryEditorPanel({
         loadExampleTrip={loadExampleTrip}
         normalizedPlans={normalizedPlans}
         onOpenImport={onOpenImport}
+        onOpenPlanEditor={() => onOpenPlanEditor()}
         onToggleBatchAi={onToggleBatchAi}
         t={t}
       />
 
-      <PlanReviewPanel
+      {normalizedPlans.length > 0 && <PlanReviewPanel
         getPriorityLabel={getPriorityLabel}
         language={language}
         normalizedPlans={normalizedPlans}
@@ -73,7 +74,7 @@ export function TripItineraryEditorPanel({
         planAssignments={planAssignments}
         t={t}
         tripDates={tripDates}
-      />
+      />}
 
       <div className="editor-section archive-section">
         {renderArchivedTripRows()}

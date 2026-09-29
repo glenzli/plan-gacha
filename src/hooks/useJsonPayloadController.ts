@@ -32,6 +32,7 @@ import {
 import type { ChecklistMergeConflict, ChecklistState } from '../domain/checklist';
 import type { DisplayTripDate } from '../domain/display';
 import type { TranslateFn } from '../types/ui';
+import { getEditedPlanSchedule, updateRelatedPlan } from '../domain/planEditing';
 
 type AnyRecord = Record<string, any>;
 
@@ -290,6 +291,7 @@ export function useJsonPayloadController({
       throw new Error(t('noApplicableJson'));
     }
     validatePlanDraftOptions(payload);
+    if (typeof payload.name !== 'string' || !payload.name.trim()) throw new Error(t('planNameRequired'));
 
     const payloadWithFallbackId = isCreatingPlan
       ? payload
@@ -299,10 +301,13 @@ export function useJsonPayloadController({
       plan.id === normalizedPlan.id && (isCreatingPlan || plan.id !== editorPlanId)
     ));
     if (duplicatePlan) throw new Error(t('duplicatePlanId', { id: normalizedPlan.id }));
+    if (!normalizedPlan.stops.length) throw new Error(t('planStopsRequired'));
+    const assignedDay = payload.assigned_day || payload.assignedDay || '';
+    if (assignedDay && !tripDates.some((date) => date.id === assignedDay)) throw new Error(t('planAssignedDateInvalid'));
 
     return {
       plan: normalizedPlan,
-      assignedDay: payload.assigned_day || payload.assignedDay || '',
+      assignedDay,
     };
   };
 
@@ -314,26 +319,19 @@ export function useJsonPayloadController({
 
       return current.map((item, index) => {
         const normalizedPlan = normalizePlan(item, index, tripDates);
-        return normalizedPlan.id === previousPlanId ? plan : item;
+        if (normalizedPlan.id === previousPlanId) return plan;
+        const relatedPlan = updateRelatedPlan(normalizedPlan, previousPlanId || null, plan);
+        return relatedPlan === normalizedPlan ? item : relatedPlan;
       });
     });
 
     if (assignedDay || (previousPlanId && previousPlanId !== plan.id)) {
-      setSchedule((current) => {
-        const next = Object.fromEntries(
-          Object.entries(current).map(([dateId, entry]) => [
-            dateId,
-            entry?.planId === previousPlanId ? { ...entry, planId: plan.id } : entry,
-          ]),
-        );
-
-        if (assignedDay) next[assignedDay] = { planId: plan.id };
-        return next;
-      });
+      setSchedule((current) => getEditedPlanSchedule(current, previousPlanId || null, plan.id, assignedDay));
     }
 
     notify(message);
-    invalidateWeatherCache();
+    // Weather sync fetches new location keys automatically. A time or constraint
+    // edit should retain the forecasts the traveller is currently relying on.
     closePlanEditor();
   };
 
@@ -420,6 +418,7 @@ export function useJsonPayloadController({
   };
 
   return {
+    parseSinglePlanDraft,
     applyAiPlannerResult,
     applyImportedPayload,
     applyPlanEditDraft,

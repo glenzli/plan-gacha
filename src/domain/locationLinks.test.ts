@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { getMainlandRouteAlternative, getMapDirectionsLink, getMapRegion, getMapSearchLink, getPreferredMapRouteMode, inferMapRouteMode } from './locationLinks';
+import { getAmapDirectionsUrl, getBaiduMapsDirectionsUrl, getGoogleMapsDirectionsUrl, getMapDirectionsLink, getMapRegion, getMapSearchLink, getPreferredMapRouteMode, inferMapRouteMode } from './locationLinks';
+import { wgs84ToGcj02 } from './coordinates';
 import { DEFAULT_MAP_PREFERENCES } from './mapPreferences';
 import { normalizePlan, QINGDAO_LOCATION } from './plan';
 
@@ -18,11 +19,11 @@ describe('regional map links', () => {
     expect(getMapSearchLink({ label: 'Central Station' }, DEFAULT_MAP_PREFERENCES).provider).toBe('google');
   });
 
-  it('uses the selected provider for each region', () => {
-    const preferences = { mainlandChina: 'google', otherRegions: 'amap', unknown: 'amap' } as const;
-    expect(getMapSearchLink(china, preferences).provider).toBe('google');
-    expect(getMapSearchLink(japan, preferences).provider).toBe('amap');
-    expect(getMapSearchLink({ label: 'Central Station' }, preferences).provider).toBe('amap');
+  it('selects Baidu for mainland China without changing Google elsewhere', () => {
+    const preferences = { ...DEFAULT_MAP_PREFERENCES, mainlandChina: 'baidu' as const };
+    expect(getMapSearchLink(china, preferences).provider).toBe('baidu');
+    expect(getMapSearchLink(japan, preferences).provider).toBe('google');
+    expect(getMapSearchLink({ label: 'Central Station' }, preferences).provider).toBe('google');
   });
 
   it('opens Google routes in the selected transport mode and leaves imprecise AMap places to search', () => {
@@ -64,31 +65,79 @@ describe('regional map links', () => {
     }
   });
 
-  it('offers mode-correct mainland alternatives without sending GCJ-02 coordinates to Apple Maps', () => {
+  it('opens Baidu search and all route modes with GCJ-02 coordinates or place names', () => {
+    const baidu = { ...DEFAULT_MAP_PREFERENCES, mainlandChina: 'baidu' as const };
+    const origin = { label: '青岛站', weatherLabel: '青岛市', countryCode: 'CN', mapPoint: { longitude: 120.312786, latitude: 36.064812, coordinateSystem: 'GCJ-02' as const } };
+    const destination = { label: '栈桥景区', weatherLabel: '青岛市', countryCode: 'CN', mapPoint: { longitude: 120.3193, latitude: 36.061736, coordinateSystem: 'GCJ-02' as const } };
+    for (const mode of ['transit', 'driving', 'walking'] as const) {
+      const link = getMapDirectionsLink(origin, destination, baidu, mode);
+      const url = new URL(link.url);
+      expect(link.provider).toBe('baidu');
+      expect(url.pathname).toBe('/direction');
+      expect(url.searchParams.get('origin')).toBe('name:青岛站|latlng:36.064812,120.312786');
+      expect(url.searchParams.get('destination')).toBe('name:栈桥景区|latlng:36.061736,120.3193');
+      expect(url.searchParams.get('coord_type')).toBe('gcj02');
+      expect(url.searchParams.get('mode')).toBe(mode);
+      expect(url.searchParams.get('region')).toBe('青岛市');
+      expect(url.searchParams.get('output')).toBe('html');
+      expect(url.searchParams.get('src')).toBe('webapp.plan.gacha');
+    }
+    const textRoute = new URL(getMapDirectionsLink(
+      { label: '青岛站', countryCode: 'CN' }, { label: '栈桥景区', countryCode: 'CN' }, baidu, 'walking',
+    ).url);
+    expect(textRoute.searchParams.get('origin')).toBe('青岛站');
+    expect(textRoute.searchParams.get('destination')).toBe('栈桥景区');
+    expect(textRoute.searchParams.has('coord_type')).toBe(false);
+
+    const hotel = { label: '青岛栈桥青岛站西广场轻居酒店', address: '青岛市观城路57号', weatherLabel: '青岛市' };
+    const hotelLink = getMapSearchLink(hotel, baidu, 'mainlandChina');
+    const hotelUrl = new URL(hotelLink.url);
+    expect(hotelLink.provider).toBe('baidu');
+    expect(hotelUrl.pathname).toBe('/place/search');
+    expect(hotelUrl.searchParams.get('query')).toBe('青岛市观城路57号 青岛栈桥青岛站西广场轻居酒店');
+    expect(hotelUrl.searchParams.get('region')).toBe('青岛市');
+    expect(getMapSearchLink({ ...hotel, countryCode: 'JP' }, baidu, 'mainlandChina').provider).toBe('google');
+    expect(getMapSearchLink(hotel, DEFAULT_MAP_PREFERENCES, 'mainlandChina').provider).toBe('amap');
+  });
+
+  it('keeps one required AMap driving waypoint and refuses routes that would drop it', () => {
     const origin = { label: '栈桥景区', address: '青岛市市南区太平路12号', countryCode: 'CN', mapPoint: { longitude: 120.3193, latitude: 36.061736, coordinateSystem: 'GCJ-02' as const } };
     const destination = { label: '团岛市场', address: '青岛市市南区四川路31号', countryCode: 'CN', mapPoint: { longitude: 120.298243, latitude: 36.061199, coordinateSystem: 'GCJ-02' as const } };
-    const walking = getMainlandRouteAlternative(origin, destination, 'walking');
-    expect(walking.provider).toBe('apple');
-    expect(walking.url).toContain('maps.apple.com/?saddr=');
-    expect(walking.url).toContain('dirflg=w');
-    expect(walking.url).not.toContain('120.3193');
+    const via = { label: '沿海路口', countryCode: 'CN', mapPoint: { longitude: 120.31, latitude: 36.06, coordinateSystem: 'GCJ-02' as const } };
+    expect(new URL(getAmapDirectionsUrl(origin, destination, 'driving', [via])).searchParams.get('via'))
+      .toBe('120.31,36.06,沿海路口');
+    expect(getAmapDirectionsUrl(origin, destination, 'walking', [via])).toBe('');
+    expect(getAmapDirectionsUrl(origin, destination, 'driving', [via, via])).toBe('');
+    expect(getBaiduMapsDirectionsUrl(origin, destination, 'driving', [via])).toBe('');
+    const gpsVia = { label: 'GPS 途经点', mapPoint: { longitude: 120.31, latitude: 36.06, coordinateSystem: 'WGS84' as const } };
+    const converted = wgs84ToGcj02(gpsVia.mapPoint);
+    expect(new URL(getAmapDirectionsUrl(origin, destination, 'driving', [gpsVia])).searchParams.get('via'))
+      .toBe(`${converted?.longitude},${converted?.latitude},GPS 途经点`);
+  });
 
-    for (const [mode, type] of [['transit', 'bus'], ['driving', 'drive']] as const) {
-      const link = getMainlandRouteAlternative(origin, destination, mode);
-      expect(link.provider).toBe('tencent');
-      expect(link.url).toContain(`type=${type}`);
-      expect(link.url).toContain('fromcoord=36.061736,120.3193');
-      expect(link.url).toContain('tocoord=36.061199,120.298243');
-    }
-    expect(getMainlandRouteAlternative(origin, { ...destination, countryCode: 'JP' }, 'walking').url).toBe('');
-    const recommended = { ...DEFAULT_MAP_PREFERENCES, mainlandChina: 'recommended' as const };
-    expect(getMapSearchLink(origin, recommended)).toEqual({
-      provider: 'apple',
-      url: expect.stringContaining('maps.apple.com/?q='),
-    });
-    expect(getMapDirectionsLink(origin, destination, recommended, 'walking').provider).toBe('apple');
-    expect(getMapDirectionsLink(origin, destination, recommended, 'transit').provider).toBe('tencent');
-    expect(getMapDirectionsLink(origin, destination, recommended, 'driving').provider).toBe('tencent');
+  it('converts explicit WGS84 place points for AMap without using weather coordinates', () => {
+    const gps = { longitude: 116.404, latitude: 39.915, coordinateSystem: 'WGS84' as const };
+    const converted = wgs84ToGcj02(gps);
+    expect(converted?.longitude).toBeCloseTo(116.41024449916938, 6);
+    expect(converted?.latitude).toBeCloseTo(39.91640428150164, 6);
+    expect(wgs84ToGcj02({ longitude: 139.6917, latitude: 35.6895, coordinateSystem: 'WGS84' })).toBeNull();
+
+    const origin = { label: '北京起点', countryCode: 'CN', mapPoint: gps };
+    const destination = { label: '北京终点', countryCode: 'CN', mapPoint: { longitude: 116.42, latitude: 39.92, coordinateSystem: 'GCJ-02' as const } };
+    expect(new URL(getAmapDirectionsUrl(origin, destination, 'driving')).searchParams.get('from'))
+      .toBe(`${converted?.longitude},${converted?.latitude},北京起点`);
+    expect(getAmapDirectionsUrl({ ...origin, mapPoint: undefined, latitude: gps.latitude, longitude: gps.longitude }, destination)).toBe('');
+  });
+
+  it('opens Google driving routes through ordered waypoints with a mobile-safe limit', () => {
+    const origin = { label: 'A', countryCode: 'JP' };
+    const destination = { label: 'D', countryCode: 'JP' };
+    const via = [{ label: 'B' }, { label: 'C' }];
+    const route = new URL(getGoogleMapsDirectionsUrl(origin, destination, 'driving', via));
+    expect(route.searchParams.get('travelmode')).toBe('driving');
+    expect(route.searchParams.get('waypoints')).toBe('B|C');
+    expect(getGoogleMapsDirectionsUrl(origin, destination, 'driving', Array(4).fill(via[0]))).toBe('');
+    expect(getGoogleMapsDirectionsUrl(origin, destination, 'transit', via)).toBe('');
   });
 
   it('marks the bundled China trip as mainland China without treating city coordinates as a stop', () => {

@@ -121,7 +121,7 @@ export function ArchivedTripModal({
           </div>
           <div className="archived-view-actions">
             <span className="readonly-badge">{t('itineraryReadOnly')}</span>
-            <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')}>
+          <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')} title={t('close')}>
               <Icon name="x" />
             </button>
           </div>

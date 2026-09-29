@@ -23,18 +23,26 @@ describe('map preferences', () => {
   });
 
   it('reads back local choices and ignores invalid saved providers', () => {
-    expect(saveMapPreferences({ mainlandChina: 'google', otherRegions: 'amap', unknown: 'google' })).toBe(true);
-    expect(loadMapPreferences()).toEqual({ mainlandChina: 'google', otherRegions: 'amap', unknown: 'google' });
+    expect(saveMapPreferences({ mainlandChina: 'baidu', otherRegions: 'google', unknown: 'google' })).toBe(true);
+    expect(loadMapPreferences()).toEqual({ mainlandChina: 'baidu', otherRegions: 'google', unknown: 'google' });
     localStorage.setItem(MAP_PREFERENCES_STORAGE_KEY, JSON.stringify({ mainlandChina: 'bad', otherRegions: 'amap' }));
-    expect(loadMapPreferences()).toEqual({ mainlandChina: 'amap', otherRegions: 'amap', unknown: 'google' });
+    expect(loadMapPreferences()).toEqual(DEFAULT_MAP_PREFERENCES);
     expect(normalizeMapPreferences(null)).toEqual(DEFAULT_MAP_PREFERENCES);
   });
 
-  it('allows the recommended combination only for mainland China', () => {
-    expect(saveMapPreferences({ mainlandChina: 'recommended', otherRegions: 'google', unknown: 'google' })).toBe(true);
-    expect(loadMapPreferences().mainlandChina).toBe('recommended');
+  it('migrates removed recommended and Google mainland choices to AMap', () => {
     localStorage.setItem(MAP_PREFERENCES_STORAGE_KEY, JSON.stringify({ mainlandChina: 'recommended', otherRegions: 'recommended', unknown: 'recommended' }));
-    expect(loadMapPreferences()).toEqual({ mainlandChina: 'recommended', otherRegions: 'google', unknown: 'google' });
+    expect(loadMapPreferences()).toEqual(DEFAULT_MAP_PREFERENCES);
+    localStorage.setItem(MAP_PREFERENCES_STORAGE_KEY, JSON.stringify({ mainlandChina: 'google' }));
+    expect(loadMapPreferences()).toEqual(DEFAULT_MAP_PREFERENCES);
+  });
+
+  it('allows Baidu only for mainland China and preserves the AMap default', () => {
+    expect(DEFAULT_MAP_PREFERENCES.mainlandChina).toBe('amap');
+    expect(saveMapPreferences({ mainlandChina: 'baidu', otherRegions: 'google', unknown: 'google' })).toBe(true);
+    expect(loadMapPreferences().mainlandChina).toBe('baidu');
+    localStorage.setItem(MAP_PREFERENCES_STORAGE_KEY, JSON.stringify({ mainlandChina: 'baidu', otherRegions: 'baidu', unknown: 'baidu' }));
+    expect(loadMapPreferences()).toEqual({ mainlandChina: 'baidu', otherRegions: 'google', unknown: 'google' });
   });
 
   it('recovers from malformed stored data', () => {

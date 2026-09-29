@@ -5,6 +5,15 @@ export type AiPlannerMode = 'generate' | 'replan';
 
 const DEFAULT_LANGUAGE = 'zh';
 
+const MAP_POINT_GUIDANCE = {
+  en: `For each specific stop, optionally include location.map_point as {"longitude": number, "latitude": number, "coordinate_system": "GCJ-02" or "WGS84"}. Use GCJ-02 only for a verified map/POI coordinate, or WGS84 for a verified GPS coordinate of the exact place, entrance, or parking area; the app converts explicit mainland WGS84 place points for AMap. Omit map_point when unverified; never copy weather_location coordinates into it or guess coordinates. When editing, preserve an existing map_point only if the stop still refers to the same place; remove it when the place changes. For a driving transfer through a verified intermediate place, set preferred_route_mode to driving and put it in transfer_from_previous.via as an ordered array of location objects, each with label, optional address and verified map_point. Preserve unchanged via points; remove or update them if the required route changes. AMap links support one via point only for driving, Google Maps URLs accept up to three here, and Baidu links do not carry via points; never silently drop a required point. Some Google Maps products may ignore waypoints, so the user must inspect the resulting route. If a scenic road is required but no reliable pass-through point is known, name the road in transfer_from_previous.note, leave via empty, and do not pretend the map link enforces it. Split a road with multiple mandatory points into separate stops/legs for AMap; never use one arbitrary point to stand for an entire scenic road.`,
+  zh: `具体停靠点可填写 location.map_point，格式为 {"longitude": 数值, "latitude": 数值, "coordinate_system": "GCJ-02" 或 "WGS84"}。只有可靠地图或 POI 来源确认了地点、入口或停车场的高德坐标时才写 GCJ-02；确认是该具体地点的 GPS 坐标时才写 WGS84，应用会为高德转换中国大陆的显式 WGS84 地点坐标。无法核实时省略整个 map_point；不要复制 weather_location 的天气坐标，也不要猜坐标。编辑现有计划时，仅在地点未变化时保留原有 map_point；地点改变则删除。驾车路段必须经已核实的中途地点时，把 preferred_route_mode 设为 driving，并将该地点写入 transfer_from_previous.via：按顺序排列的地点对象数组，每项有 label、可选 address 和已核实的 map_point。路线未变时保留原有 via；必经路线变化时同步更新或删除。高德链接仅在驾车模式支持一个途经点；本应用的 Google 地图链接最多带三个，百度链接不携带途经点，不要悄悄丢掉必经点。部分 Google 地图产品可能忽略途经点，用户仍需核对最终路线。如果必须走某条景观道路却没有可靠的中途点，在 transfer_from_previous.note 写明道路名称，via 留空，不要声称地图链接已锁定该道路。高德需要多个必经点时拆成连续停靠点和路段，不要用任意一个点代替整条景观道路。`,
+} as const;
+
+function getMapPointGuidance(language: Language) {
+  return language === 'en' ? MAP_POINT_GUIDANCE.en : MAP_POINT_GUIDANCE.zh;
+}
+
 export function getPlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
   if (language === 'en') {
     return `{
@@ -17,10 +26,11 @@ export function getPlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
       "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": { "query": "City/Ward, Prefecture, Country for weather lookup", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
       "stops": [
         {
+          "id": "unique_stop_id",
           "time": "09:30",
           "title": "Stop title",
-          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": { "query": "Only fill an administrative city/ward when this stop is in a different city/ward from the plan location; never use scenic spot, station, river, shop, or museum names", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
-          "transfer_from_previous": { "depart_at": "09:00", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "note": "Default to walk for normal point-to-point walking. Use sightseeing_walk only when the walk itself is a planned scenic activity." },
+          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": { "query": "Only fill an administrative city/ward when this stop is in a different city/ward from the plan location; never use scenic spot, station, river, shop, or museum names", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" }, "map_point": null },
+          "transfer_from_previous": { "depart_at": "09:00", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "Default to walk for normal point-to-point walking. Use sightseeing_walk only when the walk itself is a planned scenic activity." },
           "opening_hours": "Only the opening/business hours relevant to the planned arrival time, e.g. 10:00-17:00; leave empty if unknown or unreliable",
           "note": "What happens at this stop",
           "weather_relevant": true
@@ -64,10 +74,11 @@ export function getPlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
       "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": { "query": "天气查询用行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
       "stops": [
         {
+          "id": "unique_stop_id",
           "time": "09:30",
           "title": "节点标题",
-          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": { "query": "仅在跨城或明显不同区县时填写行政地点；同计划地点留空；不要写景点、车站、河流、商场、博物馆名", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
-          "transfer_from_previous": { "depart_at": "09:00", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "note": "普通点到点步行默认写步行。只有这段步行本身就是独立观景/逛街/散步项目时，才写游玩型步行。" },
+          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": { "query": "仅在跨城或明显不同区县时填写行政地点；同计划地点留空；不要写景点、车站、河流、商场、博物馆名", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" }, "map_point": null },
+          "transfer_from_previous": { "depart_at": "09:00", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "普通点到点步行默认写步行。只有这段步行本身就是独立观景/逛街/散步项目时，才写游玩型步行。" },
           "opening_hours": "只写和计划到达时间相关的开放/营业时间，例如 10:00-17:00；不确定或不可靠时留空",
           "note": "这个节点做什么",
           "weather_relevant": true
@@ -109,7 +120,7 @@ export function getSinglePlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
   "description": "What to do",
   "priority": "must | preferred | backup | optional",
   "location": { "label": "Display place", "address": "", "weather_location": { "query": "City/Ward, Prefecture, Country", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
-  "stops": [{ "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": { "query": "Leave empty unless this stop needs a different administrative weather city/ward", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
+  "stops": [{ "id": "unique_stop_id", "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": { "query": "Leave empty unless this stop needs a different administrative weather city/ward", "country_code": "", "admin1": "", "latitude": "", "longitude": "" }, "map_point": null }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
   "weather_rules": {
@@ -131,7 +142,7 @@ export function getSinglePlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
   "description": "当天做什么",
   "priority": "must | preferred | backup | optional",
   "location": { "label": "地点展示名", "address": "", "weather_location": { "query": "行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
-  "stops": [{ "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": { "query": "除非该节点需要不同的行政天气城市/区县，否则留空", "country_code": "", "admin1": "", "latitude": "", "longitude": "" } }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
+  "stops": [{ "id": "unique_stop_id", "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": { "query": "除非该节点需要不同的行政天气城市/区县，否则留空", "country_code": "", "admin1": "", "latitude": "", "longitude": "" }, "map_point": null }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
   "available_dates": ["YYYY-MM-DD"],
   "closed_dates": ["YYYY-MM-DD"],
   "weather_rules": {
@@ -166,12 +177,21 @@ export function pruneEmptyAiValue(value: unknown): unknown {
   return value;
 }
 
+function compactMapPointForAi(point: any) {
+  return point && ['GCJ-02', 'WGS84'].includes(point.coordinateSystem) ? {
+    longitude: point.longitude,
+    latitude: point.latitude,
+    coordinate_system: point.coordinateSystem,
+  } : undefined;
+}
+
 export function compactLocationForAi(location: any) {
   if (!location) return undefined;
 
   return pruneEmptyAiValue({
     label: location.label,
     address: location.address,
+    map_point: compactMapPointForAi(location.mapPoint),
     weather_location: {
       query: location.query || getWeatherLocationLabel(location),
       country_code: location.countryCode,
@@ -208,8 +228,30 @@ export function compactTransferForAi(transfer: any) {
     depart_at: transfer.departAt,
     mode: transfer.mode,
     preferred_route_mode: transfer.preferredRouteMode,
+    via: transfer.via?.map((place: any) => ({
+      label: place.label,
+      address: place.address,
+      country_code: place.countryCode,
+      map_point: compactMapPointForAi(place.mapPoint),
+    })),
     duration: transfer.duration,
     note: transfer.note,
+  });
+}
+
+export function compactStopRouteForAi(stop: any) {
+  return pruneEmptyAiValue({
+    id: stop.id,
+    time: stop.time,
+    title: stop.title,
+    location: {
+      label: stop.location?.label,
+      address: stop.location?.address,
+      map_point: compactMapPointForAi(stop.location?.mapPoint),
+    },
+    transfer_from_previous: compactTransferForAi(stop.transferFromPrevious),
+    opening_hours: stop.openingHours,
+    note: stop.note,
   });
 }
 
@@ -237,6 +279,7 @@ export function compactPlanForAi(plan: any, assignedDay: string | null) {
     priority: plan.priority,
     location: compactLocationForAi(plan.location),
     stops: plan.stops.map((stop: any) => ({
+      id: stop.id,
       time: stop.time,
       title: stop.title,
       location: compactLocationForAi(stop.location),
@@ -323,7 +366,7 @@ ${JSON.stringify({
 
 Output rules:
 1. Only output importable JSON, with no Markdown or explanation.
-2. Follow the JSON format below. Use empty arrays for optional list fields when absent.
+2. Follow the JSON format below. Use empty arrays for optional list fields when absent. Give each stop a stable id unique within its plan. The map_point placeholder is optional; omit it unless verified.
 3. Fill available_dates, closed_dates, weather_rules and conflicts from the trip constraints and the user request.
 4. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. Always set its country_code to the actual country, such as "CN" for mainland China or "JP" for Japan, so map links use the right service. For Japan, use query like "Kawachi-Nagano, Osaka, Japan" and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
 5. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
@@ -344,6 +387,7 @@ Output rules:
 20. Treat abandoned days and blacklisted_places as explicit user decisions. Do not schedule an abandoned day or reintroduce a blacklisted place unless the user explicitly asks. abandoned_stops are date-specific records of places skipped on that occurrence; preserve them as history and do not treat them as a global blacklist.
 21. Dates before planning_from are fixed history. In particular, a plan assigned before current_date and before planning_from has already been visited: do not schedule it again or clear that earlier record. Only rewrite planning_from and later dates.
 22. past_day_reviews are soft preferences from completed days. Use satisfied/worth_reusing feedback as positive reference and use rushed, tiring, weather-affected or unsatisfied feedback to improve pacing and choices. They are not hard exclusions; only blacklisted_places are a hard place exclusion.
+23. ${getMapPointGuidance(language)}
 
 JSON format:
 ${planSchema}`;
@@ -365,7 +409,7 @@ ${JSON.stringify({
 
 输出规范：
 1. 只输出可导入 JSON，不要 Markdown 或解释。
-2. 严格按下面格式补齐字段；可选数组没有内容时用空数组。
+2. 严格按下面格式补齐字段；可选数组没有内容时用空数组。每个 stop 的 id 在所属计划内保持唯一且稳定。map_point 只是可选占位，未经核实就省略。
 3. 根据旅行限制和用户需求填写 available_dates、closed_dates、weather_rules、conflicts。
 4. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。务必写实际国家的 country_code，例如中国大陆为 "CN"、日本为 "JP"，以便地图链接选择对应服务。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
 5. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
@@ -386,6 +430,7 @@ ${JSON.stringify({
 20. 已放弃日期和 blacklisted_places 都是用户明确做出的决定；除非用户明确要求，否则不要重新安排已放弃日期，也不要再次加入已拉黑地点。abandoned_stops 是某个日期中临时没去的地点记录，只作为历史保留，不要把它当成全局拉黑。
 21. planning_from 之前的日期是固定历史。尤其是同时早于 current_date 和 planning_from 的已安排计划，视为已经去过：不要再次安排，也不要清空其历史记录；只调整 planning_from 及之后的日期。
 22. past_day_reviews 是用户对已游玩日期的软偏好反馈。满意、值得复用可作为正向参考；太赶、交通折腾、体力超支、天气影响或不满意用于改善节奏和选择。它们不是硬性排除，只有 blacklisted_places 才是地点硬约束。
+23. ${getMapPointGuidance(language)}
 
 JSON 格式：
 ${planSchema}`;
@@ -417,6 +462,7 @@ You need to:
 7. End with JSON so I can import or compare changes manually.
 8. Keep abandoned days and blacklisted places unchanged unless I explicitly ask to restore them. abandoned_stops are date-specific skipped-place records, not global blacklists.
 9. Use past_day_reviews as soft preference signals for pacing, transport load, weather tolerance and reusable day patterns. Do not treat a negative review as a blacklist.
+10. Existing stop map_point and transfer_from_previous.via values are route constraints for evaluating travel time and day flow. This is a schedule-only response: do not invent coordinates, rewrite a plan, or silently assume a required scenic road can be skipped.
 
 Data:
 ${JSON.stringify(context, null, 2)}
@@ -453,6 +499,7 @@ ${replanRequest}
 7. 最后输出一个 JSON，方便我手动导入或对照修改。
 8. 除非我明确要求恢复，否则保留已放弃日期和已拉黑地点，不要重新加入规划；abandoned_stops 只是具体日期中没去的地点记录，不等于全局拉黑。
 9. 把 past_day_reviews 当作节奏、交通负担、天气容忍度和可复用路线的软偏好；负面评价不等于拉黑。
+10. 已有 stop 的 map_point 和 transfer_from_previous.via 是评估路程与日程动线的约束。本次只重排日期；不要臆造坐标、改写计划，也不要默认可以跳过必经的景观道路。
 
 数据：
 ${JSON.stringify(context, null, 2)}
@@ -512,8 +559,9 @@ ${language === 'en' ? `Requirements:
 14. For official sites, realtime status pages, live cameras, booking pages or other URLs in reminders, put them in reminders[].links. Do not put Markdown links or raw URLs inside reminder text.
 15. If the plan fits a specific day, include assigned_day.
 16. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
-17. Do not add a place listed in blacklisted_places unless the user explicitly asks to restore it. Preserve ids for unchanged stops so date-specific abandoned_stops remain traceable.
+17. Do not add a place listed in blacklisted_places unless the user explicitly asks to restore it. Preserve ids for unchanged stops so date-specific abandoned_stops remain traceable; give new stops distinct stable ids within the plan.
 18. Use past_day_reviews as soft feedback when improving or creating the plan. Do not treat unsatisfied feedback as a hard blacklist.
+19. ${getMapPointGuidance(language)}
 
 Single plan JSON format:
 ${schema}` : `要求：
@@ -533,8 +581,9 @@ ${schema}` : `要求：
 14. 提醒里如果涉及官网、实时状态、实时摄像头、预约页或其他 URL，放到 reminders[].links；不要把 Markdown 链接或裸 URL 写进 text。
 15. 如果计划适合安排到某一天，可以写 assigned_day。
 16. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
-17. 除非用户明确要求恢复，否则不要加入 blacklisted_places 中的地点；未改变的 stop 要保留原 id，确保具体日期的 abandoned_stops 仍能关联。
+17. 除非用户明确要求恢复，否则不要加入 blacklisted_places 中的地点；未改变的 stop 要保留原 id，确保具体日期的 abandoned_stops 仍能关联；新增 stop 在所属计划内使用不同且稳定的 id。
 18. 优化或新增计划时参考 past_day_reviews 中的软反馈，但不要把“不满意”直接当作地点拉黑。
+19. ${getMapPointGuidance(language)}
 
 单个计划 JSON 格式：
 ${schema}`}

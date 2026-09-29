@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { normalizeLodgingDrafts, type NormalizedLodging } from '../domain/trip';
 import { getTodayId } from '../domain/date';
+import { getMapProviderNameKey, getMapSearchLink } from '../domain/locationLinks';
+import type { MapPreferences, MapRegion } from '../domain/mapPreferences';
 import { Icon } from './Icon';
 import type { TranslateFn } from '../types/ui';
 
@@ -38,6 +40,9 @@ interface LodgingEditorDraft {
 
 interface LodgingEditorProps {
   lodgings: NormalizedLodging[];
+  mapPreferences: MapPreferences;
+  mapRegionHint: MapRegion;
+  mapSearchRegion: string;
   startDateStr: string;
   endDateStr: string;
   t: TranslateFn;
@@ -67,7 +72,7 @@ function createLodgingEditorDraft(
   };
 }
 
-export function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }: LodgingEditorProps) {
+export function LodgingEditor({ lodgings, mapPreferences, mapRegionHint, mapSearchRegion, startDateStr, endDateStr, t, onSave }: LodgingEditorProps) {
   const [drafts, setDrafts] = useState(() => (
     lodgings.length
       ? lodgings.map((lodging: NormalizedLodging, index: number) => createLodgingEditorDraft(lodging, index, startDateStr, endDateStr))
@@ -114,7 +119,19 @@ export function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }:
         </div>
       ) : (
         <div className="lodging-list">
-          {drafts.map((draft) => (
+          {drafts.map((draft) => {
+            const existingLocation = lodgings.find((lodging) => lodging.id === draft.id)?.location;
+            const city = existingLocation?.admin2 || existingLocation?.weatherLabel || mapSearchRegion;
+            const address = draft.address.trim();
+            const searchAddress = city && !address.includes(city) ? [city, address].filter(Boolean).join(' ') : address;
+            const mapLink = getMapSearchLink({
+              ...existingLocation,
+              label: draft.name.trim(),
+              address: searchAddress,
+              weatherLabel: city,
+            }, mapPreferences, mapRegionHint);
+            const mapLabel = t('findLodgingOnMap', { provider: t(getMapProviderNameKey(mapLink.provider)) });
+            return (
             <div className="lodging-row" key={draft.id}>
               <div className="lodging-row-main">
                 <label>
@@ -164,18 +181,27 @@ export function LodgingEditor({ lodgings, startDateStr, endDateStr, t, onSave }:
                     onChange={(event) => updateDraft(draft.id, 'note', event.target.value)}
                   />
                 </label>
-                <button
-                  className="icon-btn compact-icon-btn danger-icon-btn"
-                  type="button"
-                  onClick={() => removeDraft(draft.id)}
-                  aria-label={t('delete')}
-                  title={t('delete')}
-                >
-                  <Icon name="trash" />
-                </button>
+                <span className="lodging-row-actions">
+                  {(draft.name.trim() || address) && mapLink.url && (
+                    <a className="btn btn-small btn-outline" href={mapLink.url} target="_blank" rel="noreferrer">
+                      <Icon name="mapPin" />
+                      {mapLabel}
+                    </a>
+                  )}
+                  <button
+                    className="icon-btn compact-icon-btn danger-icon-btn"
+                    type="button"
+                    onClick={() => removeDraft(draft.id)}
+                    aria-label={t('delete')}
+                    title={t('delete')}
+                  >
+                    <Icon name="trash" />
+                  </button>
+                </span>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
