@@ -33,6 +33,9 @@ export function SchedulePanel({
   translateRiskTitle,
   tripDates,
   weatherData,
+  weatherError,
+  weatherLoading,
+  refreshWeather,
 }: {
   mobileOverviewOpen: boolean;
   onToggleOverview: () => void;
@@ -65,6 +68,9 @@ export function SchedulePanel({
   translateRiskTitle: (title: string, language: string) => string;
   tripDates: DisplayTripDate[];
   weatherData: WeatherDataMap;
+  weatherError: string;
+  weatherLoading: boolean;
+  refreshWeather: () => void;
 }) {
   const miniDayRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
 
@@ -83,7 +89,7 @@ export function SchedulePanel({
   }, [selectedDate]);
 
   return (
-    <aside className={`side-panel schedule-panel ${mobileOverviewOpen ? 'is-overview-open' : ''}`}>
+    <aside aria-label={t('itinerary')} className={`side-panel schedule-panel ${mobileOverviewOpen ? 'is-overview-open' : ''}`}>
       <div className="panel-header">
         <h2>{t('itinerary')}</h2>
       </div>
@@ -121,6 +127,12 @@ export function SchedulePanel({
         <span>{t('tripDays', { count: tripDates.length })}</span>
         <button className="btn btn-small btn-outline" type="button" aria-expanded={mobileOverviewOpen} aria-controls="trip-day-list" onClick={onToggleOverview}>{t(mobileOverviewOpen ? 'backToItinerary' : 'tripOverview')}</button>
       </div>
+
+      {weatherError && <div className="mobile-weather-warning" role="status">
+        <p>{t('weatherUnavailableHelp')}</p>
+        <button className="btn btn-small btn-outline" type="button" disabled={weatherLoading} onClick={refreshWeather}>{t(weatherLoading ? 'updating' : 'updateWeather')}</button>
+        <details><summary>{t('weatherErrorDetails')}</summary><p>{weatherError}</p></details>
+      </div>}
 
       <MobileRiskPanel
         riskGroups={riskGroups}

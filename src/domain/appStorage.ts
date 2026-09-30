@@ -31,9 +31,29 @@ export const STORAGE_KEYS = {
   checklistState: 'pg_checklistState',
   weatherCache: 'pg_weatherCache',
   driveAutoSync: 'pg_driveAutoSync',
+  recoveryBackup: 'pg_unreadableStateBackup',
 };
 
+export const STORAGE_ERROR_EVENT = 'pg-storage-error';
+
+export function readStoredValue(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+
+export function writeStoredValue(key: string, value: string | null, reportFailure = true): boolean {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+    return true;
+  } catch {
+    if (reportFailure && typeof window !== 'undefined') window.dispatchEvent(new Event(STORAGE_ERROR_EVENT));
+    return false;
+  }
+}
+
 export interface InitialAppState {
+  storageReadFailed: boolean;
+  recoveryData: string | null;
   trips: NormalizedTripSnapshot[];
   activeTripId: string;
   tripName: string;
@@ -54,7 +74,7 @@ export interface InitialAppState {
 
 export function safeJsonRead<T>(key: string, fallback: T): T {
   try {
-    const raw = localStorage.getItem(key);
+    const raw = readStoredValue(key);
     return raw ? JSON.parse(raw) : fallback;
   } catch {
     return fallback;
@@ -62,8 +82,19 @@ export function safeJsonRead<T>(key: string, fallback: T): T {
 }
 
 export function loadInitialState(): InitialAppState {
-  const currentVersion = localStorage.getItem(STORAGE_KEYS.schemaVersion);
+  let storageReadFailed = false;
+  try { localStorage.getItem(STORAGE_KEYS.schemaVersion); } catch { storageReadFailed = true; }
+  const currentVersion = readStoredValue(STORAGE_KEYS.schemaVersion);
   const storedTrips = safeJsonRead<unknown>(STORAGE_KEYS.trips, null);
+  const rawTrips = readStoredValue(STORAGE_KEYS.trips);
+  const unreadableTrips = Boolean(rawTrips && (!isCompatibleAppSchemaVersion(currentVersion) || !Array.isArray(storedTrips)));
+  const recoveryData = unreadableTrips ? JSON.stringify({
+    schemaVersion: currentVersion,
+    tripsJson: rawTrips,
+    checklistText: readStoredValue(STORAGE_KEYS.checklistText),
+    checklistStateJson: readStoredValue(STORAGE_KEYS.checklistState),
+    previousBackup: readStoredValue(STORAGE_KEYS.recoveryBackup),
+  }, null, 2) : readStoredValue(STORAGE_KEYS.recoveryBackup);
   const loadedTrips = isCompatibleAppSchemaVersion(currentVersion) && Array.isArray(storedTrips) && storedTrips.length > 0
     ? storedTrips.map((trip, index) => normalizeTripSnapshot(trip, index))
     : [];
@@ -73,7 +104,7 @@ export function loadInitialState(): InitialAppState {
   const activeTrip = nearestTrip || normalizeTripSnapshot(
     createEmptyTripSnapshot('新旅行计划', getTodayId(), 'trip-current-stage-empty'),
   );
-  const storedChecklistText = localStorage.getItem(STORAGE_KEYS.checklistText);
+  const storedChecklistText = readStoredValue(STORAGE_KEYS.checklistText);
   const storedChecklistState = safeJsonRead<unknown>(STORAGE_KEYS.checklistState, null);
   const storedWeatherCache = safeJsonRead<WeatherDataMap>(STORAGE_KEYS.weatherCache, {});
   const loadedChecklistText = storedChecklistText ?? activeTrip.checklistText;
@@ -88,6 +119,8 @@ export function loadInitialState(): InitialAppState {
   );
 
   return {
+    storageReadFailed,
+    recoveryData,
     trips,
     activeTripId: nearestTrip?.id || '',
     tripName: activeTrip.name,

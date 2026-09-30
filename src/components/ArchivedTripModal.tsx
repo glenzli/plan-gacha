@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { Icon } from './Icon';
 import { DayReviewSummary, type DayReviewTarget } from './DayReview';
 import { WeatherIcon } from './PlanContent';
@@ -98,9 +99,10 @@ export function ArchivedTripModal({
   const archiveSummary = trip.archiveSummary;
   const expenseTotal = getTripExpenseTotal(archiveSummary);
 
+  const dialogRef = useModalDialog(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal archived-view-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal archived-view-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('archived')} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">{t('archivedView')}</p>

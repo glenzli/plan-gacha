@@ -1,4 +1,4 @@
-import { useRef, type Dispatch, type SetStateAction } from 'react';
+import { useEffect, useId, useRef, type Dispatch, type SetStateAction } from 'react';
 import type { NormalizedTripSnapshot } from '../domain/trip';
 import type { TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
@@ -65,12 +65,30 @@ export function TripHeader({
   weatherLoading,
 }: TripHeaderProps) {
   const moreRef = useRef<HTMLDetailsElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setTripMenuOpen(false);
+      if (moreRef.current && !moreRef.current.contains(event.target as Node)) moreRef.current.open = false;
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [setTripMenuOpen]);
+  useEffect(() => {
+    if (tripMenuOpen) {
+      const option = menuRef.current?.querySelector<HTMLElement>('[aria-selected="true"]')
+        || menuRef.current?.querySelector<HTMLElement>('[role="option"]');
+      option?.focus({ preventScroll: true });
+    }
+  }, [tripMenuOpen]);
   return (
     <header className="trip-header">
       <div className="trip-brand">
         <div className="brand-topline">
           <p className="eyebrow">Travel Gacha</p>
-          <button className="language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')}>
+          <button className="language-toggle" type="button" onClick={toggleLanguage} title={t('langSwitchTitle')} aria-label={t('langSwitchTitle')}>
             {t('langSwitch')}
           </button>
         </div>
@@ -80,6 +98,22 @@ export function TripHeader({
         <div className="trip-primary-row">
           <div
             className="trip-menu"
+            ref={menuRef}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                event.preventDefault(); setTripMenuOpen(false); triggerRef.current?.focus();
+              } else if (event.key === 'Tab' && tripMenuOpen) {
+                triggerRef.current?.focus(); setTripMenuOpen(false);
+              } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
+                event.preventDefault();
+                if (!tripMenuOpen) { setTripMenuOpen(true); return; }
+                const options = [...(menuRef.current?.querySelectorAll<HTMLElement>('[role="option"]') || [])];
+                const current = options.indexOf(document.activeElement as HTMLElement);
+                const next = event.key === 'Home' ? 0 : event.key === 'End' ? options.length - 1
+                  : (current + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
+                options[next]?.focus(); options[next]?.scrollIntoView({ block: 'nearest' });
+              }
+            }}
             onBlur={(event) => {
               if (!event.currentTarget.contains(event.relatedTarget)) setTripMenuOpen(false);
             }}
@@ -87,6 +121,9 @@ export function TripHeader({
             <button
               className={`trip-menu-trigger ${tripMenuOpen ? 'is-open' : ''} ${activeTripDisplay.isEmpty ? 'is-empty-plan' : ''}`}
               type="button"
+              ref={triggerRef}
+              aria-controls={tripMenuOpen ? menuId : undefined}
+              aria-label={`${t('tripSwitcher')}: ${activeTripDisplay.name}${activeTripDisplay.meta ? ` · ${activeTripDisplay.meta}` : ''}`}
               aria-haspopup="listbox"
               aria-expanded={tripMenuOpen}
               disabled={tripMenuDisabled}
@@ -96,7 +133,7 @@ export function TripHeader({
               {activeTripDisplay.meta && <em>{activeTripDisplay.meta}</em>}
             </button>
             {tripMenuOpen && (
-              <div className="trip-menu-popover" role="listbox" aria-label={t('tripList')}>
+              <div className="trip-menu-popover" id={menuId} role="listbox" aria-label={t('tripList')}>
                 {visibleTrips.map((trip) => {
                   const isCurrentTrip = trip.id === activeTripId;
                   const tripDisplay = getTripDisplay(trip, isCurrentTrip);
@@ -107,9 +144,9 @@ export function TripHeader({
                       key={trip.id}
                       type="button"
                       role="option"
+                      tabIndex={-1}
                       aria-selected={isCurrentTrip}
-                      onMouseDown={(event) => event.preventDefault()}
-                      onClick={() => switchTrip(trip.id)}
+                      onClick={() => { switchTrip(trip.id); triggerRef.current?.focus({ preventScroll: true }); }}
                     >
                       <span>{tripDisplay.name}</span>
                       {tripDisplay.meta && <em>{tripDisplay.meta}</em>}
@@ -130,7 +167,12 @@ export function TripHeader({
           {archivedTripCount > 0 && <button className="btn btn-small header-action archive-library-shortcut" type="button" onClick={onOpenArchiveLibrary} aria-label={t('openArchiveLibrary', { count: archivedTripCount })} title={t('openArchiveLibrary', { count: archivedTripCount })}><Icon name="history" /><span>{t('archived')}</span><em>{archivedTripCount}</em></button>}
           <details className="action-menu" ref={moreRef} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onKeyDown={(event) => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}>
             <summary className="btn btn-small header-action">{t('moreActions')}<Icon name="chevronDown" /></summary>
-            <div className="action-menu-panel" onClick={(event) => { if (event.target instanceof Element && event.target.closest('button') && moreRef.current) moreRef.current.open = false; }}>
+            <div className="action-menu-panel" onClick={(event) => {
+              if (event.target instanceof Element && event.target.closest('button') && moreRef.current) {
+                moreRef.current.open = false;
+                moreRef.current.querySelector('summary')?.focus({ preventScroll: true });
+              }
+            }}>
               <button type="button" disabled={activeTripDisplay.isEmpty} onClick={onOpenTripEditor}><Icon name="pencil" />{t('manageTrip')}</button>
               <button type="button" onClick={createNewTrip}><Icon name="plus" />{t('createTrip')}</button>
               {hasInitializedPlans && <button type="button" onClick={refreshWeather} disabled={weatherLoading}><Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />{t(weatherLoading ? 'updating' : 'updateWeather')}</button>}

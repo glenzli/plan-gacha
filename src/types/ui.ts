@@ -1,11 +1,11 @@
-import type { ChangeEvent, ReactNode, RefObject } from 'react';
+import type { ChangeEvent, ReactNode, Ref } from 'react';
 import type { NormalizedPlan } from '../domain/plan';
 import type { NormalizedPlaceFeedback, NormalizedStopOutcomes } from '../domain/trip';
 
 export type TranslationVars = Record<string, string | number | boolean | null | undefined>;
 export type TranslateFn = (key: string, vars?: TranslationVars) => string;
 export type VoidFn = () => void;
-export type TextAreaRef = RefObject<HTMLTextAreaElement | null>;
+export type TextAreaRef = Ref<HTMLTextAreaElement>;
 export type FileInputChange = ChangeEvent<HTMLInputElement>;
 export type RenderNode = () => ReactNode;
 export interface PlanRenderOptions {

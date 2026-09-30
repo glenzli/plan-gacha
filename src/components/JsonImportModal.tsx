@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import type { FileInputChange, TextAreaRef, TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
 
@@ -16,9 +17,10 @@ export function JsonImportModal({
   onClose,
   t,
 }: JsonImportModalProps) {
+  const dialogRef = useModalDialog(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('importJsonTitle')} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <h2>{t('importJsonTitle')}</h2>
           <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')} title={t('close')}>
@@ -34,6 +36,7 @@ export function JsonImportModal({
         <textarea
           className="textarea"
           rows={12}
+          aria-label={t('importJsonTitle')}
           ref={importTextRef}
           placeholder='{"plans":[]}'
         />

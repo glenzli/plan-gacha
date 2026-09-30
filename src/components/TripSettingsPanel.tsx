@@ -61,12 +61,22 @@ export function TripSettingsPanel({
         </div>
       </div>
 
-      <div className="editor-tabs" role="tablist" aria-label={t('editPlan')}>
+      <div className="editor-tabs" role="tablist" aria-label={t('editPlan')} onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+        const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next]?.focus(); tabs[next]?.click();
+      }}>
         <button
           className={editorTab === 'itinerary' ? 'is-active' : ''}
           type="button"
           role="tab"
           aria-selected={editorTab === 'itinerary'}
+          tabIndex={editorTab === 'itinerary' ? 0 : -1}
+          id="trip-editor-tab-itinerary"
+          aria-controls="trip-editor-itinerary"
           onClick={() => onSelectTab('itinerary')}
         >
           {t('itinerary')}
@@ -76,6 +86,9 @@ export function TripSettingsPanel({
           type="button"
           role="tab"
           aria-selected={editorTab === 'lodging'}
+          tabIndex={editorTab === 'lodging' ? 0 : -1}
+          id="trip-editor-tab-lodging"
+          aria-controls="trip-editor-lodging"
           onClick={() => onSelectTab('lodging')}
         >
           {t('lodgingSection')}

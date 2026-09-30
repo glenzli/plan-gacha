@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import type { NormalizedTripSnapshot } from '../domain/trip';
 import type { TranslateFn } from '../types/ui';
 import { ArchivedTripRows } from './ArchivedTripRows';
@@ -22,6 +23,7 @@ export function ArchiveLibraryModal({
   onView,
   t,
 }: ArchiveLibraryModalProps) {
+  const dialogRef = useModalDialog(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -29,7 +31,7 @@ export function ArchiveLibraryModal({
         aria-modal="true"
         className="modal archive-library-modal"
         role="dialog"
-        onClick={(event) => event.stopPropagation()}
+        ref={dialogRef} onClick={(event) => event.stopPropagation()}
       >
         <div className="panel-header">
           <div>

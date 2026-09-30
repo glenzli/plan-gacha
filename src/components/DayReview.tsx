@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useState } from 'react';
 import {
   DayReviewRating,
@@ -77,6 +78,7 @@ export function DayReviewModal({
   t: TranslateFn;
   target: DayReviewTarget;
 }) {
+  const dialogRef = useModalDialog(onClose);
   const [rating, setRating] = useState<DayReviewRating | null>(currentReview?.rating || null);
   const [tags, setTags] = useState<DayReviewTag[]>(currentReview?.tags || []);
   const [note, setNote] = useState(currentReview?.note || '');
@@ -89,7 +91,7 @@ export function DayReviewModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal day-review-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal day-review-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('reviewThisDay')} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header day-review-modal-header">
           <div>
             <p className="eyebrow">{t('dayReview')}</p>

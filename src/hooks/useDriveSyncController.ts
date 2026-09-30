@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { createPlanGachaDriveStorage, hasStoredDriveStorageFile } from '../driveStorageAdapter';
-import { STORAGE_KEYS } from '../domain/appStorage';
+import { STORAGE_KEYS, readStoredValue, writeStoredValue } from '../domain/appStorage';
 import {
   mergeAppSnapshots,
+  normalizeAppSnapshotForSync,
   remoteSnapshotMatchesLocal,
   type AppSnapshot,
 } from '../domain/sync';
@@ -76,10 +77,8 @@ function isDriveInvalidJsonError(error: unknown) {
   return asErrorLike(error).code === 'invalid_json';
 }
 
-function assertRemoteSnapshotImportable(payload: unknown, t: TranslateFn): asserts payload is AppSnapshot {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || !Array.isArray((payload as { trips?: unknown }).trips)) {
-    throw new Error(t('driveInvalidSnapshot'));
-  }
+function assertRemoteSnapshotImportable(payload: unknown): asserts payload is AppSnapshot {
+  normalizeAppSnapshotForSync(payload);
 }
 
 export function useDriveSyncController({
@@ -94,7 +93,7 @@ export function useDriveSyncController({
   const [driveBusy, setDriveBusy] = useState('');
   const [driveConflict, setDriveConflict] = useState(false);
   const [drivePanelOpen, setDrivePanelOpen] = useState(false);
-  const [driveAutoSync, setDriveAutoSync] = useState(() => localStorage.getItem(STORAGE_KEYS.driveAutoSync) === 'true');
+  const [driveAutoSync, setDriveAutoSync] = useState(() => readStoredValue(STORAGE_KEYS.driveAutoSync) === 'true');
   const driveBusyRef = useRef('');
   const driveConflictRef = useRef(false);
 
@@ -132,7 +131,7 @@ export function useDriveSyncController({
   }, [driveFeatureEnabled]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.driveAutoSync, driveAutoSync ? 'true' : 'false');
+    writeStoredValue(STORAGE_KEYS.driveAutoSync, driveAutoSync ? 'true' : 'false');
   }, [driveAutoSync]);
 
   useEffect(() => {
@@ -174,11 +173,13 @@ export function useDriveSyncController({
     action: (storage: PlanGachaDriveStorage) => Promise<void>,
   ) => {
     const storage = driveStorage;
+    if (driveBusyRef.current) return;
     if (!storage) {
       notify(t('driveActionFailed', { message: t('driveUnavailable') }));
       return;
     }
 
+    driveBusyRef.current = busyKey;
     setDriveBusy(busyKey);
     try {
       await action(storage);
@@ -221,6 +222,7 @@ export function useDriveSyncController({
       notify(t('driveActionFailed', { message: getErrorMessage(error) }));
       refreshDriveStatus(storage);
     } finally {
+      driveBusyRef.current = '';
       setDriveBusy('');
     }
   }, [driveStorage, formatDriveMergeError, notify, refreshDriveStatus, t]);
@@ -242,7 +244,7 @@ export function useDriveSyncController({
 
       if (existing?.file?.id) {
         const remoteSnapshot = await storage.load();
-        assertRemoteSnapshotImportable(remoteSnapshot, t);
+        assertRemoteSnapshotImportable(remoteSnapshot);
         if (remoteSnapshotMatchesLocal(remoteSnapshot, localSnapshot)) {
           setDriveConflict(false);
           notify(t('driveLinkedExisting'));
@@ -298,6 +300,7 @@ export function useDriveSyncController({
     const timer = window.setInterval(async () => {
       if (driveBusyRef.current || driveConflictRef.current) return;
 
+      driveBusyRef.current = 'auto';
       setDriveBusy('auto');
       try {
         const snapshot = callbacksRef.current?.exportAppSnapshot();
@@ -319,6 +322,7 @@ export function useDriveSyncController({
         }
         setDriveStatus(driveStorage.status());
       } finally {
+        driveBusyRef.current = '';
         setDriveBusy('');
       }
     }, DRIVE_AUTO_SYNC_MS);

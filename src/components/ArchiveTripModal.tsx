@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { useMemo, useState, type FormEvent } from 'react';
 import {
   TRIP_EXPENSE_CATEGORIES,
@@ -47,6 +48,7 @@ export function ArchiveTripModal({
   t,
   tripName,
 }: ArchiveTripModalProps) {
+  const dialogRef = useModalDialog(onClose);
   const initialExpenses = useMemo(() => Object.fromEntries(
     TRIP_EXPENSE_CATEGORIES.map((category) => [
       category,
@@ -75,7 +77,8 @@ export function ArchiveTripModal({
 
   return (
     <div className="modal-overlay archive-trip-overlay" onClick={onClose}>
-      <form className="modal archive-trip-modal" onSubmit={submit} onClick={(event) => event.stopPropagation()}>
+      <div className="modal archive-trip-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t(editing ? 'editTripSummary' : 'archiveTripTitle')} onClick={(event) => event.stopPropagation()}>
+        <form className="archive-trip-form" onSubmit={submit}>
         <div className="panel-header archive-trip-header">
           <div>
             <p className="eyebrow">{editing ? t('tripSummary') : t('archive')}</p>
@@ -149,7 +152,8 @@ export function ArchiveTripModal({
             {t(editing ? 'saveTripSummary' : 'confirmArchive')}
           </button>
         </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 }

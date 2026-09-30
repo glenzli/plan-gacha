@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { STORAGE_KEYS } from '../domain/appStorage';
+import { STORAGE_KEYS, writeStoredValue } from '../domain/appStorage';
 import {
   CHECKLIST_STATUS,
   EXAMPLE_CHECKLIST_TEXT,
@@ -58,8 +58,8 @@ export function useChecklistController({
   );
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.checklistText, checklistText);
-    localStorage.setItem(STORAGE_KEYS.checklistState, JSON.stringify(checklistState));
+    writeStoredValue(STORAGE_KEYS.checklistText, checklistText);
+    writeStoredValue(STORAGE_KEYS.checklistState, JSON.stringify(checklistState));
   }, [checklistState, checklistText]);
 
   const openChecklist = () => {

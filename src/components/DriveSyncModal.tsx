@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import type { RenderNode, TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
 
@@ -12,9 +13,10 @@ export function DriveSyncModal({
   renderDriveSyncPanel,
   t,
 }: DriveSyncModalProps) {
+  const dialogRef = useModalDialog(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal drive-sync-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal drive-sync-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('driveSync')} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">{t('driveSync')}</p>

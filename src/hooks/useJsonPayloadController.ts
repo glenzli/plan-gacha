@@ -32,7 +32,7 @@ import type { DisplayTripDate } from '../domain/display';
 import type { TranslateFn } from '../types/ui';
 import { getEditedPlanSchedule, updateRelatedPlan } from '../domain/planEditing';
 import { mergeLodgings } from '../domain/lodging';
-import { prepareTripImport, validateLodgingReferences, type TripImportPreview } from '../domain/tripImport';
+import { prepareTripImport, validateTripImportPayload, validateLodgingReferences, type TripImportPreview } from '../domain/tripImport';
 import { addDays } from '../domain/date';
 
 type AnyRecord = Record<string, any>;
@@ -79,6 +79,7 @@ interface UseJsonPayloadControllerOptions {
   stopOutcomes: NormalizedStopOutcomes;
   ensureActiveTrip: () => void;
   planningFrom: string;
+  aiPlannerMode: 'generate' | 'replan';
 }
 
 function getErrorMessage(error: unknown) {
@@ -129,10 +130,14 @@ export function useJsonPayloadController({
   stopOutcomes,
   ensureActiveTrip,
   planningFrom,
+  aiPlannerMode,
 }: UseJsonPayloadControllerOptions) {
   const [pendingImport, setPendingImport] = useState<{ parsed: AnyRecord; preview: TripImportPreview; message: string; fromAi: boolean; signature: string } | null>(null);
-  const currentSignature = JSON.stringify([normalizedPlans, lodgings, schedule, startDateStr, tripDays]);
+  const currentSignature = JSON.stringify([normalizedPlans, lodgings, schedule, startDateStr, tripDays, planningFrom, placeFeedback, stopOutcomes, dayReviews, archiveSummary]);
   const prepareImport = (parsed: AnyRecord, fromAi: boolean) => {
+    validateTripImportPayload(parsed);
+    if (fromAi && (parsed.startDateStr !== undefined && parsed.startDateStr !== startDateStr || parsed.tripDays !== undefined && parsed.tripDays !== tripDays)) throw new Error('aiTripRangeFixed');
+    if (fromAi && aiPlannerMode === 'replan' && (parsed.plan || parsed.plans?.length)) throw new Error('aiReplanScheduleOnly');
     const start = parsed.startDateStr || startDateStr;
     const count = parsed.tripDays ? clampTripDays(parsed.tripDays) : tripDays;
     const dates = Array.from({ length: count }, (_, index) => ({ id: addDays(start, index) }));
@@ -178,6 +183,11 @@ export function useJsonPayloadController({
 
   const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied'), fromAi = false) => {
     const prepared = prepareImport(parsed, fromAi);
+    if (fromAi && !parsed.plan && !parsed.plans && !parsed.schedule && !parsed.lodgings
+      && !parsed.hotels && !parsed.accommodations && !parsed.stays && Array.isArray(parsed.warnings) && parsed.warnings.length) {
+      notify(t('aiWarningsReviewed'));
+      return;
+    }
     let touched = false;
     let activeTripEnsured = false;
     const ensureTrip = () => {
@@ -196,6 +206,7 @@ export function useJsonPayloadController({
       touched = true;
       setTripDays(clampTripDays(parsed.tripDays));
     }
+    if (parsed.startDateStr || parsed.tripDays) setSchedule(prepared.schedule);
     if (parsed.plans || parsed.plan || parsed.schedule || parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays) {
       ensureTrip();
       touched = true;

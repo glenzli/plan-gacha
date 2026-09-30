@@ -40,7 +40,7 @@ export function StatusPanel({
   const weatherEntries = Object.entries(weatherData);
 
   return (
-    <aside className="side-panel status-panel">
+    <aside aria-label={t('warnings')} className="side-panel status-panel">
       <div className="panel-header">
         <h2>{t('warnings')}</h2>
       </div>

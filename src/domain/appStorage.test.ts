@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { APP_SCHEMA_VERSION } from './sync';
-import { loadInitialState, STORAGE_KEYS } from './appStorage';
+import { loadInitialState, writeStoredValue, STORAGE_KEYS } from './appStorage';
 
 class MemoryStorage {
   private readonly values = new Map<string, string>();
@@ -64,5 +64,24 @@ describe('initial trip selection', () => {
 
     expect(initial.activeTripId).toBe('');
     expect(initial.plans).toEqual([]);
+  });
+
+  it('keeps the app usable when the browser denies localStorage access', () => {
+    vi.stubGlobal('localStorage', { getItem: () => { throw new Error('SecurityError'); } });
+    const initial = loadInitialState();
+    expect(initial.storageReadFailed).toBe(true);
+    expect(initial.trips).toEqual([]);
+    expect(initial.checklistText).toBe('');
+    expect(writeStoredValue(STORAGE_KEYS.trips, '[]')).toBe(false);
+  });
+  it('retains exact unreadable and future-schema bytes for a recovery export', () => {
+    for (const [version, raw] of [[APP_SCHEMA_VERSION, '{bad json'], ['future', '[{"id":"new-format"}]']]) {
+      localStorage.setItem(STORAGE_KEYS.schemaVersion, version);
+      localStorage.setItem(STORAGE_KEYS.trips, raw);
+      const initial = loadInitialState();
+      expect(initial.trips).toEqual([]);
+      expect(JSON.parse(initial.recoveryData!).tripsJson).toBe(raw);
+      expect(localStorage.getItem(STORAGE_KEYS.trips)).toBe(raw);
+    }
   });
 });

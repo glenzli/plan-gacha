@@ -105,9 +105,16 @@ export function PlanEditorDetail({
         <span className="editor-draft-status">{dirty || isCreatingPlan ? t('draftUnsaved') : t('draftSaved')}</span>
       </div>
       <div className="plan-editor-heading"><h3>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h3></div>
-      <div className="editor-tabs plan-editor-mode-tabs has-constraints" role="tablist" aria-label={t('editSinglePlan')}>
+      <div className="editor-tabs plan-editor-mode-tabs has-constraints" role="tablist" aria-label={t('editSinglePlan')} onKeyDown={(event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+        const index = tabs.indexOf(document.activeElement as HTMLButtonElement);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next]?.focus(); tabs[next]?.click();
+      }}>
         {(['content', 'constraints', 'ai'] as const).map((tab) => (
-          <button key={tab} className={mode === tab ? 'is-active' : ''} type="button" role="tab" autoFocus={mode === tab} aria-selected={mode === tab} aria-controls={`plan-editor-${tab}`} id={`plan-editor-tab-${tab}`} onClick={() => setMode(tab)}>
+          <button key={tab} className={mode === tab ? 'is-active' : ''} type="button" role="tab" tabIndex={mode === tab ? 0 : -1} autoFocus={mode === tab} aria-selected={mode === tab} aria-controls={`plan-editor-${tab}`} id={`plan-editor-tab-${tab}`} onClick={() => setMode(tab)}>
             {t(tab === 'content' ? 'contentEditTab' : tab === 'constraints' ? 'constraintTab' : 'aiEditTab')}
           </button>
         ))}

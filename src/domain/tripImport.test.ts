@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { normalizePlan } from './plan';
 import { mergeLodgings, normalizeLodging } from './lodging';
-import { prepareTripImport } from './tripImport';
+import { prepareTripImport, validateTripImportPayload } from './tripImport';
 import { ScheduleEntryStatus } from './trip';
 
 const dates = [{ id: '2026-10-01' }, { id: '2026-10-02' }];
@@ -9,6 +9,31 @@ const plan = normalizePlan({ id: 'p1', name: 'Plan', stops: [{ title: 'Museum' }
 const hotel = normalizeLodging({ id: 'hotel-a', name: 'Hotel A', default_for_trip: true, check_in: '2026-10-01', check_out: '2026-10-03', reservations: [{ id: 'order-a', check_in: '2026-10-01', check_out: '2026-10-03', status: 'booked' }] })!;
 
 describe('joint itinerary and lodging import', () => {
+  it('rejects malformed schedule rows and duplicate dates without overwriting an entry', () => {
+    for (const schedule of [[null], [{ date: '2026-02-30', plan_id: plan.id }], [{ date: dates[0].id }, { date: dates[0].id }], { [dates[0].id]: 3 }]) {
+      expect(() => validateTripImportPayload({ schedule })).toThrow('importScheduleInvalid');
+    }
+  });
+  it('previews removed assignments when an imported trip range excludes their dates', () => {
+    const current = { [dates[0].id]: { planId: plan.id } };
+    const result = prepareTripImport({ startDateStr: dates[1].id, tripDays: 1 }, [plan], [], current, [dates[1]]);
+    expect(result.schedule).toEqual({});
+    expect(result.scheduleChanges).toEqual([[dates[0].id, { planId: '' }]]);
+  });
+  it('rejects malformed dates and ranges before building a preview', () => {
+    for (const payload of [null, [], { plans: 'wrong' }]) expect(() => validateTripImportPayload(payload)).toThrow('noApplicableJson');
+    for (const payload of [{ startDateStr: '2026-02-30' }, { startDateStr: 'tomorrow' }, { tripDays: 0 }, { tripDays: 31 }, { tripDays: 1.5 }]) {
+      expect(() => validateTripImportPayload(payload)).toThrow('importTripDatesInvalid');
+    }
+    expect(() => validateTripImportPayload({ schemaVersion: 'future' })).toThrow('importSchemaUnsupported');
+  });
+  it('requires moves to clear their old date and allows explicit clearing', () => {
+    const current = { [dates[0].id]: { planId: plan.id } };
+    expect(() => prepareTripImport({ schedule: [{ date: dates[1].id, plan_id: plan.id }] }, [plan], [], current, dates)).toThrow('importDuplicateAssignment');
+    const result = prepareTripImport({ schedule: [{ date: dates[0].id, plan_id: '' }, { date: dates[1].id, plan_id: plan.id }] }, [plan], [], current, dates);
+    expect(result.schedule[dates[1].id].planId).toBe(plan.id);
+    expect(result.schedule[dates[0].id]?.planId || '').toBe('');
+  });
   it('prepares a single AI envelope and adds hotel alternatives without applying anything', () => {
     const payload = { plan: { ...plan, lodging: { mode: 'options', option_ids: ['hotel-b'] }, assigned_day: dates[1].id }, lodgings: [{ id: 'hotel-b', name: 'Hotel B', default_for_trip: false }] };
     const original = JSON.stringify([plan, hotel]);

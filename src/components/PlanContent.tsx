@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import {
   BookingStatus,
   formatStopTransfer,
@@ -97,10 +97,20 @@ export function PlanStops({
   mapPreferences,
 }: PlanStopsProps) {
   const [openRouteStopId, setOpenRouteStopId] = useState<string | null>(null);
+  const stopsRef = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    if (!openRouteStopId) return;
+    const dismiss = (event: PointerEvent) => {
+      const menu = stopsRef.current?.querySelector('button[aria-expanded="true"]')?.closest('.stop-route-menu');
+      if (!menu?.contains(event.target as Node)) setOpenRouteStopId(null);
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, [openRouteStopId]);
   if (!plan?.stops.length) return null;
 
   return (
-    <ol className="stop-list" aria-label={t('stopsAria', { name: plan.name })}>
+    <ol ref={stopsRef} className="stop-list" aria-label={t('stopsAria', { name: plan.name })}>
       {plan.stops.map((stop, index) => {
         const previousStop = index > 0 && !stop.lodgingUnresolved && !plan.stops[index - 1].lodgingUnresolved ? plan.stops[index - 1] : null;
         const preferredRouteMode = getPreferredMapRouteMode(stop.transferFromPrevious);
@@ -186,7 +196,12 @@ export function PlanStops({
                   </span>
                   {!stop.lodgingUnresolved && <div className="stop-location-actions">
                     {previousStop && (
-                      <span className="stop-route-menu">
+                      <span className="stop-route-menu" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpenRouteStopId(null); }} onKeyDown={(event) => {
+                        if (event.key === 'Escape' && openRouteStopId === stop.id) {
+                          event.preventDefault(); event.stopPropagation(); setOpenRouteStopId(null);
+                          event.currentTarget.querySelector<HTMLButtonElement>('button[aria-expanded="true"]')?.focus();
+                        }
+                      }}>
                         {directRoute ? (
                           <a
                             className="stop-location-action stop-primary-action"

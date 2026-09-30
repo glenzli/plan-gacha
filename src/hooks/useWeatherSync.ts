@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { STORAGE_KEYS } from '../domain/appStorage';
+import { STORAGE_KEYS, writeStoredValue } from '../domain/appStorage';
 import { formatWeatherUpdateWarning } from '../domain/dayInsight';
 import { getPlanWeatherLocations, getWeatherLocationKey, type NormalizedPlan } from '../domain/plan';
 import {
@@ -53,7 +53,7 @@ export function useWeatherSync({
   }, [weatherData]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.weatherCache, JSON.stringify(weatherData));
+    writeStoredValue(STORAGE_KEYS.weatherCache, JSON.stringify(weatherData), false);
   }, [weatherData]);
 
   const refreshWeather = useCallback(async () => {
@@ -108,7 +108,7 @@ export function useWeatherSync({
     weatherRequestIdRef.current += 1;
     autoWeatherKeyRef.current = '';
     weatherDataRef.current = {};
-    localStorage.removeItem(STORAGE_KEYS.weatherCache);
+    writeStoredValue(STORAGE_KEYS.weatherCache, null, false);
     setWeatherData({});
     setWeatherError('');
   }, []);

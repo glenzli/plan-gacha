@@ -1,3 +1,4 @@
+import { writeStoredValue } from './domain/appStorage';
 import type {
   DriveFileLocator,
   DriveStorageConflictDetails,
@@ -82,12 +83,12 @@ export function hasStoredDriveStorageFile() {
 function setStoredFile(file: unknown) {
   const record = normalizeFileRecord(file);
   if (!record) return null;
-  localStorage.setItem(FILE_RECORD_KEY, JSON.stringify(record));
+  writeStoredValue(FILE_RECORD_KEY, JSON.stringify(record));
   return record;
 }
 
 function clearStoredFile() {
-  localStorage.removeItem(FILE_RECORD_KEY);
+  writeStoredValue(FILE_RECORD_KEY, null);
 }
 
 function clearStoredFileIfMatches(file: DriveStorageFile | null | undefined) {

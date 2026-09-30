@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { Icon } from './Icon';
 import type { Dispatch, SetStateAction, ChangeEvent } from 'react';
 import type { ChecklistMergeConflict } from '../domain/checklist';
@@ -30,9 +31,10 @@ export function ChecklistImportModal({
   setChecklistImportText,
   t,
 }: ChecklistImportModalProps) {
+  const dialogRef = useModalDialog(closeChecklistImport);
   return (
     <div className="modal-overlay" onClick={closeChecklistImport}>
-      <div className="modal checklist-import-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal checklist-import-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('checklistImportTitle')} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">{t('checklist')}</p>
@@ -52,6 +54,7 @@ export function ChecklistImportModal({
         </div>
         <textarea
           className="textarea checklist-textarea"
+          aria-label={t('checklistImportTitle')}
           value={checklistImportText}
           onChange={(event) => {
             setChecklistImportText(event.target.value);

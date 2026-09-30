@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { Icon } from './Icon';
 import { CHECKLIST_STATUS, getChecklistStats, parseChecklistText, reconcileChecklistStateForGroups, serializeChecklistDraft, type ChecklistGroup, type ChecklistState } from '../domain/checklist';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
@@ -65,12 +66,12 @@ export function ChecklistModal({
   const [pendingExit, setPendingExit] = useState<'close' | 'cancel' | null>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const hasChanges = checklistEditing && (draft.groupsChanged || draft.text !== checklistText);
-
   useEffect(() => {
-    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialogRef.current?.focus();
-    return () => { if (trigger?.isConnected) trigger.focus(); };
-  }, []);
+    if (!hasChanges) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ''; };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [hasChanges]);
 
   const beginEditing = (groupId?: string) => {
     const next = createDraft(checklistText, checklistState, language);
@@ -93,6 +94,8 @@ export function ChecklistModal({
     setPendingExit(null);
     window.requestAnimationFrame(() => dialogRef.current?.focus());
   };
+  useModalDialog(() => requestExit('close'), dialogRef);
+  const leaveRef = useModalDialog(continueEditing, undefined, Boolean(pendingExit));
   const updateGroups = (groups: ChecklistGroup[]) => {
     setDraft((current) => ({ ...current, groups, groupsChanged: true }));
     setEditError('');
@@ -164,7 +167,8 @@ export function ChecklistModal({
                         className="checklist-check"
                         type="button"
                         onClick={() => toggleChecklistDone(item.id)}
-                        aria-label={isDone ? t('checklistTodo') : t('checklistDone')}
+                        aria-label={`${isDone ? t('checklistTodo') : t('checklistDone')}: ${item.text}`}
+                        aria-pressed={isDone}
                         title={isDone ? t('checklistTodo') : t('checklistDone')}
                       >
                         {isDone && <Icon name="check" />}
@@ -185,21 +189,7 @@ export function ChecklistModal({
   };
 
   return (
-    <div className="modal-overlay" onClick={() => requestExit('close')} onKeyDown={(event) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation();
-        event.preventDefault();
-        if (pendingExit) continueEditing();
-        else requestExit('close');
-      }
-      if (event.key === 'Tab') {
-        const root = event.currentTarget.querySelector('[role="alertdialog"]') || dialogRef.current;
-        const controls = [...(root?.querySelectorAll<HTMLElement>('button, a[href], input, textarea, summary, [tabindex="0"]') || [])].filter((element) => !element.hasAttribute('disabled') && element.getClientRects().length);
-        const first = controls[0]; const last = controls[controls.length - 1];
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-      }
-    }}>
+    <div className="modal-overlay" onClick={() => requestExit('close')}>
       <div className="modal checklist-modal" ref={dialogRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby="checklist-title" onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <div>
@@ -312,7 +302,7 @@ export function ChecklistModal({
         </div>
       </div>
       {pendingExit && <div className="modal-overlay editor-leave-overlay" onClick={(event) => event.stopPropagation()}>
-        <div className="modal editor-leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-checklist-title" aria-describedby="leave-checklist-help">
+        <div ref={leaveRef} className="modal editor-leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-checklist-title" aria-describedby="leave-checklist-help">
           <h3 id="leave-checklist-title">{t('leavePlanTitle')}</h3>
           <p id="leave-checklist-help">{t('leaveChecklistHelp')}</p>
           <div className="modal-actions">

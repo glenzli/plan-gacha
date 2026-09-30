@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import type { AiModeText, TextAreaRef, TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
 
@@ -20,9 +21,10 @@ export function AiPlannerModal({
   onClose,
   t,
 }: AiPlannerModalProps) {
+  const dialogRef = useModalDialog(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal ai-planner-modal" onClick={(event) => event.stopPropagation()}>
+      <div className="modal ai-planner-modal" ref={dialogRef} role="dialog" aria-modal="true" aria-label={t('aiReplan')} onClick={(event) => event.stopPropagation()}>
         <div className="panel-header">
           <div>
             <p className="eyebrow">{t('aiPlanning')}</p>
@@ -52,7 +54,7 @@ export function AiPlannerModal({
           <textarea
             className="textarea ai-result"
             ref={aiPlannerResultRef}
-            placeholder={t('aiResultPlaceholder')}
+            placeholder={t('aiReplanResultPlaceholder')}
           />
         </label>
 

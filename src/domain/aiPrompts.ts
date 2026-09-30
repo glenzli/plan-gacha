@@ -9,7 +9,7 @@ export type Language = 'zh' | 'en' | string;
 export type AiPlannerMode = 'generate' | 'replan';
 
 export function getPlanJsonSchema(language: Language = 'zh') {
-  return JSON.stringify({ plans: [planOutputShape(language)], lodgings: [lodgingOutputShape()] });
+  return JSON.stringify({ plans: [planOutputShape(language)], lodgings: [lodgingOutputShape()], warnings: [] });
 }
 
 export function getSinglePlanJsonSchema(language: Language = 'zh') {
@@ -218,5 +218,5 @@ export function buildSinglePlanPrompt({ language, isCreatingPlan, planContext, u
     '\n\n' + (en ? 'Rules:' : '规则：') + '\n' + (isCreatingPlan ? (en ? 'Use a new id distinct from existing_plan_ids.' : '新增计划 id 不得与 existing_plan_ids 重复。') : (en ? 'Keep the current plan id; return the complete edited plan.' : '保留当前计划 id，返回完整修改后计划。')) +
     '\n' + historyRules(language) + '\n' + planRules(language) +
     '\n\n' + (en ? 'Context:' : '上下文：') + '\n' + JSON.stringify(pruneEmptyAiValue(planContext) || {}) +
-    '\n\n' + (en ? 'Output shape (omit unused optional fields):' : '输出结构（无用的可选字段可省略）：') + '\n' + JSON.stringify({ plan: planOutputShape(language), lodgings: [lodgingOutputShape()] });
+    '\n\n' + (en ? 'Output shape (omit unused optional fields; never copy placeholder ids):' : '输出结构（无用的可选字段可省略，不照抄占位 id）：') + '\n' + JSON.stringify({ plan: planOutputShape(language), lodgings: [lodgingOutputShape()], warnings: [] });
 }

@@ -1,3 +1,4 @@
+import { useModalDialog } from '../hooks/useModalDialog';
 import { type MapPreferences } from '../domain/mapPreferences';
 import type { TranslateFn } from '../types/ui';
 import { Icon } from './Icon';
@@ -10,6 +11,7 @@ interface MapSettingsModalProps {
 }
 
 export function MapSettingsModal({ preferences, onChange, onClose, t }: MapSettingsModalProps) {
+  const dialogRef = useModalDialog(onClose);
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div
@@ -17,7 +19,7 @@ export function MapSettingsModal({ preferences, onChange, onClose, t }: MapSetti
         aria-modal="true"
         className="modal map-settings-modal"
         role="dialog"
-        onClick={(event) => event.stopPropagation()}
+        ref={dialogRef} onClick={(event) => event.stopPropagation()}
       >
         <div className="panel-header">
           <div>

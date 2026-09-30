@@ -30,6 +30,7 @@ import { SchedulePanel } from './components/SchedulePanel';
 import { StatusPanel } from './components/StatusPanel';
 import { TripHeader } from './components/TripHeader';
 import { TripEditorModal } from './components/TripEditorModal';
+import { useRetainedTextarea } from './hooks/useRetainedTextarea';
 import { useChecklistController } from './hooks/useChecklistController';
 import { useDriveSyncController, type DriveSyncCallbacks } from './hooks/useDriveSyncController';
 import { useAiPromptController } from './hooks/useAiPromptController';
@@ -57,6 +58,7 @@ import {
 } from './domain/tripLifecycle';
 import {
   APP_SCHEMA_VERSION,
+  normalizeAppSnapshotForSync,
   type AppSnapshot,
 } from './domain/sync';
 import {
@@ -69,6 +71,7 @@ import {
 } from './domain/weather';
 import { buildRiskGroups, type RiskActionTarget } from './domain/risk';
 import { addDays, getTodayId } from './domain/date';
+import { downloadBlob } from './domain/browserExport';
 import {
   findDayReview,
   getDayReviewKey,
@@ -121,6 +124,8 @@ import {
 } from './domain/display';
 import {
   STORAGE_KEYS,
+  STORAGE_ERROR_EVENT,
+  writeStoredValue,
   loadInitialState,
 } from './domain/appStorage';
 import { loadMapPreferences, saveMapPreferences, type MapPreferences } from './domain/mapPreferences';
@@ -141,16 +146,6 @@ interface TripDisplay {
   meta: string;
 }
 
-interface AppSnapshotInput {
-  trips: unknown[];
-  activeTripId?: string;
-  checklistText?: unknown;
-  checklist?: unknown;
-  packingList?: unknown;
-  checklistState?: unknown;
-  checklistStatus?: unknown;
-}
-
 function getInitialLanguage() {
   try {
     const params = new URLSearchParams(window.location.search);
@@ -165,6 +160,13 @@ function App() {
   const [, startUiTransition] = useTransition();
   const [language, setLanguage] = useState<string>(() => normalizeLanguage(i18n.language || getInitialLanguage()));
   const [initial] = useState(loadInitialState);
+  const [storageWarning, setStorageWarning] = useState(initial.storageReadFailed);
+  const recoveryBackupSaved = useRef(false);
+  useEffect(() => {
+    const showWarning = () => setStorageWarning(true);
+    window.addEventListener(STORAGE_ERROR_EVENT, showWarning);
+    return () => window.removeEventListener(STORAGE_ERROR_EVENT, showWarning);
+  }, []);
   const [trips, setTrips] = useState(initial.trips);
   const [activeTripId, setActiveTripId] = useState(initial.activeTripId);
   const [tripName, setTripName] = useState(initial.tripName);
@@ -206,8 +208,8 @@ function App() {
   const mainDayRef = useRef<HTMLElement | null>(null);
   const editorReturnFocusRef = useRef<HTMLElement | null>(null);
   const todayId = getTodayId();
-  const aiPlannerQuestionRef = useRef<HTMLTextAreaElement | null>(null);
-  const aiPlannerResultRef = useRef<HTMLTextAreaElement | null>(null);
+  const { ref: aiPlannerQuestionRef, fieldRef: aiPlannerQuestionFieldRef, reset: clearAiQuestion } = useRetainedTextarea();
+  const { ref: aiPlannerResultRef, fieldRef: aiPlannerResultFieldRef, reset: clearAiResult } = useRetainedTextarea();
   const importTextRef = useRef<HTMLTextAreaElement | null>(null);
   const lodgingSectionRef = useRef<HTMLDivElement | null>(null);
   const driveCallbacksRef = useRef<DriveSyncCallbacks | null>(null);
@@ -582,18 +584,25 @@ function App() {
       hasActiveTrip ? activeTripId : undefined,
     ).map(stripChecklistFromTripSnapshot);
 
-    localStorage.setItem(STORAGE_KEYS.schemaVersion, APP_SCHEMA_VERSION);
-    localStorage.setItem(STORAGE_KEYS.trips, JSON.stringify(persistedTrips));
+    // Preserve unreadable/future-format bytes before the initial empty state
+    // can replace them. If saving the backup fails, leave the original intact.
+    if (initial.recoveryData && !recoveryBackupSaved.current) {
+      if (!writeStoredValue(STORAGE_KEYS.recoveryBackup, initial.recoveryData)) return;
+      recoveryBackupSaved.current = true;
+    }
+    writeStoredValue(STORAGE_KEYS.schemaVersion, APP_SCHEMA_VERSION);
+    writeStoredValue(STORAGE_KEYS.trips, JSON.stringify(persistedTrips));
     if (hasActiveTrip) {
-      localStorage.setItem(STORAGE_KEYS.currentTrip, activeTripId);
+      writeStoredValue(STORAGE_KEYS.currentTrip, activeTripId);
     } else {
-      localStorage.removeItem(STORAGE_KEYS.currentTrip);
+      writeStoredValue(STORAGE_KEYS.currentTrip, null);
     }
   }, [
     activeTripId,
     activeTripArchived,
     archiveSummary,
     hasActiveTrip,
+    initial.recoveryData,
     t,
     normalizedPlans,
     lodgings,
@@ -625,6 +634,7 @@ function App() {
   });
 
   const applyTripSnapshot = (trip: unknown) => {
+    resetAiPlannerFields();
     const normalizedTrip = normalizeTripSnapshot(trip);
     setActiveTripId(normalizedTrip.id);
     setTripName(normalizedTrip.name);
@@ -646,6 +656,7 @@ function App() {
   };
 
   const showCurrentStageEmpty = () => {
+    resetAiPlannerFields();
     const emptyTrip = normalizeTripSnapshot(
       createEmptyTripSnapshot(
         language === 'en' ? 'New trip' : '新旅行计划',
@@ -708,16 +719,12 @@ function App() {
   };
 
   const resetAiPlannerFields = () => {
-    if (aiPlannerQuestionRef.current) aiPlannerQuestionRef.current.value = '';
-    if (aiPlannerResultRef.current) aiPlannerResultRef.current.value = '';
+    clearAiQuestion();
+    clearAiResult();
   };
 
   const importAppSnapshot = (payload: unknown) => {
-    const snapshot = payload as Partial<AppSnapshotInput> | null;
-    if (!snapshot || typeof snapshot !== 'object' || !Array.isArray(snapshot.trips)) {
-      throw new Error(t('driveInvalidSnapshot'));
-    }
-
+    const snapshot = normalizeAppSnapshotForSync(payload, language, 'remote');
     const importedTrips = snapshot.trips
       .map((trip: unknown, index: number) => normalizeTripSnapshot(trip, index));
 
@@ -732,8 +739,8 @@ function App() {
     }
     clearWeatherData();
     applyChecklistSnapshot(
-      snapshot.checklistText ?? snapshot.checklist ?? snapshot.packingList,
-      snapshot.checklistState || snapshot.checklistStatus || {},
+      snapshot.checklistText,
+      snapshot.checklistState,
     );
     setImportModalOpen(false);
     setPendingAssignment(null);
@@ -762,6 +769,7 @@ function App() {
   };
 
   const createNewTrip = () => {
+    setAiPlannerMode('generate');
     setEditorPlanId(null);
     if (!hasActiveTrip) {
       const nextTrip = normalizeTripSnapshot(createEmptyTripSnapshot(
@@ -842,7 +850,6 @@ function App() {
       setEditorOpen(true);
       setBatchAiOpen(true);
     });
-    resetAiPlannerFields();
   };
 
   const openAiPlanner = (mode: AiPlannerMode = 'replan') => {
@@ -851,7 +858,6 @@ function App() {
       return;
     }
 
-    resetAiPlannerFields();
     startUiTransition(() => {
       setAiPlannerMode('replan');
       setEditorOpen(false);
@@ -921,6 +927,7 @@ function App() {
   } = useJsonPayloadController({
     aiPlannerResultRef,
     planningFrom: selectedDate?.id || startDateStr,
+    aiPlannerMode,
     archiveSummary,
     checklistState,
     checklistText,
@@ -1373,17 +1380,27 @@ function App() {
     startUiTransition(() => setEditorTab(tab));
   };
 
+  const changeTripRange = (nextStartDate: string, nextTripDays: number) => {
+    const nextEndDate = addDays(nextStartDate, nextTripDays - 1);
+    const removed = Object.entries(schedule).filter(([date]) => date < nextStartDate || date > nextEndDate);
+    if (removed.length && !window.confirm(t('tripRangeChangeConfirm', {
+      dates: removed.map(([date, entry]) => `${date} · ${plansById.get(entry.planId)?.name || t('tonightLodging')}`).join('\n'),
+    }))) return;
+    if (removed.length) setSchedule(Object.fromEntries(Object.entries(schedule).filter(([date]) => date >= nextStartDate && date <= nextEndDate)));
+    setStartDateStr(nextStartDate);
+    setTripDays(nextTripDays);
+    setSelectedDateId(getSmartSelectedDate(nextStartDate, nextTripDays));
+  };
+
   const changeEditorStartDate = (nextStartDate: string) => {
     if (!nextStartDate) return;
-    setStartDateStr(nextStartDate);
-    setSelectedDateId(getSmartSelectedDate(nextStartDate, tripDays));
+    changeTripRange(nextStartDate, tripDays);
   };
 
   const changeEditorEndDate = (nextEndDate: string) => {
     if (!nextEndDate) return;
     const nextTripDays = getInclusiveDateSpan(startDateStr, nextEndDate);
-    setTripDays(nextTripDays);
-    setSelectedDateId(getSmartSelectedDate(startDateStr, nextTripDays));
+    changeTripRange(startDateStr, nextTripDays);
   };
 
   const openImportModal = () => {
@@ -1461,6 +1478,14 @@ function App() {
         weatherLoading={weatherLoading}
       />
 
+      {storageWarning && <div className="storage-warning" role="alert">{t('storageSaveFailed')}</div>}
+      {initial.recoveryData && <div className="storage-warning" role="alert">
+        <span>{t('storageRecoveryHelp')}</span>{' '}
+        <button className="btn btn-small btn-outline" type="button" onClick={() => downloadBlob(
+          new Blob([initial.recoveryData!], { type: 'application/json;charset=utf-8' }), 'plan-gacha-recovery.json',
+        )}>{t('exportRecoveryBackup')}</button>
+      </div>}
+
       {hasInitializedPlans ? (
         <main className="app-layout">
           <SchedulePanel
@@ -1488,6 +1513,9 @@ function App() {
             translateRiskTitle={translateRiskTitle}
             tripDates={tripDates}
             weatherData={weatherData}
+            weatherError={weatherError}
+            weatherLoading={weatherLoading}
+            refreshWeather={refreshWeather}
           />
 
           <MainDayPanel
@@ -1527,8 +1555,8 @@ function App() {
 
       {aiPlannerOpen && (
         <AiPlannerModal
-          aiPlannerQuestionRef={aiPlannerQuestionRef}
-          aiPlannerResultRef={aiPlannerResultRef}
+          aiPlannerQuestionRef={aiPlannerQuestionFieldRef}
+          aiPlannerResultRef={aiPlannerResultFieldRef}
           aiReplanText={aiReplanText}
           applyAiPlannerResult={applyAiPlannerResult}
           copyAiPlanningPrompt={copyAiPlanningPrompt}
@@ -1544,8 +1572,8 @@ function App() {
           editorBackLabel={t(editorReturnTarget === 'list' ? 'backToList' : editorReturnTarget === 'alternatives' ? 'backToAlternatives' : 'backToItinerary')}
           activeTripId={activeTripId}
           aiGenerateText={aiGenerateText}
-          aiPlannerQuestionRef={aiPlannerQuestionRef}
-          aiPlannerResultRef={aiPlannerResultRef}
+          aiPlannerQuestionRef={aiPlannerQuestionFieldRef}
+          aiPlannerResultRef={aiPlannerResultFieldRef}
           applyAiPlannerResult={applyAiPlannerResult}
           applyPlanEditDraft={applyPlanEditDraft}
           archiveCurrentTrip={() => requestArchiveCurrentTrip(false)}
@@ -1743,7 +1771,7 @@ function App() {
         />
       )}
 
-      {toast && <div className="toast">{toast}</div>}
+      {toast && <div className="toast" role="status" aria-live="polite">{toast}</div>}
     </div>
   );
 }

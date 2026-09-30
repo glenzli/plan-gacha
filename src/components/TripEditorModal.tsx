@@ -1,4 +1,5 @@
-import { useEffect, useState, type RefObject, type ReactNode } from 'react';
+import { useModalDialog } from '../hooks/useModalDialog';
+import { useState, type RefObject, type ReactNode } from 'react';
 import { Icon } from './Icon';
 import { LodgingEditor } from './LodgingEditor';
 import { PlanEditorDetail } from './PlanEditor';
@@ -10,7 +11,7 @@ import type { NormalizedPlan } from '../domain/plan';
 import type { NormalizedLodging, NormalizedSchedule } from '../domain/trip';
 import { getMapRegion } from '../domain/locationLinks';
 import type { MapPreferences, MapRegion } from '../domain/mapPreferences';
-import type { AiModeText, EditorTab, PlanRenderer, TranslateFn } from '../types/ui';
+import type { AiModeText, EditorTab, PlanRenderer, TextAreaRef, TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
 
 interface TripEditorModalProps {
@@ -19,8 +20,8 @@ interface TripEditorModalProps {
   editorBackLabel: string;
   activeTripId: string;
   aiGenerateText: AiModeText;
-  aiPlannerQuestionRef: RefObject<HTMLTextAreaElement | null>;
-  aiPlannerResultRef: RefObject<HTMLTextAreaElement | null>;
+  aiPlannerQuestionRef: TextAreaRef;
+  aiPlannerResultRef: TextAreaRef;
   applyAiPlannerResult: () => void;
   applyPlanEditDraft: (draftJson: string) => void;
   archiveCurrentTrip: () => void;
@@ -137,17 +138,8 @@ export function TripEditorModal({
     if (hasUnsavedChanges) setPendingExit(target);
     else performExit(target);
   };
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      if (pendingExit) setPendingExit(null);
-      else if (hasUnsavedChanges) setPendingExit('close');
-      else onClose();
-    };
-    window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pendingExit, hasUnsavedChanges, onClose]);
+  const dialogRef = useModalDialog(() => requestExit('close'));
+  const leaveRef = useModalDialog(() => setPendingExit(null), undefined, Boolean(pendingExit));
   const tripMapRegions = new Set(normalizedPlans.map((plan) => getMapRegion(plan.location)).filter((region) => region !== 'unknown'));
   const lodgingMapRegion: MapRegion = tripMapRegions.size === 1 ? [...tripMapRegions][0] ?? 'unknown' : 'unknown';
   const tripCities = new Set(normalizedPlans.map((plan) => plan.location.admin2 || plan.location.weatherLabel).filter(Boolean));
@@ -156,6 +148,7 @@ export function TripEditorModal({
   return (
     <div className="modal-overlay" onClick={() => requestExit('close')}>
       <div
+        ref={dialogRef}
         className={`modal trip-editor-modal ${editorPlanId ? 'is-plan-detail' : 'is-trip-detail'}`}
         role="dialog"
         aria-modal="true"
@@ -188,7 +181,7 @@ export function TripEditorModal({
           />
         )}
 
-        <div className="trip-editor-body">
+        <div className="trip-editor-body" role={editorPlanId ? undefined : 'tabpanel'} id={editorPlanId ? undefined : `trip-editor-${editorTab}`} aria-labelledby={editorPlanId ? undefined : `trip-editor-tab-${editorTab}`}>
           {editorPlanId ? (
             <PlanEditorDetail
               key={editorPlanId}
@@ -272,7 +265,7 @@ export function TripEditorModal({
       </div>
       {pendingExit && (
         <div className="modal-overlay editor-leave-overlay" onClick={(event) => event.stopPropagation()}>
-          <div className="modal editor-leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-plan-title" aria-describedby="leave-plan-help">
+          <div ref={leaveRef} className="modal editor-leave-dialog" role="alertdialog" aria-modal="true" aria-labelledby="leave-plan-title" aria-describedby="leave-plan-help">
             <h3 id="leave-plan-title">{t('leavePlanTitle')}</h3>
             <p id="leave-plan-help">{t('leavePlanHelp')}</p>
             <div className="modal-actions">

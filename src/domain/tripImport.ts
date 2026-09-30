@@ -1,6 +1,33 @@
 import { normalizePlan, type NormalizedPlan, type TripDateLike } from './plan';
 import { normalizeSchedule, type NormalizedSchedule } from './trip';
 import { getLodgingImpacts, mergeLodgings, type NormalizedLodging } from './lodging';
+import { isCompatibleAppSchemaVersion } from './sync';
+
+function validDate(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
+}
+
+export function validateTripImportPayload(payload: unknown): asserts payload is Record<string, any> {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('noApplicableJson');
+  const input = payload as Record<string, any>;
+  if (input.schemaVersion !== undefined && !isCompatibleAppSchemaVersion(input.schemaVersion)) throw new Error('importSchemaUnsupported');
+  if (input.startDateStr !== undefined && !validDate(input.startDateStr)) throw new Error('importTripDatesInvalid');
+  if (input.tripDays !== undefined && (!Number.isInteger(input.tripDays) || input.tripDays < 1 || input.tripDays > 30)) throw new Error('importTripDatesInvalid');
+  if (input.plans !== undefined && !Array.isArray(input.plans)) throw new Error('noApplicableJson');
+  if (input.schedule !== undefined && (!input.schedule || typeof input.schedule !== 'object')) throw new Error('noApplicableJson');
+  if (input.schedule) {
+    const seenDates = new Set<string>();
+    const entries = Array.isArray(input.schedule)
+      ? input.schedule.map((entry) => [entry?.date || entry?.dateId || entry?.day, entry])
+      : Object.entries(input.schedule);
+    for (const [date, entry] of entries) {
+      if (!validDate(date) || seenDates.has(date) || entry === null
+        || (typeof entry !== 'string' && (typeof entry !== 'object' || Array.isArray(entry)))) throw new Error('importScheduleInvalid');
+      seenDates.add(date);
+    }
+  }
+}
 
 export function validateLodgingReferences(plans: NormalizedPlan[], hotels: NormalizedLodging[], schedule: NormalizedSchedule = {}) {
   const ids = new Set(hotels.map((hotel) => hotel.id));
@@ -36,9 +63,9 @@ export function prepareTripImport(
   payload: Record<string, any>, currentPlans: NormalizedPlan[], currentHotels: NormalizedLodging[], currentSchedule: NormalizedSchedule,
   dates: TripDateLike[], fromAi = false, planningFrom = '',
 ) {
+  validateTripImportPayload(payload);
   const incomingHotels = payload.lodgings || payload.hotels || payload.accommodations || payload.stays;
   const hotels = mergeLodgings(currentHotels, incomingHotels, fromAi);
-  const validDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
   const validStay = (stay: { checkIn: string; checkOut: string }) => validDate(stay.checkIn) && validDate(stay.checkOut) && stay.checkOut > stay.checkIn;
   if (hotels.some((hotel) => hotel.defaultForTrip !== false && Boolean(hotel.checkIn || hotel.checkOut) && !validStay(hotel)
     || hotel.reservations?.some((reservation) => !validStay(reservation)))) throw new Error('lodgingDatesInvalid');
@@ -47,12 +74,14 @@ export function prepareTripImport(
   const assignments: NormalizedSchedule = {};
   const seen = new Set<string>();
   for (const raw of Array.isArray(payload.plans) ? payload.plans : payload.plan ? [payload.plan] : []) {
-    if (!raw || typeof raw !== 'object' || !raw.id || !raw.name) throw new Error('planNameRequired');
-    if (seen.has(raw.id)) throw new Error('duplicateImportedPlan');
-    seen.add(raw.id);
-    const index = plans.findIndex((plan) => plan.id === raw.id);
+    if (!raw || typeof raw !== 'object' || typeof raw.id !== 'string' || !raw.id.trim()
+      || typeof raw.name !== 'string' || !raw.name.trim()) throw new Error('planNameRequired');
+    const id = raw.id.trim();
+    if (seen.has(id)) throw new Error('duplicateImportedPlan');
+    seen.add(id);
+    const index = plans.findIndex((plan) => plan.id === id);
     const previous = plans[index];
-    const next = normalizePlan({ ...previous, ...raw }, index < 0 ? plans.length : index, dates);
+    const next = normalizePlan({ ...previous, ...raw, id }, index < 0 ? plans.length : index, dates);
     if (fromAi && previous) {
       next.bookings = next.bookings.map((booking) => {
         const saved = previous.bookings.find((item) => item.id === booking.id && item.status === 'done');
@@ -72,6 +101,9 @@ export function prepareTripImport(
   const scheduleAssignments = normalizeSchedule(rawSchedule);
   // A lodging-only response must not unassign the day's existing plan.
   for (const [date, raw] of Object.entries(rawSchedule || {})) {
+    // normalizeSchedule omits empty entries in saved snapshots. Import responses
+    // also need an explicit empty plan_id to clear the old date during a move.
+    if (raw && typeof raw === 'object' && ('plan_id' in raw || 'planId' in raw) && !scheduleAssignments[date]) scheduleAssignments[date] = { planId: '' };
     if (raw && typeof raw === 'object' && !('plan_id' in raw) && !('planId' in raw) && !('id' in raw) && scheduleAssignments[date]) {
       scheduleAssignments[date].planId = assignments[date]?.planId || currentSchedule[date]?.planId || '';
     }
@@ -81,10 +113,17 @@ export function prepareTripImport(
   for (const [date, entry] of Object.entries(assignments)) {
     if (!dates.some((item) => item.id === date)) throw new Error('planAssignedDateInvalid');
     if (entry.planId && !planIds.has(entry.planId)) throw new Error('importPlanMissing');
-    if (fromAi && planningFrom && date < planningFrom && entry.planId !== currentSchedule[date]?.planId) throw new Error('aiFixedHistory');
+    if (fromAi && planningFrom && date < planningFrom && JSON.stringify(entry) !== JSON.stringify(currentSchedule[date])) throw new Error('aiFixedHistory');
   }
   if (fromAi && planningFrom && planChanges.some((plan) => Object.entries(currentSchedule).some(([date, entry]) => date < planningFrom && entry.planId === plan.id))) throw new Error('aiFixedHistory');
-  const schedule = mergeScheduleAssignments(currentSchedule, assignments, fromAi);
+  const inRangeSchedule = Object.fromEntries(Object.entries(currentSchedule).filter(([date]) => dates.some((item) => item.id === date)));
+  const schedule = mergeScheduleAssignments(inRangeSchedule, assignments, fromAi);
+  const assignedPlans = new Set<string>();
+  for (const entry of Object.values(schedule)) {
+    if (!entry.planId || entry.status === 'abandoned') continue;
+    if (assignedPlans.has(entry.planId)) throw new Error('importDuplicateAssignment');
+    assignedPlans.add(entry.planId);
+  }
   validateLodgingReferences(plans, hotels, schedule);
   const beforeMap = new Map(currentPlans.map((plan) => [plan.id, plan]));
   const afterMap = new Map(plans.map((plan) => [plan.id, plan]));
@@ -93,7 +132,10 @@ export function prepareTripImport(
   return {
     plans, lodgings: hotels, schedule, planChanges,
     lodgingChanges: hotels.filter((hotel) => JSON.stringify(currentHotels.find((saved) => saved.id === hotel.id)) !== JSON.stringify(hotel)),
-    scheduleChanges: Object.entries(schedule).filter(([date, entry]) => JSON.stringify(currentSchedule[date]) !== JSON.stringify(entry)),
+    scheduleChanges: [
+      ...Object.entries(schedule).filter(([date, entry]) => JSON.stringify(currentSchedule[date]) !== JSON.stringify(entry)),
+      ...Object.keys(currentSchedule).filter((date) => !schedule[date]).map((date): [string, { planId: string }] => [date, { planId: '' }]),
+    ],
     lodgingImpacts,
   };
 }
