@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import { formatAssignedDate } from '../domain/risk';
 import {
   formatWeatherDataSummary,
@@ -40,6 +40,7 @@ interface CandidateRenderProps {
   getPriorityLabel: PriorityLabelGetter;
   getPlanBookingBadge: PlanBookingBadgeGetter;
   getBlacklistedStopCount: (plan: NormalizedPlan) => number;
+  getLodgingLabel: (plan: NormalizedPlan) => string;
   renderPlanStops: PlanRenderer;
   renderPlanBookings: PlanRenderer;
   renderPlanNotes: PlanRenderer;
@@ -172,14 +173,15 @@ function CandidateActions({
   return (
     <div className="candidate-actions">
       <button
-        className={`icon-btn compact-icon-btn candidate-select-btn ${weatherOverride && canAssign ? 'is-risky' : ''}`}
+        className={`btn btn-small candidate-select-btn ${weatherOverride && canAssign ? 'is-risky' : ''}`}
         type="button"
         disabled={!canAssign || !selectedDate}
         onClick={() => selectedDate && requestAssignPlan(selectedDate.id, plan.id)}
-        aria-label={`${t('select')} ${plan.name}`}
-        title={t('select')}
+        aria-label={`${t('useThisPlan')} · ${plan.name}`}
+        title={t('useThisPlan')}
       >
         <Icon name="check" />
+        {t('useThisPlan')}
       </button>
       <button
         className="icon-btn compact-icon-btn candidate-edit-btn"
@@ -205,6 +207,7 @@ function CandidateCard({
   getPriorityLabel,
   getPlanBookingBadge,
   getBlacklistedStopCount,
+  getLodgingLabel,
   renderPlanStops,
   renderPlanBookings,
   renderPlanNotes,
@@ -241,6 +244,7 @@ function CandidateCard({
             )}
           </div>
           <p>{plan.description}</p>
+          {getLodgingLabel(plan) && <p className="candidate-lodging">{t('tonightLodging')} · {getLodgingLabel(plan)}</p>}
         </div>
       </div>
 
@@ -272,25 +276,42 @@ export function CandidateGroups({
   gridClassName = 'plan-grid',
   ...cardProps
 }: CandidateGroupsProps) {
+  const [search, setSearch] = useState('');
+  const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const filteredGroups = candidateGroups.map((group) => ({
+    ...group,
+    items: group.items.filter(({ plan }) => {
+      const text = [plan.name, plan.description, plan.location.label, plan.location.address,
+        ...plan.stops.flatMap((stop) => [stop.title, stop.location.label, stop.location.address])].join(' ').toLocaleLowerCase();
+      return terms.every((term) => text.includes(term));
+    }),
+  })).filter((group) => group.items.length);
+  const resultCount = filteredGroups.reduce((count, group) => count + group.items.length, 0);
+
   return (
     <div className="candidate-group-list">
-      {candidateGroups.map((group) => (
+      <div className="candidate-search">
+        <label className="candidate-search-field"><span>{cardProps.t('searchPlans')}</span><input className="input" type="search" value={search} placeholder={cardProps.t('searchPlansPlaceholder')} onChange={(event) => setSearch(event.target.value)} /></label>
+        {search && <button className="btn btn-small btn-outline" type="button" onClick={() => setSearch('')}>{cardProps.t('clearSearch')}</button>}
+      </div>
+      {terms.length > 0 && <p className="candidate-search-status" role="status">{cardProps.t(resultCount ? 'matchingPlans' : 'noMatchingPlans', { count: resultCount })}</p>}
+      {filteredGroups.map((group) => {
+        const cards = <div className={gridClassName}>{group.items.map((candidate) => <CandidateCard key={candidate.plan.id} candidate={candidate} {...cardProps} />)}</div>;
+        if (group.key === 'unavailable' || group.key === 'visited') return (
+          <details className={`candidate-group candidate-group-${group.key}`} key={`${group.key}-${terms.length > 0}`} open={terms.length > 0 || undefined}>
+            <summary className="candidate-group-title"><span>{group.title}</span><span>{cardProps.t('itemsCount', { count: group.items.length })}</span></summary>
+            {cards}
+          </details>
+        );
+        return (
         <section className={`candidate-group candidate-group-${group.key}`} key={group.key}>
           <div className="candidate-group-title">
             <h3>{group.title}</h3>
             <span>{cardProps.t('itemsCount', { count: group.items.length })}</span>
           </div>
-          <div className={gridClassName}>
-            {group.items.map((candidate) => (
-              <CandidateCard
-                key={candidate.plan.id}
-                candidate={candidate}
-                {...cardProps}
-              />
-            ))}
-          </div>
+          {cards}
         </section>
-      ))}
+      );})}
     </div>
   );
 }

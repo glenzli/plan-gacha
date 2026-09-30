@@ -125,7 +125,11 @@ function getChecklistId(groupTitle: string, itemText: string, occurrence: number
   return `${groupTitle.trim()}::${itemText.trim()}${suffix}`;
 }
 
-export function parseChecklistText(text: unknown, language: Language = 'zh'): ChecklistGroup[] {
+export function parseChecklistText(
+  text: unknown,
+  language: Language = 'zh',
+  options: { keepEmptyGroups?: boolean } = {},
+): ChecklistGroup[] {
   const groups: ChecklistGroup[] = [];
   const seenItems = new Map<string, number>();
   let currentGroup: ChecklistGroup | null = null;
@@ -166,7 +170,7 @@ export function parseChecklistText(text: unknown, language: Language = 'zh'): Ch
     });
   });
 
-  return groups.filter((group) => group.items.length > 0);
+  return options.keepEmptyGroups ? groups : groups.filter((group) => group.items.length > 0);
 }
 
 export function getChecklistStats(groups: ChecklistGroup[], state: ChecklistState) {
@@ -199,6 +203,42 @@ export function serializeChecklistGroups(groups: ChecklistGroup[]) {
     ].join('\n'))
     .join('\n\n')
     .trim();
+}
+
+// Editor ids stay stable while typing. Re-key statuses only when producing the
+// persisted text, so renaming categories/items and removing duplicates are safe.
+export function serializeChecklistDraft(
+  groups: ChecklistGroup[],
+  state: ChecklistState,
+  language: Language = 'zh',
+): ChecklistImportPayload {
+  const nextState: ChecklistState = {};
+  const seenItems = new Map<string, number>();
+  const checklistText = groups.map((group) => {
+    const title = group.title.trim();
+    if (!title) throw new Error('checklistCategoryRequired');
+    const unheaded = group.id === '__uncategorized__' && title === getChecklistLabel('uncategorized', language);
+    const groupId = unheaded ? '__uncategorized__' : title;
+    const lines = unheaded ? [] : [`# ${title}`];
+    group.items.forEach((item) => {
+      const text = item.text.trim();
+      if (!text) return;
+      const baseKey = `${groupId}::${text}`;
+      const occurrence = seenItems.get(baseKey) || 0;
+      seenItems.set(baseKey, occurrence + 1);
+      const nextId = getChecklistId(groupId, text, occurrence);
+      if (state[item.id]) nextState[nextId] = state[item.id];
+      // A list prefix keeps an item beginning with # from becoming a category.
+      lines.push(`- ${text}`);
+    });
+    return lines.join('\n');
+  }).filter(Boolean).join('\n\n').trim();
+  const nextGroups = parseChecklistText(checklistText, language);
+  return {
+    checklistText,
+    checklistState: reconcileChecklistStateForGroups(nextState, nextGroups),
+    groups: nextGroups,
+  };
 }
 
 function countChecklistTexts(groups: ChecklistGroup[]) {

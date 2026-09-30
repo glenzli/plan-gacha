@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { Icon } from './Icon';
+import { LodgingImpactList } from './LodgingPanel';
 import type { NormalizedPlan } from '../domain/plan';
 import type { AssignmentClearItem } from '../domain/planning';
 import type { RiskItem } from '../domain/risk';
@@ -24,6 +26,12 @@ export function AssignmentImpactModal({
   translateIssue,
   translateRiskTitle,
 }: AssignmentImpactModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus();
+    return () => { if (trigger?.isConnected) trigger.focus({ preventScroll: true }); };
+  }, []);
   const clears = pendingAssignment.clears;
   const nextRisks: RiskItem<NormalizedPlan>[] = pendingAssignment.nextRisks;
   const movedItems = clears.filter((item: AssignmentClearItem) => item.reason === '同一计划被移动');
@@ -31,9 +39,31 @@ export function AssignmentImpactModal({
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal impact-modal" onClick={(event) => event.stopPropagation()}>
+      <div
+        className="modal impact-modal"
+        ref={dialogRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="assignment-impact-title"
+        onClick={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') { event.preventDefault(); onClose(); }
+          if (event.key !== 'Tab') return;
+          const buttons = event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)');
+          const first = buttons[0];
+          const last = buttons[buttons.length - 1];
+          if (event.shiftKey && (document.activeElement === first || document.activeElement === event.currentTarget)) {
+            event.preventDefault();
+            last?.focus();
+          } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first?.focus();
+          }
+        }}
+      >
         <div className="panel-header">
-          <h2>{t('impactPreview')}</h2>
+          <h2 id="assignment-impact-title">{t('impactPreview')}</h2>
           <button className="icon-btn" type="button" onClick={onClose} aria-label={t('close')} title={t('close')}>
             <Icon name="x" />
           </button>
@@ -70,6 +100,7 @@ export function AssignmentImpactModal({
           </div>
         )}
 
+        <LodgingImpactList impacts={pendingAssignment.lodgingImpacts} t={t} />
         {nextRisks.length > 0 && (
           <div className="impact-section">
             <h3>{t('nextRisks')}</h3>

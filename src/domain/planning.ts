@@ -256,11 +256,16 @@ export function buildAssignmentPreview(
       plan: otherPlan,
       reason: isSamePlan ? '同一计划被移动' : '计划互斥',
     });
-    delete nextSchedule[otherDateId];
+    if (entry.lodgingLocked) nextSchedule[otherDateId] = { planId: '', lodgingId: entry.lodgingId, lodgingLocked: true };
+    else delete nextSchedule[otherDateId];
   });
 
   if (blocksByDate.size === 0) {
-    nextSchedule[dateId] = { planId: targetPlan.id };
+    const existing = schedule[dateId];
+    nextSchedule[dateId] = {
+      planId: targetPlan.id,
+      ...(existing?.lodgingLocked ? { lodgingId: existing.lodgingId, lodgingLocked: true } : {}),
+    };
   }
 
   return {

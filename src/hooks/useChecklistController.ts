@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { STORAGE_KEYS } from '../domain/appStorage';
 import {
   CHECKLIST_STATUS,
@@ -43,7 +43,6 @@ export function useChecklistController({
   const [checklistImportOpen, setChecklistImportOpen] = useState(false);
   const [checklistImportText, setChecklistImportText] = useState('');
   const [checklistImportConflicts, setChecklistImportConflicts] = useState<ChecklistMergeConflict[]>([]);
-  const checklistDraftRef = useRef<HTMLTextAreaElement | null>(null);
 
   const checklistGroups = useMemo(
     () => parseChecklistText(checklistText, language),
@@ -98,12 +97,12 @@ export function useChecklistController({
     );
   };
 
-  const saveChecklistText = () => {
-    const nextChecklistText = normalizeChecklistText(checklistDraftRef.current?.value ?? checklistText);
+  const saveChecklistText = (text: string, state: ChecklistState) => {
+    const nextChecklistText = normalizeChecklistText(text);
     const nextGroups = parseChecklistText(nextChecklistText, language);
 
     setChecklistText(nextChecklistText);
-    setChecklistState((current) => reconcileChecklistStateForGroups(current, nextGroups));
+    setChecklistState(reconcileChecklistStateForGroups(state, nextGroups));
     setChecklistEditing(false);
     notify(t('checklistSaved'));
   };
@@ -205,7 +204,6 @@ export function useChecklistController({
 
   return {
     applyChecklistSnapshot,
-    checklistDraftRef,
     checklistEditing,
     checklistGroups,
     checklistImportConflicts,

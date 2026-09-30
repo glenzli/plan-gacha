@@ -109,6 +109,7 @@ export function translateRiskTitle(title: string, language: string = DEFAULT_LAN
     已经排在别的日期: 'scheduledElsewhere',
     旅行清单未完成: 'checklistIncomplete',
     住宿信息未填写: 'lodgingMissing',
+    住宿待处理: 'lodgingTodoTitle',
     需要调整: 'needsAdjustment',
   };
 

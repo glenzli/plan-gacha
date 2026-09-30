@@ -2,14 +2,13 @@ import type { RefObject } from 'react';
 import {
   buildAiPlanningPrompt as buildAiPlanningPromptText,
   buildSinglePlanPrompt,
-  compactLocationForAi,
   compactLodgingForAi,
   compactPlanForAi,
   compactStopRouteForAi,
   getLodgingContextForDate,
 } from '../domain/aiPrompts';
 import { evaluateWeather, getDayInsight } from '../domain/dayInsight';
-import { getTodayId } from '../domain/date';
+import { getTodayId, addDays } from '../domain/date';
 import type {
   DayReviewRating,
   DayReviewTag,
@@ -17,15 +16,10 @@ import type {
 import {
   formatTripRange,
   getAiModeText,
-  getPriorityLabel,
   translateRiskTitle,
   type DisplayTripDate,
 } from '../domain/display';
-import type {
-  NormalizedPlan,
-  PlanBooking,
-  PlanReminder,
-} from '../domain/plan';
+import type { NormalizedPlan } from '../domain/plan';
 import type { RiskGroup } from '../domain/risk';
 import {
   PlaceFeedbackStatus,
@@ -36,6 +30,7 @@ import {
   type NormalizedStopOutcomes,
 } from '../domain/trip';
 import { formatWeatherSummary } from '../domain/weather';
+import { getEditedPlanSchedule } from '../domain/planEditing';
 import type { WeatherDataMap } from '../types/weatherData';
 import type { AiModeText, TranslateFn } from '../types/ui';
 
@@ -149,48 +144,23 @@ export function useAiPromptController({
         day: 'D' + date.dayNumber,
         display: date.display,
         plan_id: plan?.id || null,
-        plan_name: plan?.name || null,
+        abandoned: schedule[date.id]?.status === 'abandoned' || undefined,
         status: insight.label || t('normal'),
         weather: insight.weatherText || '',
         note: insight.riskText || '',
-        lodging: getLodgingContextForDate(lodgings, date.id),
+        lodging: getLodgingContextForDate(lodgings, date.id, schedule, plansById),
       };
     };
 
     const summarizePlan = (plan: NormalizedPlan) => ({
-      plan_id: plan.id,
-      name: plan.name,
-      priority: getPriorityLabel(plan.priority, language),
-      description: plan.description,
-      current_assigned_date: planAssignments.get(plan.id) || null,
-      available_dates: plan.available_dates,
-      closed_dates: plan.closed_dates,
-      weather_rules: plan.weather_rules,
-      location: compactLocationForAi(plan.location),
-      stops: plan.stops.map(compactStopRouteForAi),
-      bookings: plan.bookings.map((booking: PlanBooking) => ({
-        title: booking.title,
-        type: booking.type,
-        status: booking.status,
-        address: booking.address,
-        url: booking.url,
-        cancel_url: booking.cancelUrl,
-        note: booking.note,
-      })),
-      reminders: plan.reminders.map((item: PlanReminder) => ({
-        time: item.time,
-        text: item.text,
-        links: item.links || [],
-      })),
-      tips: plan.tips,
-      conflicts: plan.conflicts,
-      weather_by_adjustable_date: adjustableDates.map((date) => {
+      ...compactPlanForAi(plan, planAssignments.get(plan.id) || null) as object,
+      weather_by_adjustable_date: adjustableDates.flatMap((date) => {
         const weather = evaluateWeather(plan, date.id, weatherData, language);
-        return {
+        return weather.snapshot ? [{
           date: date.id,
           status: weather.label,
-          summary: weather.snapshot ? formatWeatherSummary(weather.snapshot, language) : t('weatherUnknown'),
-        };
+          summary: formatWeatherSummary(weather.snapshot, language),
+        }] : [];
       }),
     });
 
@@ -203,8 +173,6 @@ export function useAiPromptController({
         planning_from: planningStartDate?.id || null,
       },
       lodgings: lodgings.map(compactLodgingForAi),
-      existing_schedule: tripDates.map(summarizeScheduleDate),
-      existing_plans: normalizedPlans.map(summarizePlan),
       blacklisted_places: blacklistedPlaces,
       abandoned_stops: abandonedStops,
       past_day_reviews: pastDayReviews,
@@ -239,7 +207,7 @@ export function useAiPromptController({
     copyText(buildAiPlanningPrompt('generate'), t('aiPromptCopied', { label: aiGenerateText.label }));
   };
 
-  const buildPlanAiPrompt = (planQuestion: string = '', draftPlan = editorPlan, assignedDay?: string) => {
+  const buildPlanAiPrompt = (planQuestion: string = '', draftPlan = editorPlan, assignedDay?: string, draftHotels?: NormalizedLodging[]) => {
     const currentPlan = draftPlan
       ? compactPlanForAi(draftPlan, assignedDay ?? planAssignments.get(draftPlan.id) ?? null)
       : null;
@@ -250,11 +218,22 @@ export function useAiPromptController({
       name: tripName || t('unnamedTrip'),
       range: formatTripRange(startDateStr, tripDays, language),
       days: tripDays,
+      current_date: getTodayId(),
+      planning_from: assignedDay || planAssignments.get(draftPlan?.id || '') || selectedDate?.id,
     };
+    const draftPlans = new Map(plansById);
+    if (draftPlan) draftPlans.set(draftPlan.id, draftPlan);
+    const draftDate = assignedDay ?? planAssignments.get(draftPlan?.id || '');
+    const draftSchedule = draftPlan ? getEditedPlanSchedule(schedule, editorPlan?.id || null, draftPlan.id, draftDate || '') : schedule;
+    const nextDate = draftDate ? addDays(draftDate, 1) : '';
+    const nextPlan = plansById.get(schedule[nextDate]?.planId);
+    const nextDay = nextPlan ? { date: nextDate, plan_id: nextPlan.id, stops: nextPlan.stops.slice(0, 2).map(compactStopRouteForAi) } : undefined;
     const planContext = isCreatingPlan
       ? {
         trip: tripContext,
-        lodgings: lodgings.map(compactLodgingForAi),
+        lodgings: (draftHotels || lodgings).map(compactLodgingForAi),
+        lodging_by_date: tripDates.map((date) => ({ date: date.id, ...getLodgingContextForDate(draftHotels || lodgings, date.id, draftSchedule, draftPlans) as object })),
+        next_day: nextDay,
         existing_plan_ids: normalizedPlans.map((plan) => plan.id),
         draft_plan: currentPlan,
         blacklisted_places: blacklistedPlaces,
@@ -263,7 +242,9 @@ export function useAiPromptController({
       }
       : {
         trip: tripContext,
-        lodgings: lodgings.map(compactLodgingForAi),
+        lodgings: (draftHotels || lodgings).map(compactLodgingForAi),
+        lodging_by_date: tripDates.map((date) => ({ date: date.id, ...getLodgingContextForDate(draftHotels || lodgings, date.id, draftSchedule, draftPlans) as object })),
+        next_day: nextDay,
         current_plan: currentPlan,
         blacklisted_places: blacklistedPlaces,
         abandoned_stops: abandonedStops,
@@ -278,8 +259,8 @@ export function useAiPromptController({
     });
   };
 
-  const copyPlanAiPrompt = (planQuestion: string = '', draftPlan?: NormalizedPlan, assignedDay?: string) => {
-    copyText(buildPlanAiPrompt(planQuestion, draftPlan, assignedDay), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
+  const copyPlanAiPrompt = (planQuestion: string = '', draftPlan?: NormalizedPlan, assignedDay?: string, draftHotels?: NormalizedLodging[]) => {
+    copyText(buildPlanAiPrompt(planQuestion, draftPlan, assignedDay, draftHotels), isCreatingPlan ? t('addPlanPromptCopied') : t('editPlanPromptCopied'));
   };
 
   return {

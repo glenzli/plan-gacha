@@ -13,6 +13,7 @@ import type { RiskItem } from '../domain/risk';
 import { ScheduleEntryStatus, type NormalizedSchedule } from '../domain/trip';
 import type { TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
+import { getLodgingImpacts, type LodgingImpact, type NormalizedLodging } from '../domain/lodging';
 
 export interface PendingAssignment {
   blocks: ReturnType<typeof buildAssignmentPreview>['blocks'];
@@ -21,10 +22,12 @@ export interface PendingAssignment {
   nextRisks: RiskItem<NormalizedPlan>[];
   targetPlan: NormalizedPlan;
   dateId: string;
+  lodgingImpacts: LodgingImpact[];
 }
 
 interface UseScheduleAssignmentControllerOptions {
   normalizedPlans: NormalizedPlan[];
+  lodgings: NormalizedLodging[];
   notify: (message: string) => void;
   plansById: Map<string, NormalizedPlan>;
   riskItems: RiskItem<NormalizedPlan>[];
@@ -39,6 +42,7 @@ interface UseScheduleAssignmentControllerOptions {
 
 export function useScheduleAssignmentController({
   normalizedPlans,
+  lodgings,
   notify,
   plansById,
   riskItems,
@@ -70,7 +74,8 @@ export function useScheduleAssignmentController({
       .filter((risk) => risk.level !== 'info')
       .filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
 
-    return { blocks, clears, nextSchedule, nextRisks, targetPlan, dateId };
+    const lodgingImpacts = getLodgingImpacts(schedule, nextSchedule, plansById, plansById, lodgings, lodgings, tripDates.map((date) => date.id));
+    return { blocks, clears, nextSchedule, nextRisks, targetPlan, dateId, lodgingImpacts };
   };
 
   const applySchedule = (nextSchedule: NormalizedSchedule, message = t('scheduleUpdated')) => {
@@ -80,22 +85,23 @@ export function useScheduleAssignmentController({
 
   const requestAssignPlan = (dateId: string, planId: string) => {
     const impact = buildAssignmentImpact(dateId, planId);
-    if (!impact) return;
+    if (!impact) return false;
 
     if (impact.blocks.length > 0) {
       const hasVisitedPlan = impact.blocks.some(
         (item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited,
       );
       notify(hasVisitedPlan ? t('planAlreadyVisited') : t('conflictsWithVisitedPlan'));
-      return;
+      return false;
     }
 
-    if (impact.clears.length || impact.nextRisks.length) {
+    if (impact.clears.length || impact.nextRisks.length || impact.lodgingImpacts.length) {
       setPendingAssignment(impact);
-      return;
+      return false;
     }
 
     applySchedule(impact.nextSchedule, t('dayPlanUpdated'));
+    return true;
   };
 
   const confirmPendingAssignment = () => {
@@ -110,7 +116,8 @@ export function useScheduleAssignmentController({
   const clearDay = (dateId: string) => {
     setSchedule((current) => {
       const next = { ...current };
-      delete next[dateId];
+      if (current[dateId]?.lodgingLocked) next[dateId] = { planId: '', lodgingId: current[dateId].lodgingId, lodgingLocked: true };
+      else delete next[dateId];
       return next;
     });
     notify(t('dayCleared'));
@@ -122,9 +129,7 @@ export function useScheduleAssignmentController({
       const entry = current[dateId];
       if (!entry?.planId) return current;
 
-      const nextEntry = shouldAbandon
-        ? { ...entry, status: ScheduleEntryStatus.Abandoned }
-        : { planId: entry.planId };
+      const nextEntry = { ...entry, status: shouldAbandon ? ScheduleEntryStatus.Abandoned : undefined };
       return { ...current, [dateId]: nextEntry };
     });
     notify(shouldAbandon ? t('dayMarkedAbandoned') : t('dayRestored'));

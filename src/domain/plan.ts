@@ -66,6 +66,26 @@ export interface PlanStop {
   transferFromPrevious: StopTransfer | null;
   openingHours: string;
   weatherRelevant: boolean;
+  lodgingAnchor?: 'previous_night' | 'tonight';
+  lodgingId?: string;
+  lodgingUnresolved?: boolean;
+  lodgingRouteChanged?: boolean;
+}
+
+export interface PlanLodging {
+  mode: 'inherit' | 'options' | 'none';
+  optionIds: string[];
+  preferredId: string;
+}
+
+export function normalizePlanLodging(value: unknown): PlanLodging | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const item = value as Record<string, unknown>;
+  const mode = item.mode === 'options' || item.mode === 'none' ? item.mode : 'inherit';
+  const rawIds = item.optionIds ?? item.option_ids;
+  const optionIds = [...new Set(Array.isArray(rawIds) ? rawIds.filter((id): id is string => typeof id === 'string' && Boolean(id.trim())) : [])];
+  const preferredId = String(item.preferredId ?? item.preferred_id ?? '');
+  return { mode, optionIds: mode === 'options' ? optionIds : [], preferredId: optionIds.includes(preferredId) ? preferredId : '' };
 }
 
 export interface ReminderLink {
@@ -111,6 +131,7 @@ export interface NormalizedPlan {
   reminders: PlanReminder[];
   tips: string[];
   bookings: PlanBooking[];
+  lodging?: PlanLodging;
 }
 
 type AnyRecord = Record<string, any>;
@@ -710,6 +731,10 @@ export function normalizePlanStops(stops: unknown, fallbackLocation: NormalizedL
         transferFromPrevious,
         openingHours,
         weatherRelevant: item.weather_relevant !== false && item.weatherRelevant !== false,
+        ...(['previous_night', 'tonight'].includes(item.lodging_anchor || item.lodgingAnchor) ? {
+          lodgingAnchor: item.lodging_anchor || item.lodgingAnchor,
+          lodgingId: String(item.lodging_id || item.lodgingId || ''),
+        } : {}),
       };
     });
 }
@@ -1009,5 +1034,6 @@ export function normalizePlan(planInput: unknown, index = 0, tripDates: TripDate
     reminders: normalizePlanReminders(plan.reminders || plan.special_reminders || plan.alerts),
     tips: normalizePlanTips(plan.tips || plan.hints),
     bookings: normalizePlanBookings(plan),
+    ...(normalizePlanLodging(plan.lodging) ? { lodging: normalizePlanLodging(plan.lodging) } : {}),
   };
 }

@@ -1,4 +1,5 @@
 import type { NormalizedPlan, PlanPriority } from '../domain/plan';
+import type { ReactNode } from 'react';
 import { getDayReviewRatingLabel } from '../domain/dayReviewDisplay';
 import type { PlanBookingBadgeData, PlanCandidate } from '../types/candidates';
 import type { PlanRenderer, TranslateFn } from '../types/ui';
@@ -12,7 +13,10 @@ interface SelectedDateLike {
 }
 
 interface CurrentPlanCardProps {
+  availableCandidateCount: number;
+  onShowAlternatives: () => void;
   className: string;
+  lodgingContent?: ReactNode;
   selectedDate?: SelectedDateLike | null;
   selectedPlan?: NormalizedPlan | null;
   currentCandidate?: PlanCandidate | null;
@@ -35,7 +39,9 @@ interface CurrentPlanCardProps {
 }
 
 export function CurrentPlanCard({
+  availableCandidateCount, onShowAlternatives,
   className,
+  lodgingContent,
   selectedDate,
   selectedPlan,
   currentCandidate,
@@ -72,7 +78,10 @@ export function CurrentPlanCard({
             language={language}
             getPlanBookingBadge={getPlanBookingBadge}
           />
-          {selectedPlan && <button className="btn btn-small btn-outline current-edit-button" type="button" onClick={() => openPlanEditor(selectedPlan.id)} title={t('editSinglePlan')} data-screenshot-exclude="true"><Icon name="pencil" />{t('editItinerary')}</button>}
+        </div>
+        <div className="current-primary-actions" data-screenshot-exclude="true">
+          {selectedPlan && <button className="btn btn-small btn-outline" type="button" onClick={() => openPlanEditor(selectedPlan.id)} title={t('editSinglePlan')}><Icon name="pencil" />{t('editItinerary')}</button>}
+          <button className="btn btn-small btn-outline" type="button" onClick={onShowAlternatives}>{t('changeArrangement')}<span className="action-count">{t('available', { count: availableCandidateCount })}</span></button>
         </div>
         <p className="current-plan-summary">{selectedPlan?.description || t('currentPlanHelp')}</p>
         {selectedPlan && isAbandoned && (
@@ -82,8 +91,9 @@ export function CurrentPlanCard({
           </div>
         )}
         {renderPlanStops(selectedPlan, { dateId: selectedDate?.id })}
-        {renderPlanBookings(selectedPlan)}
+        <div data-day-bookings tabIndex={-1}>{renderPlanBookings(selectedPlan)}</div>
         {renderPlanNotes(selectedPlan)}
+        {lodgingContent}
         {dayReview && <DayReviewSummary review={dayReview} t={t} />}
         <CandidateSignals candidate={currentCandidate} t={t} language={language} />
       </div>

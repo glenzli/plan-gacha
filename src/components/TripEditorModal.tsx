@@ -14,6 +14,9 @@ import type { AiModeText, EditorTab, PlanRenderer, TranslateFn } from '../types/
 import type { WeatherDataMap } from '../types/weatherData';
 
 interface TripEditorModalProps {
+  editorInitialMode: 'content' | 'constraints';
+  editorInitialStopId?: string;
+  editorBackLabel: string;
   activeTripId: string;
   aiGenerateText: AiModeText;
   aiPlannerQuestionRef: RefObject<HTMLTextAreaElement | null>;
@@ -24,7 +27,7 @@ interface TripEditorModalProps {
   batchAiOpen: boolean;
   closePlanEditor: () => void;
   copyBatchAiPrompt: () => void;
-  copyPlanAiPrompt: (question: string, draft: NormalizedPlan, assignedDay: string) => void;
+  copyPlanAiPrompt: (question: string, draft: NormalizedPlan, assignedDay: string, hotels?: NormalizedLodging[]) => void;
   deleteCurrentTrip: () => void;
   editorPlan: NormalizedPlan | null | undefined;
   editorPlanId: string | null;
@@ -48,7 +51,7 @@ interface TripEditorModalProps {
   onOpenPlanEditor: (planId?: string) => void;
   onRemovePlan: (planId: string) => void;
   onSaveLodgings: (lodgings: NormalizedLodging[]) => void;
-  parsePlanDraft: (json: string) => PlanEditDraft;
+  parsePlanDraft: (json: string, hotels?: NormalizedLodging[]) => PlanEditDraft;
   onSelectTab: (tab: EditorTab) => void;
   onToggleBatchAi: () => void;
   planAssignments: Map<string, string>;
@@ -66,6 +69,9 @@ interface TripEditorModalProps {
 }
 
 export function TripEditorModal({
+  editorInitialMode,
+  editorInitialStopId,
+  editorBackLabel,
   activeTripId,
   aiGenerateText,
   aiPlannerQuestionRef,
@@ -117,23 +123,31 @@ export function TripEditorModal({
   weatherData,
 }: TripEditorModalProps) {
   const [planDirty, setPlanDirty] = useState(false);
-  const [pendingExit, setPendingExit] = useState<'back' | 'close' | null>(null);
-  const requestExit = (target: 'back' | 'close') => {
-    if (planDirty && editorPlanId) setPendingExit(target);
-    else if (target === 'back') closePlanEditor();
-    else onClose();
+  const [lodgingDirty, setLodgingDirty] = useState(false);
+  type ExitTarget = 'back' | 'close' | 'ai' | EditorTab;
+  const [pendingExit, setPendingExit] = useState<ExitTarget | null>(null);
+  const hasUnsavedChanges = Boolean(planDirty && editorPlanId || lodgingDirty);
+  const performExit = (target: ExitTarget) => {
+    if (target === 'back') closePlanEditor();
+    else if (target === 'close') onClose();
+    else if (target === 'ai') { onSelectTab('itinerary'); if (!batchAiOpen) onToggleBatchAi(); }
+    else onSelectTab(target);
+  };
+  const requestExit = (target: ExitTarget) => {
+    if (hasUnsavedChanges) setPendingExit(target);
+    else performExit(target);
   };
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
       event.preventDefault();
       if (pendingExit) setPendingExit(null);
-      else if (planDirty && editorPlanId) setPendingExit('close');
+      else if (hasUnsavedChanges) setPendingExit('close');
       else onClose();
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [pendingExit, planDirty, editorPlanId, onClose]);
+  }, [pendingExit, hasUnsavedChanges, onClose]);
   const tripMapRegions = new Set(normalizedPlans.map((plan) => getMapRegion(plan.location)).filter((region) => region !== 'unknown'));
   const lodgingMapRegion: MapRegion = tripMapRegions.size === 1 ? [...tripMapRegions][0] ?? 'unknown' : 'unknown';
   const tripCities = new Set(normalizedPlans.map((plan) => plan.location.admin2 || plan.location.weatherLabel).filter(Boolean));
@@ -145,13 +159,13 @@ export function TripEditorModal({
         className={`modal trip-editor-modal ${editorPlanId ? 'is-plan-detail' : 'is-trip-detail'}`}
         role="dialog"
         aria-modal="true"
-        aria-label={editorPlanId ? t('editSinglePlan') : t('editPlan')}
+        aria-label={editorPlanId ? t('editSinglePlan') : t('manageTrip')}
         onClick={(event) => event.stopPropagation()}
       >
         <div className="panel-header">
           <div>
             <p className="eyebrow">{t('planSetup')}</p>
-            <h2>{editorPlanId ? (isCreatingPlan ? t('addPlan') : t('editSinglePlan')) : t('editPlan')}</h2>
+            <h2>{editorPlanId ? (isCreatingPlan ? t('addPlan') : t('editSinglePlan')) : t('manageTrip')}</h2>
           </div>
           <button className="icon-btn" type="button" onClick={() => requestExit('close')} aria-label={t('closeEditor')} title={t('closeEditor')}>
             <Icon name="x" />
@@ -166,7 +180,7 @@ export function TripEditorModal({
             onChangeEndDate={onChangeEndDate}
             onChangeStartDate={onChangeStartDate}
             onCommitTripName={onCommitTripName}
-            onSelectTab={onSelectTab}
+            onSelectTab={(tab) => { if (tab !== editorTab) requestExit(tab); }}
             startDateStr={startDateStr}
             t={t}
             tripDays={tripDays}
@@ -178,6 +192,9 @@ export function TripEditorModal({
           {editorPlanId ? (
             <PlanEditorDetail
               key={editorPlanId}
+              initialMode={editorInitialMode}
+              initialStopId={editorInitialStopId}
+              backLabel={editorBackLabel}
               isCreatingPlan={isCreatingPlan}
               editorPlan={editorPlan}
               initialDraftJson={getPlanEditorDraftJson(editorPlanId)}
@@ -189,6 +206,7 @@ export function TripEditorModal({
               parseDraft={parsePlanDraft}
               onDirtyChange={setPlanDirty}
               plans={normalizedPlans}
+              lodgings={lodgings}
               schedule={schedule}
               tripDates={tripDates}
               weatherData={weatherData}
@@ -207,6 +225,11 @@ export function TripEditorModal({
                 endDateStr={endDateStr}
                 t={t}
                 onSave={onSaveLodgings}
+                plans={normalizedPlans}
+                schedule={schedule}
+                dates={tripDates.map((date) => date.id)}
+                onAi={() => requestExit('ai')}
+                onDirtyChange={setLodgingDirty}
               />
             </div>
           ) : (
@@ -253,7 +276,7 @@ export function TripEditorModal({
             <h3 id="leave-plan-title">{t('leavePlanTitle')}</h3>
             <p id="leave-plan-help">{t('leavePlanHelp')}</p>
             <div className="modal-actions">
-              <button className="btn btn-outline" type="button" onClick={() => { const target = pendingExit; setPendingExit(null); setPlanDirty(false); if (target === 'back') closePlanEditor(); else onClose(); }}>{t('discardPlanEdits')}</button>
+              <button className="btn btn-outline" type="button" onClick={() => { const target = pendingExit; setPendingExit(null); setPlanDirty(false); setLodgingDirty(false); performExit(target); }}>{t('discardPlanEdits')}</button>
               <button className="btn btn-primary" type="button" autoFocus onClick={() => setPendingExit(null)}>{t('keepEditingPlan')}</button>
             </div>
           </div>

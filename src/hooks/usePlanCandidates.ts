@@ -24,7 +24,6 @@ interface UsePlanCandidatesOptions {
   checklistImportOpen: boolean;
   checklistOpen: boolean;
   drivePanelOpen: boolean;
-  editorOpen: boolean;
   importModalOpen: boolean;
   language: string;
   normalizedPlans: NormalizedPlan[];
@@ -45,7 +44,6 @@ export function usePlanCandidates({
   checklistImportOpen,
   checklistOpen,
   drivePanelOpen,
-  editorOpen,
   importModalOpen,
   language,
   normalizedPlans,
@@ -62,7 +60,6 @@ export function usePlanCandidates({
   const candidates = useMemo(() => {
     if (
       !selectedDate
-      || editorOpen
       || aiPlannerOpen
       || importModalOpen
       || checklistOpen
@@ -134,7 +131,6 @@ export function usePlanCandidates({
     checklistImportOpen,
     checklistOpen,
     drivePanelOpen,
-    editorOpen,
     importModalOpen,
     language,
     normalizedPlans,

@@ -22,10 +22,18 @@ export interface RiskGroup {
   level: string;
   items: string[];
   unit: string;
+  entries?: { label: string; target: RiskActionTarget }[];
+}
+
+export interface RiskActionTarget {
+  planId: string;
+  dateId?: string;
+  section: 'bookings' | 'constraints' | 'alternatives';
 }
 
 interface RiskGroupItem {
   label: string;
+  target: RiskActionTarget;
   dateId: string;
   sortIndex: number;
   inputOrder: number;
@@ -76,6 +84,12 @@ export function buildRiskGroups(riskItems: RiskItem[], tripDates: TripDateLike[]
     if (risk.dateId) existing.unit = '天';
     existing.items.push({
       label: getRiskGroupLabel(risk, tripDates),
+      target: {
+        planId: risk.plan.id,
+        dateId: risk.dateId,
+        section: risk.title === '预约/订票未完成' ? 'bookings'
+          : risk.title === '天气不合适' && risk.dateId ? 'alternatives' : 'constraints',
+      },
       dateId: risk.dateId || '',
       sortIndex: risk.dateId ? dateOrder.get(risk.dateId) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER,
       inputOrder,
@@ -84,11 +98,11 @@ export function buildRiskGroups(riskItems: RiskItem[], tripDates: TripDateLike[]
   });
 
   return Array.from(groupsByTitle.values())
-    .map((group) => ({
-      ...group,
-      items: Array.from(
+    .map((group) => {
+      const entries = Array.from(
         group.items.reduce((itemsByLabel, item) => {
-          if (!itemsByLabel.has(item.label)) itemsByLabel.set(item.label, item);
+          const key = `${item.target.planId}\u0000${item.dateId}`;
+          if (!itemsByLabel.has(key)) itemsByLabel.set(key, item);
           return itemsByLabel;
         }, new Map<string, RiskGroupItem>()).values(),
       )
@@ -97,8 +111,9 @@ export function buildRiskGroups(riskItems: RiskItem[], tripDates: TripDateLike[]
           if (dateDiff) return dateDiff;
           return a.inputOrder - b.inputOrder;
         })
-        .map((item) => item.label),
-    }))
+        .map(({ label, target }) => ({ label, target }));
+      return { ...group, items: entries.map((item) => item.label), entries };
+    })
     .sort((a, b) => {
       const levelDiff = getLevelRank(b.level) - getLevelRank(a.level);
       if (levelDiff) return levelDiff;

@@ -16,13 +16,11 @@ describe('AI prompt schemas', () => {
     expect(schema).toContain('weather_location');
     expect(schema).toContain('transfer_from_previous');
     expect(schema).toContain('preferred_route_mode');
-    expect(schema).toContain('"map_point": null');
-    expect(schema).toContain('"id": "unique_stop_id"');
-    expect(schema).toContain('"via": []');
+    expect(JSON.parse(schema).plans[0].stops[0]).toMatchObject({ id: 'unique_stop_id', location: { map_point: null }, transfer_from_previous: { via: [] } });
     expect(getPlanJsonSchema('en')).toContain('preferred_route_mode');
-    expect(getSinglePlanJsonSchema('zh')).toContain('"map_point": null');
-    expect(getSinglePlanJsonSchema('en')).toContain('"map_point": null');
-    expect(schema).toContain('restaurant_reservation');
+    expect(JSON.parse(getSinglePlanJsonSchema('zh')).stops[0].location.map_point).toBeNull();
+    expect(JSON.parse(getSinglePlanJsonSchema('en')).stops[0].location.map_point).toBeNull();
+    expect(JSON.parse(schema).lodgings[0].default_for_trip).toBe(false);
     expect(schema).not.toContain('"tags"');
   });
 });
@@ -41,9 +39,10 @@ describe('single plan prompts', () => {
       userRequest: '改成雨天可执行方案',
     });
 
-    expect(prompt).toContain('只输出单个计划 JSON 对象');
+    expect(prompt).toContain('{plan, lodgings?, warnings?}');
     expect(prompt).toContain('preferred_route_mode');
-    expect(prompt).toContain('walking、transit、driving');
+    for (const mode of ['walking', 'transit', 'driving']) expect(prompt).toContain(mode);
+    expect(prompt).toContain('restaurant_reservation');
     expect(prompt).toContain('无法核实时省略整个 map_point');
     expect(prompt).toContain('不要复制 weather_location');
     expect(prompt).toContain('景观道路却没有可靠的中途点');
@@ -140,6 +139,18 @@ describe('AI compaction helpers', () => {
     });
     expect(JSON.stringify(compact)).not.toContain('""');
   });
+  it('includes shared weather context only once without dropping route coordinates or ids', () => {
+    const location = { label: 'Qingdao', weather_location: { query: 'Qingdao, Shandong, China', country_code: 'CN' } };
+    const plan = normalizePlan({ id: 'compact', name: 'Compact', location,
+      stops: [{ id: 'stop', title: 'Museum', location: { ...location, label: 'Museum', map_point: { latitude: 36.1, longitude: 120.4, coordinate_system: 'GCJ-02' } } }],
+      bookings: [{ id: 'saved-order', title: 'Ticket', type: 'ticket', status: 'done' }], reminders: [{ id: 'saved-reminder', time: '09:00', text: 'Bring ticket' }],
+    });
+    const compact = compactPlanForAi(plan, null);
+    expect(JSON.stringify(compact).match(/weather_location/g)).toHaveLength(1);
+    expect(normalizePlan(compact).stops[0].location).toEqual(plan.stops[0].location);
+    expect(JSON.stringify(compact)).toContain('saved-order');
+    expect(JSON.stringify(compact)).toContain('saved-reminder');
+  });
 });
 
 describe('planning prompts', () => {
@@ -164,7 +175,7 @@ describe('planning prompts', () => {
     expect(prompt).toContain('never copy weather_location coordinates');
     expect(prompt).toContain('transfer_from_previous.via');
     expect(prompt).toContain('name the road in transfer_from_previous.note');
-    expect(prompt).toContain('existing_plan_ids_should_not_duplicate');
+    expect(prompt).toContain('Use new plan ids');
     expect(prompt).toContain('existing_plan');
     expect(prompt).toContain('past_day_reviews are soft preferences');
   });
@@ -183,7 +194,17 @@ describe('planning prompts', () => {
       expect(prompt).toContain('transfer_from_previous.via');
       expect(prompt).toContain('"map_point"');
       expect(prompt).toContain('"沿海路口"');
-      expect(prompt).toContain(language === 'zh' ? '本次只重排日期' : 'schedule-only response');
+      expect(prompt).toContain(language === 'zh' ? '本次只重排日期和住宿' : 'schedule-and-lodging-only response');
     }
+  });
+  it('does not repeat the plan catalog or schedule when legacy context contains duplicates', () => {
+    const prompt = buildAiPlanningPrompt({ mode: 'generate', language: 'en', tripContext: { existing_plans: ['obsolete duplicate'], existing_schedule: ['obsolete duplicate'] },
+      hasInitializedPlans: true, unplannedDates: [], fixedDates: [], adjustableDates: [{ id: '2026-10-01' }], remainingPlans: [], normalizedPlans: [{ id: 'only-once-plan' }],
+      summarizePlan: (plan) => ({ id: plan.id }), summarizeScheduleDate: (date) => ({ date: date.id }),
+    });
+    expect(prompt.match(/only-once-plan/g)).toHaveLength(1);
+    expect(prompt.match(/2026-10-01/g)).toHaveLength(1);
+    expect(prompt).not.toContain('obsolete duplicate');
+    expect(prompt).toContain('reservations are confirmed facts');
   });
 });

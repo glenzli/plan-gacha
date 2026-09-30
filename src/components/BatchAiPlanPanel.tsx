@@ -1,3 +1,4 @@
+import { useId, useState } from 'react';
 import type { NormalizedPlan } from '../domain/plan';
 import type { AiModeText, TextAreaRef, TranslateFn, VoidFn } from '../types/ui';
 
@@ -33,6 +34,8 @@ export function BatchAiPlanPanel({
   t,
 }: BatchAiPlanPanelProps) {
   const isEmpty = normalizedPlans.length === 0;
+  const [backupOpen, setBackupOpen] = useState(false);
+  const backupPanelId = useId();
 
   return (
     <div className="editor-section">
@@ -64,27 +67,43 @@ export function BatchAiPlanPanel({
           </button>
         </div>
       ) : (
-        <div className="action-grid editor-action-grid">
-          <button
-            className={`btn ai-toggle-btn ${batchAiOpen ? 'is-open' : 'btn-primary'}`}
-            type="button"
-            aria-expanded={batchAiOpen}
-            onClick={onToggleBatchAi}
-            title={t('aiPlanPoolTitle')}
-          >
-            <span>{t('aiGenerateShort')}</span>
-            <span className="toggle-chevron" aria-hidden="true" />
-          </button>
-          <button className="btn btn-outline" type="button" onClick={loadExampleTrip} title={t('loadFullExample')}>
-            {t('viewExample')}
-          </button>
-          <button className="btn btn-outline" type="button" onClick={onOpenImport} title={t('importJsonTitle')}>
-            {t('import')}
-          </button>
-          <button className="btn btn-outline" type="button" onClick={handleExportState} title={t('copyCurrentJson')}>
-            {t('export')}
-          </button>
-        </div>
+        <>
+          <div className="itinerary-tools">
+            <button
+              className={`btn ai-toggle-btn ${batchAiOpen ? 'is-open' : 'btn-primary'}`}
+              type="button"
+              aria-expanded={batchAiOpen}
+              onClick={onToggleBatchAi}
+              title={t('aiPlanPoolTitle')}
+            >
+              <span>{t('aiGenerateShort')}</span>
+              <span className="toggle-chevron" aria-hidden="true" />
+            </button>
+            <button
+              className="btn btn-outline"
+              type="button"
+              aria-expanded={backupOpen}
+              aria-controls={backupPanelId}
+              onClick={() => setBackupOpen((open) => !open)}
+            >
+              {t('importAndBackup')}
+              <span className="toggle-chevron" aria-hidden="true" />
+            </button>
+          </div>
+          {backupOpen && (
+            <div className="import-backup-tools editor-action-grid" id={backupPanelId}>
+              <button className="btn btn-outline" type="button" onClick={loadExampleTrip} title={t('loadFullExample')}>
+                {t('viewExample')}
+              </button>
+              <button className="btn btn-outline" type="button" onClick={onOpenImport} title={t('importJsonTitle')}>
+                {t('import')}
+              </button>
+              <button className="btn btn-outline" type="button" onClick={handleExportState} title={t('copyCurrentJson')}>
+                {t('export')}
+              </button>
+            </div>
+          )}
+        </>
       )}
       {batchAiOpen && (
         <div className="editor-ai-panel">

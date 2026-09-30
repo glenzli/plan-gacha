@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon';
 import { inferMapRouteMode } from '../domain/locationLinks';
 import { editStopLocation, replacePlanStops } from '../domain/planEditing';
@@ -6,6 +6,7 @@ import type { NormalizedPlan, PlanStop, PreferredRouteMode, StopTransfer } from 
 import type { TranslateFn } from '../types/ui';
 
 interface PlanContentEditorProps {
+  initialStopId?: string;
   plan: NormalizedPlan;
   locationSource: NormalizedPlan;
   onChange: (plan: NormalizedPlan) => void;
@@ -14,9 +15,21 @@ interface PlanContentEditorProps {
 
 const EMPTY_TRANSFER: StopTransfer = { departAt: '', arriveAt: '', duration: '', mode: '', note: '', via: [] };
 
-export function PlanContentEditor({ plan, locationSource, onChange, t }: PlanContentEditorProps) {
+export function PlanContentEditor({ initialStopId, plan, locationSource, onChange, t }: PlanContentEditorProps) {
   const [undoStops, setUndoStops] = useState<{ stops: PlanStop[]; clearedTransfers: boolean } | null>(null);
-  const [expandedStop, setExpandedStop] = useState<string | null>(null);
+  const [expandedStop, setExpandedStop] = useState<string | null>(initialStopId || null);
+  const [focusStopId, setFocusStopId] = useState(initialStopId);
+  const editorRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!focusStopId) return;
+    const frame = window.requestAnimationFrame(() => {
+      const stop = editorRef.current?.querySelector<HTMLElement>(`[data-edit-stop-id="${CSS.escape(focusStopId)}"]`);
+      const summary = stop?.querySelector('summary');
+      summary?.scrollIntoView({ block: 'start', behavior: 'auto' });
+      summary?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusStopId]);
   const updateStop = (index: number, patch: Partial<PlanStop>) => {
     setUndoStops(null);
     onChange({ ...plan, stops: plan.stops.map((stop, i) => i === index ? { ...stop, ...patch } : stop) });
@@ -44,15 +57,16 @@ export function PlanContentEditor({ plan, locationSource, onChange, t }: PlanCon
     };
     changeOrder([...plan.stops, stop]);
     setExpandedStop(stop.id);
+    setFocusStopId(stop.id);
   };
 
   return (
-    <section className="plan-content-editor">
+    <section className="plan-content-editor" ref={editorRef}>
       <p className="editor-help">{t('contentEditorHelp')}</p>
       <details className="constraint-details plan-info-editor" open={locationSource.stops.length === 0}>
         <summary>{t('planInfoDetails')}</summary>
         <label>
-          <span>{t('planName')}</span>
+          <span>{t('itineraryName')}</span>
           <input className="input" value={plan.name} onChange={(event) => onChange({ ...plan, name: event.target.value })} />
         </label>
         <label>
@@ -77,7 +91,7 @@ export function PlanContentEditor({ plan, locationSource, onChange, t }: PlanCon
         const transfer = stop.transferFromPrevious;
         const locationChanged = source.mapPoint && !stop.location.mapPoint;
         return (
-          <details className="stop-editor" key={stop.id} open={expandedStop === stop.id}>
+          <details className="stop-editor" key={stop.id} data-edit-stop-id={stop.id} open={expandedStop === stop.id}>
             <summary onClick={(event) => { event.preventDefault(); setExpandedStop(expandedStop === stop.id ? null : stop.id); }}>
               <span className="stop-editor-number">{index + 1}</span>
               <span className="stop-editor-summary">

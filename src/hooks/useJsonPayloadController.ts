@@ -1,4 +1,4 @@
-import type { ChangeEvent, Dispatch, RefObject, SetStateAction } from 'react';
+import { useState, type ChangeEvent, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { APP_SCHEMA_VERSION } from '../domain/sync';
 import {
   BOOKING_STATUS_VALUES,
@@ -9,8 +9,6 @@ import {
 } from '../domain/plan';
 import {
   clampTripDays,
-  normalizeSchedule,
-  normalizeTripLodgings,
   type NormalizedLodging,
   type NormalizedPlaceFeedback,
   type NormalizedSchedule,
@@ -33,6 +31,9 @@ import type { ChecklistMergeConflict, ChecklistState } from '../domain/checklist
 import type { DisplayTripDate } from '../domain/display';
 import type { TranslateFn } from '../types/ui';
 import { getEditedPlanSchedule, updateRelatedPlan } from '../domain/planEditing';
+import { mergeLodgings } from '../domain/lodging';
+import { prepareTripImport, validateLodgingReferences, type TripImportPreview } from '../domain/tripImport';
+import { addDays } from '../domain/date';
 
 type AnyRecord = Record<string, any>;
 
@@ -77,6 +78,7 @@ interface UseJsonPayloadControllerOptions {
   tripName: string;
   stopOutcomes: NormalizedStopOutcomes;
   ensureActiveTrip: () => void;
+  planningFrom: string;
 }
 
 function getErrorMessage(error: unknown) {
@@ -126,7 +128,16 @@ export function useJsonPayloadController({
   tripName,
   stopOutcomes,
   ensureActiveTrip,
+  planningFrom,
 }: UseJsonPayloadControllerOptions) {
+  const [pendingImport, setPendingImport] = useState<{ parsed: AnyRecord; preview: TripImportPreview; message: string; fromAi: boolean; signature: string } | null>(null);
+  const currentSignature = JSON.stringify([normalizedPlans, lodgings, schedule, startDateStr, tripDays]);
+  const prepareImport = (parsed: AnyRecord, fromAi: boolean) => {
+    const start = parsed.startDateStr || startDateStr;
+    const count = parsed.tripDays ? clampTripDays(parsed.tripDays) : tripDays;
+    const dates = Array.from({ length: count }, (_, index) => ({ id: addDays(start, index) }));
+    return prepareTripImport(parsed, normalizedPlans, lodgings, schedule, dates, fromAi, planningFrom);
+  };
   const assertPlanDraftOption = (value: unknown, allowedValues: Set<string>, path: string) => {
     const normalizedValue = String(value || '').trim();
     if (normalizedValue && !allowedValues.has(normalizedValue)) {
@@ -165,7 +176,8 @@ export function useJsonPayloadController({
     });
   };
 
-  const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied')) => {
+  const applyImportedPayload = (parsed: AnyRecord, message = t('jsonApplied'), fromAi = false) => {
+    const prepared = prepareImport(parsed, fromAi);
     let touched = false;
     let activeTripEnsured = false;
     const ensureTrip = () => {
@@ -184,66 +196,15 @@ export function useJsonPayloadController({
       touched = true;
       setTripDays(clampTripDays(parsed.tripDays));
     }
-    const importedLodgings = parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays;
-    if (Array.isArray(importedLodgings)) {
+    if (parsed.plans || parsed.plan || parsed.schedule || parsed.lodgings || parsed.hotels || parsed.accommodations || parsed.stays) {
       ensureTrip();
       touched = true;
-      setLodgings(normalizeTripLodgings(importedLodgings));
+      setPlans(prepared.plans);
+      setLodgings(prepared.lodgings);
+      setSchedule(prepared.schedule);
     }
 
-    if (Array.isArray(parsed.plans)) {
-      ensureTrip();
-      touched = true;
-      setPlans((current) => {
-        const next = [...current];
-        parsed.plans.forEach((incomingPlan: unknown, index: number) => {
-          const normalized = normalizePlan(incomingPlan, index, tripDates);
-          const existingIndex = next.findIndex((plan, currentIndex) => (
-            normalizePlan(plan, currentIndex, tripDates).id === normalized.id
-          ));
-          if (existingIndex >= 0) {
-            next[existingIndex] = normalized;
-          } else {
-            next.push(normalized);
-          }
-        });
-        return next;
-      });
-
-      const assigned = parsed.plans.reduce((accumulator: NormalizedSchedule, plan: AnyRecord) => {
-        if (plan.assigned_day && plan.id) {
-          accumulator[plan.assigned_day] = { planId: plan.id };
-        }
-        return accumulator;
-      }, {} as NormalizedSchedule);
-
-      if (Object.keys(assigned).length) {
-        ensureTrip();
-        touched = true;
-        setSchedule((current) => ({ ...current, ...assigned }));
-      }
-    }
-
-    if (Array.isArray(parsed.schedule)) {
-      const importedSchedule = parsed.schedule.reduce((accumulator: NormalizedSchedule, item: AnyRecord) => {
-        const dateId = item.date || item.dateId || item.day;
-        const planId = item.plan_id || item.planId || item.id;
-        if (dateId && planId) accumulator[dateId] = { planId };
-        return accumulator;
-      }, {} as NormalizedSchedule);
-
-      if (Object.keys(importedSchedule).length) {
-        ensureTrip();
-        touched = true;
-        setSchedule((current) => ({ ...current, ...importedSchedule }));
-      }
-    } else if (parsed.schedule && typeof parsed.schedule === 'object') {
-      ensureTrip();
-      touched = true;
-      setSchedule((current) => ({ ...current, ...normalizeSchedule(parsed.schedule) }));
-    }
-
-    const importedHistory = readImportedTripHistory(parsed);
+    const importedHistory = fromAi ? {} : readImportedTripHistory(parsed);
     if (importedHistory.placeFeedback !== undefined) {
       ensureTrip();
       touched = true;
@@ -275,16 +236,14 @@ export function useJsonPayloadController({
 
   const applyAiPlannerResult = () => {
     try {
-      applyImportedPayload(parseImportJson(aiPlannerResultRef.current?.value || ''), t('aiPlanApplied'));
-      resetAiPlannerFields();
-      setAiPlannerOpen(false);
-      setBatchAiOpen(false);
+      const parsed = parseImportJson(aiPlannerResultRef.current?.value || '');
+      setPendingImport({ parsed, preview: prepareImport(parsed, true), message: t('aiPlanApplied'), fromAi: true, signature: currentSignature });
     } catch (error) {
-      notify(t('applyFailed', { message: getErrorMessage(error) }));
+      notify(t('applyFailed', { message: t(getErrorMessage(error)) }));
     }
   };
 
-  const parseSinglePlanDraft = (text: string) => {
+  const parseSinglePlanDraft = (text: string, draftHotels?: NormalizedLodging[]) => {
     const parsed = parseImportJson(text);
     const payload = getSinglePlanPayload(parsed);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -305,14 +264,19 @@ export function useJsonPayloadController({
     const assignedDay = payload.assigned_day || payload.assignedDay || '';
     if (assignedDay && !tripDates.some((date) => date.id === assignedDay)) throw new Error(t('planAssignedDateInvalid'));
 
+    const hotels = mergeLodgings(draftHotels || lodgings, parsed.lodgings || [], true);
+    validateLodgingReferences([normalizedPlan], hotels);
     return {
       plan: normalizedPlan,
       assignedDay,
+      ...(parsed.lodgings || draftHotels ? { lodgings: hotels } : {}),
+      warnings: toArray(parsed.warnings).map(String),
     };
   };
 
-  const applySinglePlanDraft = ({ plan, assignedDay }: { plan: NormalizedPlan; assignedDay: string }, message: string) => {
+  const applySinglePlanDraft = ({ plan, assignedDay, lodgings: draftHotels }: { plan: NormalizedPlan; assignedDay: string; lodgings?: NormalizedLodging[] }, message: string) => {
     const previousPlanId = isCreatingPlan ? '' : editorPlanId;
+    if (draftHotels) setLodgings(draftHotels);
 
     setPlans((current) => {
       if (isCreatingPlan) return [...current, plan];
@@ -342,18 +306,36 @@ export function useJsonPayloadController({
         isCreatingPlan ? t('planCreated') : t('planUpdated'),
       );
     } catch (error) {
-      notify(t('applyFailed', { message: getErrorMessage(error) }));
+      notify(t('applyFailed', { message: t(getErrorMessage(error)) }));
     }
   };
 
   const handleImport = () => {
     try {
-      applyImportedPayload(parseImportJson(importTextRef.current?.value || ''), t('importDone'));
-      setImportModalOpen(false);
-      if (importTextRef.current) importTextRef.current.value = '';
+      const parsed = parseImportJson(importTextRef.current?.value || '');
+      setPendingImport({ parsed, preview: prepareImport(parsed, false), message: t('importDone'), fromAi: false, signature: currentSignature });
     } catch (error) {
-      notify(t('importFailed', { message: getErrorMessage(error) }));
+      notify(t('importFailed', { message: t(getErrorMessage(error)) }));
     }
+  };
+
+  const confirmImport = () => {
+    if (!pendingImport) return;
+    try {
+      if (pendingImport.signature !== currentSignature) {
+        setPendingImport({ ...pendingImport, preview: prepareImport(pendingImport.parsed, pendingImport.fromAi), signature: currentSignature });
+        notify(t('importPreviewRefreshed'));
+        return;
+      }
+      applyImportedPayload(pendingImport.parsed, pendingImport.message, pendingImport.fromAi);
+      if (pendingImport.fromAi) {
+        resetAiPlannerFields(); setAiPlannerOpen(false); setBatchAiOpen(false);
+      } else {
+        setImportModalOpen(false);
+        if (importTextRef.current) importTextRef.current.value = '';
+      }
+      setPendingImport(null);
+    } catch (error) { notify(t('applyFailed', { message: t(getErrorMessage(error)) })); }
   };
 
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>, onLoaded: (text: string) => void) => {
@@ -418,6 +400,9 @@ export function useJsonPayloadController({
   };
 
   return {
+    pendingImport,
+    cancelImportPreview: () => setPendingImport(null),
+    confirmImport,
     parseSinglePlanDraft,
     applyAiPlannerResult,
     applyImportedPayload,

@@ -1,161 +1,19 @@
 import { getWeatherLocationLabel } from './weather';
+import { planOutputShape, lodgingOutputShape, historyRules, planRules, locationRules, lodgingRules } from './aiPromptContract';
+import { addDays } from './date';
+import { resolveNightLodging, type NormalizedLodging } from './lodging';
+import type { NormalizedPlan } from './plan';
+import type { NormalizedSchedule } from './trip';
 
 export type Language = 'zh' | 'en' | string;
 export type AiPlannerMode = 'generate' | 'replan';
 
-const DEFAULT_LANGUAGE = 'zh';
-
-const MAP_POINT_GUIDANCE = {
-  en: `For each specific stop, optionally include location.map_point as {"longitude": number, "latitude": number, "coordinate_system": "GCJ-02" or "WGS84"}. Use GCJ-02 only for a verified map/POI coordinate, or WGS84 for a verified GPS coordinate of the exact place, entrance, or parking area; the app converts explicit mainland WGS84 place points for AMap. Omit map_point when unverified; never copy weather_location coordinates into it or guess coordinates. When editing, preserve an existing map_point only if the stop still refers to the same place; remove it when the place changes. For a driving transfer through a verified intermediate place, set preferred_route_mode to driving and put it in transfer_from_previous.via as an ordered array of location objects, each with label, optional address and verified map_point. Preserve unchanged via points; remove or update them if the required route changes. AMap links support one via point only for driving, Google Maps URLs accept up to three here, and Baidu links do not carry via points; never silently drop a required point. Some Google Maps products may ignore waypoints, so the user must inspect the resulting route. If a scenic road is required but no reliable pass-through point is known, name the road in transfer_from_previous.note, leave via empty, and do not pretend the map link enforces it. Split a road with multiple mandatory points into separate stops/legs for AMap; never use one arbitrary point to stand for an entire scenic road.`,
-  zh: `具体停靠点可填写 location.map_point，格式为 {"longitude": 数值, "latitude": 数值, "coordinate_system": "GCJ-02" 或 "WGS84"}。只有可靠地图或 POI 来源确认了地点、入口或停车场的高德坐标时才写 GCJ-02；确认是该具体地点的 GPS 坐标时才写 WGS84，应用会为高德转换中国大陆的显式 WGS84 地点坐标。无法核实时省略整个 map_point；不要复制 weather_location 的天气坐标，也不要猜坐标。编辑现有计划时，仅在地点未变化时保留原有 map_point；地点改变则删除。驾车路段必须经已核实的中途地点时，把 preferred_route_mode 设为 driving，并将该地点写入 transfer_from_previous.via：按顺序排列的地点对象数组，每项有 label、可选 address 和已核实的 map_point。路线未变时保留原有 via；必经路线变化时同步更新或删除。高德链接仅在驾车模式支持一个途经点；本应用的 Google 地图链接最多带三个，百度链接不携带途经点，不要悄悄丢掉必经点。部分 Google 地图产品可能忽略途经点，用户仍需核对最终路线。如果必须走某条景观道路却没有可靠的中途点，在 transfer_from_previous.note 写明道路名称，via 留空，不要声称地图链接已锁定该道路。高德需要多个必经点时拆成连续停靠点和路段，不要用任意一个点代替整条景观道路。`,
-} as const;
-
-function getMapPointGuidance(language: Language) {
-  return language === 'en' ? MAP_POINT_GUIDANCE.en : MAP_POINT_GUIDANCE.zh;
+export function getPlanJsonSchema(language: Language = 'zh') {
+  return JSON.stringify({ plans: [planOutputShape(language)], lodgings: [lodgingOutputShape()] });
 }
 
-export function getPlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
-  if (language === 'en') {
-    return `{
-  "plans": [
-    {
-      "id": "unique_plan_id",
-      "name": "Short title",
-      "description": "What to do and when this plan is suitable",
-      "priority": "must | preferred | backup | optional",
-      "location": { "label": "Display location", "address": "Detailed address, optional", "weather_location": { "query": "City/Ward, Prefecture, Country for weather lookup", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
-      "stops": [
-        {
-          "id": "unique_stop_id",
-          "time": "09:30",
-          "title": "Stop title",
-          "location": { "label": "Specific place", "address": "Detailed address, optional", "weather_location": { "query": "Only fill an administrative city/ward when this stop is in a different city/ward from the plan location; never use scenic spot, station, river, shop, or museum names", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" }, "map_point": null },
-          "transfer_from_previous": { "depart_at": "09:00", "duration": "About 20 min", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "Default to walk for normal point-to-point walking. Use sightseeing_walk only when the walk itself is a planned scenic activity." },
-          "opening_hours": "Only the opening/business hours relevant to the planned arrival time, e.g. 10:00-17:00; leave empty if unknown or unreliable",
-          "note": "What happens at this stop",
-          "weather_relevant": true
-        }
-      ],
-      "available_dates": ["YYYY-MM-DD"],
-      "closed_dates": ["YYYY-MM-DD"],
-      "weather_rules": {
-        "best": ["sunny", "partly_cloudy"],
-        "ok": ["cloudy", "drizzle"],
-        "blocked": ["heavy_rain", "storm"]
-      },
-      "conflicts": ["other_plan_id"],
-      "bookings": [
-        {
-          "id": "booking_id",
-          "type": "reservation | ticket | confirmation | restaurant_reservation",
-          "title": "Reservation/ticket item",
-          "status": "pending | done | none",
-          "address": "Service or arrival address",
-          "url": "Reservation or booking link, optional",
-          "cancel_url": "Cancellation/change/manage link, optional",
-          "note": "Lead time, ID requirements, cancellation rules, restaurant reservation or queue notes, etc."
-        }
-      ],
-      "reminders": [{"time": "HH:mm or text time", "text": "Important reminder", "links": [{"label": "Official site", "url": "https://example.com"}]}],
-      "tips": ["General tip"],
-      "assigned_day": "YYYY-MM-DD"
-    }
-  ]
-}`;
-  }
-
-  return `{
-  "plans": [
-    {
-      "id": "unique_plan_id",
-      "name": "短标题",
-      "description": "当天做什么，适合什么情况",
-      "priority": "must | preferred | backup | optional",
-      "location": { "label": "地点展示名", "address": "详细地址，可空", "weather_location": { "query": "天气查询用行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
-      "stops": [
-        {
-          "id": "unique_stop_id",
-          "time": "09:30",
-          "title": "节点标题",
-          "location": { "label": "具体地点", "address": "详细地址，可空", "weather_location": { "query": "仅在跨城或明显不同区县时填写行政地点；同计划地点留空；不要写景点、车站、河流、商场、博物馆名", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" }, "map_point": null },
-          "transfer_from_previous": { "depart_at": "09:00", "duration": "约 20 分钟", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "普通点到点步行默认写步行。只有这段步行本身就是独立观景/逛街/散步项目时，才写游玩型步行。" },
-          "opening_hours": "只写和计划到达时间相关的开放/营业时间，例如 10:00-17:00；不确定或不可靠时留空",
-          "note": "这个节点做什么",
-          "weather_relevant": true
-        }
-      ],
-      "available_dates": ["YYYY-MM-DD"],
-      "closed_dates": ["YYYY-MM-DD"],
-      "weather_rules": {
-        "best": ["sunny", "partly_cloudy"],
-        "ok": ["cloudy", "drizzle"],
-        "blocked": ["heavy_rain", "storm"]
-      },
-      "conflicts": ["other_plan_id"],
-      "bookings": [
-        {
-          "id": "booking_id",
-          "type": "reservation | ticket | confirmation | restaurant_reservation",
-          "title": "需要预约/订票的项目",
-          "status": "pending | done | none",
-          "address": "办理或到达地址",
-          "url": "预约或订票链接，可空",
-          "cancel_url": "退订/改签/管理链接，可空",
-          "note": "提前多久、证件要求、退改规则、餐厅预约或排队说明等"
-        }
-      ],
-      "reminders": [{"time": "HH:mm 或文字时间", "text": "必须注意的事项", "links": [{"label": "官网", "url": "https://example.com"}]}],
-      "tips": ["普通提示"],
-      "assigned_day": "YYYY-MM-DD"
-    }
-  ]
-}`;
-}
-
-export function getSinglePlanJsonSchema(language: Language = DEFAULT_LANGUAGE) {
-  if (language === 'en') {
-    return `{
-  "id": "unique_plan_id",
-  "name": "Short title",
-  "description": "What to do",
-  "priority": "must | preferred | backup | optional",
-  "location": { "label": "Display place", "address": "", "weather_location": { "query": "City/Ward, Prefecture, Country", "country_code": "JP", "admin1": "Prefecture/state", "latitude": "", "longitude": "" } },
-  "stops": [{ "id": "unique_stop_id", "time": "09:30", "title": "Stop", "location": { "label": "Place", "address": "", "weather_location": { "query": "Leave empty unless this stop needs a different administrative weather city/ward", "country_code": "", "admin1": "", "latitude": "", "longitude": "" }, "map_point": null }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "walk | transit | train | bus | taxi | car | sightseeing_walk", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
-  "available_dates": ["YYYY-MM-DD"],
-  "closed_dates": ["YYYY-MM-DD"],
-  "weather_rules": {
-    "best": ["sunny", "partly_cloudy"],
-    "ok": ["cloudy", "drizzle"],
-    "blocked": ["heavy_rain", "storm"]
-  },
-  "conflicts": ["other_plan_id"],
-  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation | restaurant_reservation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
-  "reminders": [{ "time": "", "text": "", "links": [{ "label": "", "url": "" }] }],
-  "tips": [],
-  "assigned_day": "YYYY-MM-DD"
-}`;
-  }
-
-  return `{
-  "id": "unique_plan_id",
-  "name": "短标题",
-  "description": "当天做什么",
-  "priority": "must | preferred | backup | optional",
-  "location": { "label": "地点展示名", "address": "", "weather_location": { "query": "行政地点，例如 Kawachi-Nagano, Osaka, Japan", "country_code": "JP", "admin1": "都道府县/省州", "latitude": "", "longitude": "" } },
-  "stops": [{ "id": "unique_stop_id", "time": "09:30", "title": "节点标题", "location": { "label": "具体地点", "address": "", "weather_location": { "query": "除非该节点需要不同的行政天气城市/区县，否则留空", "country_code": "", "admin1": "", "latitude": "", "longitude": "" }, "map_point": null }, "transfer_from_previous": { "depart_at": "", "duration": "", "mode": "步行 | 地铁 | 电车 | 巴士 | 出租车 | 自驾 | 游玩型步行", "preferred_route_mode": "walking | transit | driving", "via": [], "note": "" }, "opening_hours": "", "note": "", "weather_relevant": true }],
-  "available_dates": ["YYYY-MM-DD"],
-  "closed_dates": ["YYYY-MM-DD"],
-  "weather_rules": {
-    "best": ["sunny", "partly_cloudy"],
-    "ok": ["cloudy", "drizzle"],
-    "blocked": ["heavy_rain", "storm"]
-  },
-  "conflicts": ["other_plan_id"],
-  "bookings": [{ "id": "booking_id", "type": "reservation | ticket | confirmation | restaurant_reservation", "title": "", "status": "pending | done | none", "address": "", "url": "", "cancel_url": "", "note": "" }],
-  "reminders": [{ "time": "", "text": "", "links": [{ "label": "", "url": "" }] }],
-  "tips": [],
-  "assigned_day": "YYYY-MM-DD"
-}`;
+export function getSinglePlanJsonSchema(language: Language = 'zh') {
+  return JSON.stringify(planOutputShape(language));
 }
 
 export function pruneEmptyAiValue(value: unknown): unknown {
@@ -209,10 +67,9 @@ export function compactLodgingForAi(lodging: any) {
   return pruneEmptyAiValue({
     id: lodging.id,
     name: lodging.name,
-    location: {
-      label: lodging.location?.label || lodging.name,
-      address: lodging.location?.address,
-    },
+    location: compactLocationForAi(lodging.location),
+    default_for_trip: lodging.defaultForTrip !== false,
+    reservations: lodging.reservations?.map((reservation: any) => ({ id: reservation.id, check_in: reservation.checkIn, check_out: reservation.checkOut, status: reservation.status, cancel_by: reservation.cancelBy, note: reservation.note })),
     check_in: lodging.checkIn,
     check_out: lodging.checkOut,
     note: lodging.note,
@@ -244,6 +101,8 @@ export function compactStopRouteForAi(stop: any) {
     id: stop.id,
     time: stop.time,
     title: stop.title,
+    lodging_anchor: stop.lodgingAnchor,
+    lodging_id: stop.lodgingId,
     location: {
       label: stop.location?.label,
       address: stop.location?.address,
@@ -255,34 +114,36 @@ export function compactStopRouteForAi(stop: any) {
   });
 }
 
-export function getLodgingContextForDate(lodgings: any[], dateId: string) {
-  const checkoutFrom = lodgings.filter((lodging) => lodging.checkOut === dateId).map(compactLodgingForAi);
-  const checkinTo = lodgings.filter((lodging) => lodging.checkIn === dateId).map(compactLodgingForAi);
-  const stayingNight = lodgings
-    .filter((lodging) => lodging.checkIn && lodging.checkOut && lodging.checkIn <= dateId && dateId < lodging.checkOut)
-    .map(compactLodgingForAi);
-
-  return pruneEmptyAiValue({
-    checkout_from: checkoutFrom,
-    checkin_to: checkinTo,
-    staying_night: stayingNight,
-  });
+export function getLodgingContextForDate(lodgings: NormalizedLodging[], dateId: string, schedule: NormalizedSchedule = {}, plans: Map<string, NormalizedPlan> = new Map()) {
+  const tonight = resolveNightLodging(dateId, schedule, plans, lodgings);
+  const previous = resolveNightLodging(addDays(dateId, -1), schedule, plans, lodgings);
+  return pruneEmptyAiValue({ departure_lodging_id: previous.selected?.id, tonight_lodging_id: tonight.selected?.id,
+    status: tonight.status, option_ids: tonight.options.map((hotel) => hotel.id), fixed: tonight.locked || undefined, conflict: tonight.conflict || undefined });
 }
 
 export function compactPlanForAi(plan: any, assignedDay: string | null) {
   if (!plan) return null;
+  const planLocation = compactLocationForAi(plan.location) as Record<string, unknown> | undefined;
+  const stopLocation = (location: any) => {
+    const compact = compactLocationForAi(location) as Record<string, unknown> | undefined;
+    if (compact && JSON.stringify(compact.weather_location) === JSON.stringify(planLocation?.weather_location)) delete compact.weather_location;
+    return compact;
+  };
 
   return pruneEmptyAiValue({
     id: plan.id,
     name: plan.name,
     description: plan.description,
     priority: plan.priority,
-    location: compactLocationForAi(plan.location),
+    lodging: plan.lodging && { mode: plan.lodging.mode, option_ids: plan.lodging.optionIds, preferred_id: plan.lodging.preferredId },
+    location: planLocation,
     stops: plan.stops.map((stop: any) => ({
       id: stop.id,
       time: stop.time,
       title: stop.title,
-      location: compactLocationForAi(stop.location),
+      lodging_anchor: stop.lodgingAnchor,
+      lodging_id: stop.lodgingId,
+      location: stopLocation(stop.location),
       transfer_from_previous: compactTransferForAi(stop.transferFromPrevious),
       opening_hours: stop.openingHours,
       note: stop.note,
@@ -302,7 +163,7 @@ export function compactPlanForAi(plan: any, assignedDay: string | null) {
       cancel_url: booking.cancelUrl,
       note: booking.note,
     })),
-    reminders: plan.reminders.map((item: any) => ({ time: item.time, text: item.text, links: item.links || [] })),
+    reminders: plan.reminders.map((item: any) => ({ id: item.id, time: item.time, text: item.text, links: item.links || [] })),
     tips: plan.tips,
     assigned_day: assignedDay,
   });
@@ -324,201 +185,23 @@ export interface AiPlanningPromptOptions {
 }
 
 export function buildAiPlanningPrompt(options: AiPlanningPromptOptions) {
-  const {
-    mode,
-    language,
-    tripContext,
-    hasInitializedPlans,
-    plannerQuestion = '',
-    unplannedDates,
-    fixedDates,
-    adjustableDates,
-    remainingPlans,
-    normalizedPlans,
-    summarizeScheduleDate,
-    summarizePlan,
-  } = options;
-  const planSchema = getPlanJsonSchema(language);
-
-  if (mode === 'generate') {
-    const generateRequest = plannerQuestion.trim() || (hasInitializedPlans
-      ? (language === 'en'
-        ? 'Add candidate plans for backups or added days; include assigned_day when useful.'
-        : '请补充计划池、backup 或新增天数需要的候选计划；必要时给出 assigned_day。')
-      : (language === 'en'
-        ? 'Generate a travel plan pool and include an initial schedule when useful.'
-        : '请生成旅行计划池；如果适合，也给出初始日程。'));
-
-    if (language === 'en') {
-      return `You are a travel plan-pool assistant. Generate or extend travel plans based on the current state.
-
-User request, prioritize this:
-${generateRequest}
-
-Data:
-${JSON.stringify({
-  ...tripContext,
-  mode: hasInitializedPlans ? 'extend existing plan pool' : 'generate a full plan pool from empty state',
-  keep_existing_schedule_by_default: hasInitializedPlans,
-  unplanned_dates: unplannedDates.map(summarizeScheduleDate),
-  existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
-}, null, 2)}
-
-Output rules:
-1. Only output importable JSON, with no Markdown or explanation.
-2. Follow the JSON format below. Use empty arrays for optional list fields when absent. Give each stop a stable id unique within its plan. The map_point placeholder is optional; omit it unless verified.
-3. Fill available_dates, closed_dates, weather_rules and conflicts from the trip constraints and the user request.
-4. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. Always set its country_code to the actual country, such as "CN" for mainland China or "JP" for Japan, so map links use the right service. For Japan, use query like "Kawachi-Nagano, Osaka, Japan" and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
-5. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
-6. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links. For restaurants that require or strongly benefit from reservation, add a restaurant_reservation booking with status pending unless already booked, plus a short note about when/why to reserve.
-7. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
-8. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
-9. For each stop after the first, fill transfer_from_previous.mode with the actual transport and preferred_route_mode with the map navigation category: walking, transit, or driving. Walking and sightseeing_walk map to walking; train, metro, bus and ferry map to transit; taxi and car map to driving. This preference controls the default directions link, so choose the intended route rather than leaving it blank. Fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Give only a rough duration, not turn-by-turn directions; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
-10. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
-11. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
-12. Do not call a plan a "loop" just because it starts and ends at lodging. Use loop only for a real circular sightseeing route.
-13. If lodgings are provided, use them as day start/end and hotel-transfer constraints.
-14. Avoid repeating the same point across description, reminders and tips. Use description for the day summary and why the flow works; use reminders only for time-sensitive or must-check actions; use tips only for optional general advice.
-15. URL fields such as bookings.url, bookings.cancel_url, reminders[].links[].url, lodging booking/map URLs must be plain https URLs, never Markdown links.
-16. For official sites, realtime status pages, live cameras, booking pages or other URLs in reminders, put them in reminders[].links. Do not put Markdown links or raw URLs inside reminder text.
-17. Add reminders and tips only when useful; otherwise use empty arrays.
-18. When an existing plan pool exists, do not duplicate existing plan_id. Unless explicitly replacing, only add or supplement.
-19. If a plan should be scheduled, write assigned_day on that plan.
-20. Treat abandoned days and blacklisted_places as explicit user decisions. Do not schedule an abandoned day or reintroduce a blacklisted place unless the user explicitly asks. abandoned_stops are date-specific records of places skipped on that occurrence; preserve them as history and do not treat them as a global blacklist.
-21. Dates before planning_from are fixed history. In particular, a plan assigned before current_date and before planning_from has already been visited: do not schedule it again or clear that earlier record. Only rewrite planning_from and later dates.
-22. past_day_reviews are soft preferences from completed days. Use satisfied/worth_reusing feedback as positive reference and use rushed, tiring, weather-affected or unsatisfied feedback to improve pacing and choices. They are not hard exclusions; only blacklisted_places are a hard place exclusion.
-23. ${getMapPointGuidance(language)}
-
-JSON format:
-${planSchema}`;
-    }
-
-    return `你是旅行计划池生成助手。请根据当前状态生成或补充旅行计划。
-
-用户需求，请优先处理：
-${generateRequest}
-
-数据：
-${JSON.stringify({
-  ...tripContext,
-  mode: hasInitializedPlans ? '补充现有计划池' : '从空计划池生成完整规划',
-  keep_existing_schedule_by_default: hasInitializedPlans,
-  unplanned_dates: unplannedDates.map(summarizeScheduleDate),
-  existing_plan_ids_should_not_duplicate: normalizedPlans.map((plan) => plan.id),
-}, null, 2)}
-
-输出规范：
-1. 只输出可导入 JSON，不要 Markdown 或解释。
-2. 严格按下面格式补齐字段；可选数组没有内容时用空数组。每个 stop 的 id 在所属计划内保持唯一且稳定。map_point 只是可选占位，未经核实就省略。
-3. 根据旅行限制和用户需求填写 available_dates、closed_dates、weather_rules、conflicts。
-4. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。务必写实际国家的 country_code，例如中国大陆为 "CN"、日本为 "JP"，以便地图链接选择对应服务。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
-5. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
-6. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。餐厅如果需要预约，或强烈建议预约/排队风险较高，也写 restaurant_reservation 类型的 booking；除非已订好，否则 status 用 pending，并在 note 简要说明何时/为什么要预约。
-7. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
-8. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
-9. 从第二个 stop 起，每段 transfer_from_previous.mode 写实际交通工具，并填写 preferred_route_mode 作为地图默认导航方式，只能选 walking、transit、driving。步行和游玩型步行选 walking；高铁、地铁、公交、轮渡选 transit；出租车和自驾选 driving。这个字段决定点击路线图标时默认打开哪种路径，请按计划意图填写，不要留空。depart_at 尽量填写，因为界面会显示出发时间；stops.time 已经是到达/开始当前 stop 的时间，不要在这里重复。只写粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
-10. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
-11. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
-12. 不要因为从酒店出发、回酒店结束，就把计划命名为“环线”；只有真实闭环游览路线才可以叫环线。
-13. 如果提供了 lodgings，把住宿作为每天出发、返回和换酒店约束。
-14. 避免在 description、reminders、tips 里反复写同一件事。description 只写当天概览和动线为什么成立；reminders 只写有时间点、必须确认、必须执行的动作；tips 只写额外建议。
-15. bookings.url、bookings.cancel_url、reminders[].links[].url、住宿 booking/map URL 等 URL 字段只能填写纯 https URL，不要写 Markdown 链接。
-16. 提醒里如果涉及官网、实时状态、实时摄像头、预约页或其他 URL，放到 reminders[].links；不要把 Markdown 链接或裸 URL 写进 text。
-17. 有特别提醒和 tips 就写，没有就留空数组。
-18. 已有计划池时不要重复已有 plan_id；除非明确要替换，否则只新增或补充。
-19. 需要安排日期时，在对应 plan 上写 assigned_day。
-20. 已放弃日期和 blacklisted_places 都是用户明确做出的决定；除非用户明确要求，否则不要重新安排已放弃日期，也不要再次加入已拉黑地点。abandoned_stops 是某个日期中临时没去的地点记录，只作为历史保留，不要把它当成全局拉黑。
-21. planning_from 之前的日期是固定历史。尤其是同时早于 current_date 和 planning_from 的已安排计划，视为已经去过：不要再次安排，也不要清空其历史记录；只调整 planning_from 及之后的日期。
-22. past_day_reviews 是用户对已游玩日期的软偏好反馈。满意、值得复用可作为正向参考；太赶、交通折腾、体力超支、天气影响或不满意用于改善节奏和选择。它们不是硬性排除，只有 blacklisted_places 才是地点硬约束。
-23. ${getMapPointGuidance(language)}
-
-JSON 格式：
-${planSchema}`;
-  }
-
-  const replanRequest = plannerQuestion.trim() || (language === 'en'
-    ? 'Replan the remaining dates based on current weather, date limits, must-go priority and day flow.'
-    : '请根据当前天气、日期限制、必去优先级和当天动线，重排剩余日期。');
-  const context = {
-    ...tripContext,
-    fixed_dates_do_not_change: fixedDates.map(summarizeScheduleDate),
-    adjustable_dates: adjustableDates.map(summarizeScheduleDate),
-    remaining_or_adjustable_plans: remainingPlans.map(summarizePlan),
-  };
-
-  if (language === 'en') {
-    return `You are a travel itinerary replanning assistant. Only adjust the remaining itinerary based on the data below. Do not change dates listed in fixed_dates_do_not_change.
-
-User request, prioritize this:
-${replanRequest}
-
-You need to:
-1. Rearrange the dates in adjustable_dates.
-2. Prioritize must-go plans and reduce weather-unsuitable or date-unsuitable choices.
-3. Do not casually move reserved/ticketed plans; call out pending reservations/tickets in the reasons.
-4. Consider lodging check-in/check-out, day start/end and hotel-transfer constraints.
-5. Explain if a plan must be dropped.
-6. Clearly list anything I need to confirm if the adjustment creates risk.
-7. End with JSON so I can import or compare changes manually.
-8. Keep abandoned days and blacklisted places unchanged unless I explicitly ask to restore them. abandoned_stops are date-specific skipped-place records, not global blacklists.
-9. Use past_day_reviews as soft preference signals for pacing, transport load, weather tolerance and reusable day patterns. Do not treat a negative review as a blacklist.
-10. Existing stop map_point and transfer_from_previous.via values are route constraints for evaluating travel time and day flow. This is a schedule-only response: do not invent coordinates, rewrite a plan, or silently assume a required scenic road can be skipped.
-
-Data:
-${JSON.stringify(context, null, 2)}
-
-Please answer in this structure:
-1. Recommended new schedule
-2. Reasons for changes
-3. Unassigned plans and reasons
-4. Risks to confirm
-5. JSON:
-{
-  "schedule": [
-    { "date": "YYYY-MM-DD", "plan_id": "plan_id", "reason": "why this plan fits here" }
-  ],
-  "unassigned": [
-    { "plan_id": "plan_id", "reason": "why it is not scheduled" }
-  ],
-  "warnings": ["items the user needs to confirm"]
-}`;
-  }
-
-  return `你是旅行行程重排助手。请只基于下面的数据调整剩余行程，不要改动 fixed_dates_do_not_change 里的日期。
-
-用户需求，请优先处理：
-${replanRequest}
-
-你需要做：
-1. 重新安排 adjustable_dates 中的日期。
-2. 优先保留必去计划，尽量减少天气不合适和日期不合适。
-3. 已预约/已订票的计划不要随意挪动；未预约/未订票的计划需要在原因里提醒。
-4. 考虑住宿入住/退房、每天出发/返回和换酒店约束。
-5. 如果必须放弃计划，请说明原因。
-6. 如果某个调整会带来风险，请明确列出需要我确认的事项。
-7. 最后输出一个 JSON，方便我手动导入或对照修改。
-8. 除非我明确要求恢复，否则保留已放弃日期和已拉黑地点，不要重新加入规划；abandoned_stops 只是具体日期中没去的地点记录，不等于全局拉黑。
-9. 把 past_day_reviews 当作节奏、交通负担、天气容忍度和可复用路线的软偏好；负面评价不等于拉黑。
-10. 已有 stop 的 map_point 和 transfer_from_previous.via 是评估路程与日程动线的约束。本次只重排日期；不要臆造坐标、改写计划，也不要默认可以跳过必经的景观道路。
-
-数据：
-${JSON.stringify(context, null, 2)}
-
-请按这个格式回答：
-1. 推荐的新日程
-2. 调整原因
-3. 未安排计划及原因
-4. 需要确认的风险
-5. JSON：
-{
-  "schedule": [
-    { "date": "YYYY-MM-DD", "plan_id": "plan_id", "reason": "为什么这样排" }
-  ],
-  "unassigned": [
-    { "plan_id": "plan_id", "reason": "为什么没排进去" }
-  ],
-  "warnings": ["需要用户确认的事项"]
-}`;
+  const { mode, language, tripContext, plannerQuestion, fixedDates, adjustableDates, normalizedPlans, summarizeScheduleDate, summarizePlan } = options;
+  const en = language === 'en';
+  const context = { ...tripContext };
+  delete context.existing_schedule;
+  delete context.existing_plans;
+  context.schedule = [...fixedDates.map((date) => ({ ...summarizeScheduleDate(date), fixed: true })), ...adjustableDates.map(summarizeScheduleDate)];
+  context.plans = (normalizedPlans.length ? normalizedPlans : options.remainingPlans).map(summarizePlan);
+  const request = plannerQuestion?.trim() || (en ? (mode === 'generate' ? 'Add suitable travel plans and lodging options.' : 'Replan the remaining dates and lodging.') : (mode === 'generate' ? '补充适合本次旅行的计划及住宿选项。' : '按当前约束调整剩余日期及住宿。'));
+  const rules = mode === 'generate'
+    ? (en ? 'Use new plan ids when adding candidates. Return complete changed plans; assigned_day is optional.' : '补充候选使用新 id；修改时返回完整计划，assigned_day 可选。') + '\n' + planRules(language)
+    : (en ? 'This is a schedule-and-lodging-only response: do not rewrite existing plans. Respect map_point and transfer_from_previous.via constraints. Return only changed dates; select lodging_id for each changed night. New hotels may be added to lodgings.' : '本次只重排日期和住宿，不改写已有计划；评估交通时保留 map_point 和 transfer_from_previous.via 约束。只输出变动日期，当晚选择放 lodging_id，新增酒店放 lodgings。') + '\n' + lodgingRules(language) + '\n' + locationRules(language);
+  const schema = mode === 'generate' ? getPlanJsonSchema(language) : JSON.stringify({ schedule: [{ date: 'YYYY-MM-DD', plan_id: 'existing_plan_id', lodging_id: 'optional_hotel_id', reason: '' }], lodgings: [lodgingOutputShape()], warnings: [] });
+  return (en ? 'You are a travel planning assistant. Only output importable JSON. Put unresolved issues in warnings.' : '你是旅行规划助手。仅输出可导入 JSON，需要确认的事项放 warnings。') +
+    '\n\n' + (en ? 'User request, prioritize this:' : '用户需求，请优先处理：') + '\n' + request +
+    '\n\n' + (en ? 'Rules:' : '规则：') + '\n' + historyRules(language) + '\n' + rules +
+    '\n\n' + (en ? 'Data (once per id):' : '数据（每个 id 仅一份）：') + '\n' + JSON.stringify(pruneEmptyAiValue(context) || {}) +
+    '\n\n' + (en ? 'Output shape (omit unused optional fields; never copy placeholder ids):' : '输出结构（无用的可选字段可省略，不照抄占位 id）：') + '\n' + schema;
 }
 
 export interface SinglePlanPromptOptions {
@@ -528,64 +211,12 @@ export interface SinglePlanPromptOptions {
   userRequest: string;
 }
 
-export function buildSinglePlanPrompt(options: SinglePlanPromptOptions) {
-  const { language, isCreatingPlan, planContext, userRequest } = options;
-  const schema = getSinglePlanJsonSchema(language);
-
-  return `${language === 'en'
-    ? `You are a single travel-plan editing assistant. ${isCreatingPlan ? 'Add one plan' : 'Modify the current plan'} based on the user request. Only output one plan JSON object.`
-    : `你是旅行单个计划编辑助手。请根据用户需求${isCreatingPlan ? '新增一个计划' : '修改当前计划'}，只输出单个计划 JSON 对象。`}
-
-${language === 'en' ? 'Context:' : '上下文：'}
-${JSON.stringify(planContext, null, 2)}
-
-${language === 'en' ? 'User request, prioritize this:' : '用户需求，请优先处理：'}
-${userRequest}
-
-${language === 'en' ? `Requirements:
-1. ${isCreatingPlan ? 'The new plan id must not duplicate existing_plan_ids.' : 'Keep the current plan id unless the user explicitly asks to change it.'}
-2. Fill plan location.weather_location as an administrative weather lookup object, not a scenic spot. Always set its country_code to the actual country, such as "CN" for mainland China or "JP" for Japan, so map links use the right service. For Japan, use query like "Kawachi-Nagano, Osaka, Japan" and admin1 "Osaka"; do not write concatenated romanization like "Kawachinagano". For stops in the same city/ward as the plan, leave stops.location.weather_location empty so they inherit the plan weather source. Fill stop weather_location only for cross-city or clearly different weather areas. Never use scenic spot, river, station, shop, mall or museum names as weather queries. Fill latitude/longitude only when you are confident.
-3. Put storm in weather_rules.blocked. Heavy rain should usually be blocked; if it is an indoor backup, put heavy_rain in ok, not best.
-4. Fill stops.location.address and bookings.address when possible. Add bookings for reservations, tickets or cancellation/change links. For restaurants that require or strongly benefit from reservation, add a restaurant_reservation booking with status pending unless already booked, plus a short note about when/why to reserve.
-5. If lodging is provided for that date, include the lodging as the first stop, e.g. "Depart from lodging", using the lodging location and weather_relevant false.
-6. stops.time is the arrival/start time at that stop. Do not use stops.time as the departure time of the transfer.
-7. For each stop after the first, fill transfer_from_previous.mode with the actual transport and preferred_route_mode with the map navigation category: walking, transit, or driving. Walking and sightseeing_walk map to walking; train, metro, bus and ferry map to transit; taxi and car map to driving. This preference controls the default directions link, so choose the intended route rather than leaving it blank. Fill depart_at whenever possible because the UI shows the departure time. stops.time is already the arrival/start time, so do not duplicate it in transfer_from_previous. Give only a rough duration, not turn-by-turn directions; the user will check maps later. Use mode "walk" for normal point-to-point walking, short walks between nearby stops, station walking, or ordinary pedestrian transfers. Use "sightseeing_walk" only when the transfer itself is a distinct planned scenic stroll or street-walk activity; if unsure, use "walk".
-8. For stops.opening_hours, only write the hours relevant to the planned arrival time. Do not include seasonal notes, full-day schedules or long caveats; leave it empty if unsure.
-9. If the day should return to lodging, add a final stop such as "Return to lodging" with the lodging location, transfer_from_previous from the previous stop, and weather_relevant false.
-10. Do not call a plan a "loop" just because it starts and ends at lodging. Use loop only for a real circular sightseeing route.
-11. If lodgings are provided, account for day start/end and hotel-transfer constraints.
-12. Avoid repeating the same point across description, reminders and tips. Use description for the day summary and why the flow works; use reminders only for time-sensitive or must-check actions; use tips only for optional general advice.
-13. URL fields such as bookings.url, bookings.cancel_url, reminders[].links[].url, lodging booking/map URLs must be plain https URLs, never Markdown links.
-14. For official sites, realtime status pages, live cameras, booking pages or other URLs in reminders, put them in reminders[].links. Do not put Markdown links or raw URLs inside reminder text.
-15. If the plan fits a specific day, include assigned_day.
-16. Output one plan JSON object only, with no explanation, no array and no outer "plans" wrapper.
-17. Do not add a place listed in blacklisted_places unless the user explicitly asks to restore it. Preserve ids for unchanged stops so date-specific abandoned_stops remain traceable; give new stops distinct stable ids within the plan.
-18. Use past_day_reviews as soft feedback when improving or creating the plan. Do not treat unsatisfied feedback as a hard blacklist.
-19. ${getMapPointGuidance(language)}
-
-Single plan JSON format:
-${schema}` : `要求：
-1. ${isCreatingPlan ? '新增计划 id 不要和 existing_plan_ids 重复。' : '除非用户明确要求，否则保留当前计划 id。'}
-2. 计划 location.weather_location 写成天气查询用行政地点对象，不要用景点名。务必写实际国家的 country_code，例如中国大陆为 "CN"、日本为 "JP"，以便地图链接选择对应服务。日本地点用类似 "Kawachi-Nagano, Osaka, Japan" 的 query，并写 admin1 "Osaka"；不要写 "Kawachinagano" 这种无空格拼接罗马字。同城/同区县 stop 的 stops.location.weather_location 必须留空，继承计划天气；只有跨城或明显不同天气区域才填写 stop 的 weather_location。不要把景点、河流、车站、商场、店铺、博物馆名当作天气查询地点。只有确定坐标时才填 latitude/longitude。
-3. storm 必须放在 weather_rules.blocked；heavy_rain 通常也应 blocked，如果是室内避雨方案，最多放 ok，不要放 best。
-4. stops.location.address 和 bookings.address 尽量写清楚；需要预约、订票或退改入口时写 bookings。餐厅如果需要预约，或强烈建议预约/排队风险较高，也写 restaurant_reservation 类型的 booking；除非已订好，否则 status 用 pending，并在 note 简要说明何时/为什么要预约。
-5. 如果当天有住宿信息，把住宿作为第一个 stop，例如“酒店出发/从住宿出发”，location 使用住宿地点，weather_relevant 为 false。
-6. stops.time 是到达/开始当前 stop 的时间，不是从上一站出发的时间。
-7. 从第二个 stop 起，每段 transfer_from_previous.mode 写实际交通工具，并填写 preferred_route_mode 作为地图默认导航方式，只能选 walking、transit、driving。步行和游玩型步行选 walking；高铁、地铁、公交、轮渡选 transit；出租车和自驾选 driving。这个字段决定点击路线图标时默认打开哪种路径，请按计划意图填写，不要留空。depart_at 尽量填写，因为界面会显示出发时间；stops.time 已经是到达/开始当前 stop 的时间，不要在这里重复。只写粗略耗时，不要写详细换乘路线；用户之后会看地图。普通点到点步行、相邻地点短距离步行、站内步行或普通通勤步行，mode 都写“步行”。只有这段移动本身就是明确安排的观景散步、街区漫步或游览项目时，才写“游玩型步行”；不确定时写“步行”。
-8. stops.opening_hours 只写和计划到达时间相关的开放/营业时间，不要写季节说明、全天完整时间表或很长的注意事项；不确定就留空。
-9. 如果当天应该回住宿，在 stops 最后增加“返回酒店/返回住宿”节点，location 使用住宿地点，transfer_from_previous 写上一站到住宿的移动，weather_relevant 为 false。
-10. 不要因为从酒店出发、回酒店结束，就把计划命名为“环线”；只有真实闭环游览路线才可以叫环线。
-11. 如果提供了 lodgings，把住宿作为当天出发、返回和换酒店约束。
-12. 避免在 description、reminders、tips 里反复写同一件事。description 只写当天概览和动线为什么成立；reminders 只写有时间点、必须确认、必须执行的动作；tips 只写额外建议。
-13. bookings.url、bookings.cancel_url、reminders[].links[].url、住宿 booking/map URL 等 URL 字段只能填写纯 https URL，不要写 Markdown 链接。
-14. 提醒里如果涉及官网、实时状态、实时摄像头、预约页或其他 URL，放到 reminders[].links；不要把 Markdown 链接或裸 URL 写进 text。
-15. 如果计划适合安排到某一天，可以写 assigned_day。
-16. 只输出单个计划 JSON 对象，不要解释，不要数组，不要外层 plans 包装。
-17. 除非用户明确要求恢复，否则不要加入 blacklisted_places 中的地点；未改变的 stop 要保留原 id，确保具体日期的 abandoned_stops 仍能关联；新增 stop 在所属计划内使用不同且稳定的 id。
-18. 优化或新增计划时参考 past_day_reviews 中的软反馈，但不要把“不满意”直接当作地点拉黑。
-19. ${getMapPointGuidance(language)}
-
-单个计划 JSON 格式：
-${schema}`}
-`;
+export function buildSinglePlanPrompt({ language, isCreatingPlan, planContext, userRequest }: SinglePlanPromptOptions) {
+  const en = language === 'en';
+  return (en ? 'Edit one travel plan and its lodging. Output JSON: {plan, lodgings?, warnings?}; lodgings contains only added/changed hotels.' : '编辑单个旅行计划及其住宿。只输出 JSON：{plan, lodgings?, warnings?}；lodgings 仅放新增/修改酒店。') +
+    '\n\n' + (en ? 'User request, prioritize this:' : '用户需求，请优先处理：') + '\n' + userRequest +
+    '\n\n' + (en ? 'Rules:' : '规则：') + '\n' + (isCreatingPlan ? (en ? 'Use a new id distinct from existing_plan_ids.' : '新增计划 id 不得与 existing_plan_ids 重复。') : (en ? 'Keep the current plan id; return the complete edited plan.' : '保留当前计划 id，返回完整修改后计划。')) +
+    '\n' + historyRules(language) + '\n' + planRules(language) +
+    '\n\n' + (en ? 'Context:' : '上下文：') + '\n' + JSON.stringify(pruneEmptyAiValue(planContext) || {}) +
+    '\n\n' + (en ? 'Output shape (omit unused optional fields):' : '输出结构（无用的可选字段可省略）：') + '\n' + JSON.stringify({ plan: planOutputShape(language), lodgings: [lodgingOutputShape()] });
 }

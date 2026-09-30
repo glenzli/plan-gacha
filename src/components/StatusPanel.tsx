@@ -1,6 +1,6 @@
 import { Icon } from './Icon';
 import { RiskGroup } from './RiskPanels';
-import type { RiskGroup as RiskGroupData } from '../domain/risk';
+import type { RiskActionTarget, RiskGroup as RiskGroupData } from '../domain/risk';
 import type { TranslateFn, VoidFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
 
@@ -14,6 +14,8 @@ interface StatusPanelProps {
   language: string;
   translateRiskTitle: (title: string, language: string) => string;
   onEditLodging: VoidFn;
+  onOpenRisk: (target: RiskActionTarget) => void;
+  onOpenChecklist: VoidFn;
   refreshWeather: VoidFn;
   weatherLoading: boolean;
   weatherOverview: WeatherOverview;
@@ -27,6 +29,8 @@ export function StatusPanel({
   language,
   translateRiskTitle,
   onEditLodging,
+  onOpenRisk,
+  onOpenChecklist,
   refreshWeather,
   weatherLoading,
   weatherOverview,
@@ -51,6 +55,8 @@ export function StatusPanel({
             language={language}
             translateRiskTitle={translateRiskTitle}
             onEditLodging={onEditLodging}
+            onOpenRisk={onOpenRisk}
+            onOpenChecklist={onOpenChecklist}
           />
         ))}
       </div>

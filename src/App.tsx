@@ -6,6 +6,9 @@ import { ArchiveTripModal } from './components/ArchiveTripModal';
 import { ArchivedTripRows } from './components/ArchivedTripRows';
 import { ArchivedTripModal } from './components/ArchivedTripModal';
 import { AssignmentImpactModal } from './components/AssignmentImpactModal';
+import { ImportPreviewModal } from './components/ImportPreviewModal';
+import { DayLodgingCard } from './components/LodgingPanel';
+import { NO_LODGING, resolveNightLodging, resolveLodgingStops, nightLodgingLabel, getLodgingTasks, lodgingTaskLabel } from './domain/lodging';
 import { CandidateGroups } from './components/CandidateCards';
 import { ChecklistImportModal } from './components/ChecklistImportModal';
 import { ChecklistModal } from './components/ChecklistModal';
@@ -64,7 +67,7 @@ import {
 import {
   buildWeatherOverview,
 } from './domain/weather';
-import { buildRiskGroups } from './domain/risk';
+import { buildRiskGroups, type RiskActionTarget } from './domain/risk';
 import { addDays, getTodayId } from './domain/date';
 import {
   findDayReview,
@@ -178,6 +181,12 @@ function App() {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorPlanId, setEditorPlanId] = useState<string | null>(null);
+  const [editorInitialMode, setEditorInitialMode] = useState<'content' | 'constraints'>('content');
+  const [editorInitialStopId, setEditorInitialStopId] = useState<string | undefined>();
+  const [editorReturnTarget, setEditorReturnTarget] = useState<'list' | 'itinerary' | 'alternatives'>('list');
+  const [mobileOverviewOpen, setMobileOverviewOpen] = useState(false);
+  const [showingAlternatives, setShowingAlternatives] = useState(false);
+  const [dayFocusRequest, setDayFocusRequest] = useState<{ dateId: string; section: 'heading' | 'bookings' | 'alternatives' } | null>(null);
   const [editorTab, setEditorTab] = useState<EditorTab>('itinerary');
   const [batchAiOpen, setBatchAiOpen] = useState(false);
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
@@ -194,6 +203,9 @@ function App() {
   const [archivePromptIsAutomatic, setArchivePromptIsAutomatic] = useState(false);
 
   const dayTileRefs = useRef<Map<string, HTMLButtonElement | null>>(new Map());
+  const mainDayRef = useRef<HTMLElement | null>(null);
+  const editorReturnFocusRef = useRef<HTMLElement | null>(null);
+  const todayId = getTodayId();
   const aiPlannerQuestionRef = useRef<HTMLTextAreaElement | null>(null);
   const aiPlannerResultRef = useRef<HTMLTextAreaElement | null>(null);
   const importTextRef = useRef<HTMLTextAreaElement | null>(null);
@@ -235,7 +247,6 @@ function App() {
   );
   const {
     applyChecklistSnapshot,
-    checklistDraftRef,
     checklistEditing,
     checklistGroups,
     checklistImportConflicts,
@@ -309,6 +320,7 @@ function App() {
   );
 
   const selectedDateEntry = selectedDate ? schedule[selectedDate.id] : null;
+
   const selectedPlan = selectedDateEntry ? plansById.get(selectedDateEntry.planId) : null;
   const selectedDayAbandoned = selectedDateEntry?.status === ScheduleEntryStatus.Abandoned;
   const selectedDayReview = selectedDate && selectedPlan && !selectedDayAbandoned
@@ -365,8 +377,15 @@ function App() {
     [schedule],
   );
   const lodgingRiskGroup = useMemo(
-    () => buildLodgingRiskGroup(lodgings, hasInitializedPlans || scheduleHasEntries, t('lodgingMissingHelp')),
-    [hasInitializedPlans, lodgings, scheduleHasEntries, t],
+    () => {
+      const items = tripDates.filter((date) => date.id >= todayId).flatMap((date) =>
+        getLodgingTasks(date.id, schedule, plansById, lodgings)
+          .filter((task) => task.type !== 'missing')
+          .map((task) => `D${date.dayNumber} · ${date.display} · ${lodgingTaskLabel(task, t)}`));
+      return items.length ? { title: '住宿待处理', level: 'warning', items, unit: '项' }
+        : buildLodgingRiskGroup(lodgings, hasInitializedPlans || scheduleHasEntries, t('lodgingMissingHelp'));
+    },
+    [hasInitializedPlans, lodgings, scheduleHasEntries, t, tripDates, schedule, plansById, todayId],
   );
   const riskGroups = useMemo(
     () => [
@@ -391,11 +410,11 @@ function App() {
     confirmPendingAssignment,
     pendingAssignment,
     requestAssignPlan,
-    selectNeighborDate,
     setPendingAssignment,
     toggleDayAbandoned,
   } = useScheduleAssignmentController({
     normalizedPlans,
+    lodgings,
     notify,
     plansById,
     riskItems,
@@ -407,6 +426,17 @@ function App() {
     tripDates,
     weatherData,
   });
+
+  useEffect(() => {
+    if (editorOpen || pendingAssignment || !dayFocusRequest || dayFocusRequest.dateId !== selectedDate?.id) return;
+    const frame = window.requestAnimationFrame(() => {
+      const target = mainDayRef.current?.querySelector<HTMLElement>(`[data-day-${dayFocusRequest.section}]`);
+      target?.scrollIntoView({ block: 'start', behavior: 'auto' });
+      target?.focus({ preventScroll: true });
+      setDayFocusRequest(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [dayFocusRequest, selectedDate?.id, showingAlternatives, editorOpen, pendingAssignment]);
 
   const visibleTrips = useMemo(
     () => pruneEmptyTripDrafts(trips, activeTripId).filter((trip) => !trip.archived),
@@ -456,7 +486,6 @@ function App() {
     checklistImportOpen,
     checklistOpen,
     drivePanelOpen,
-    editorOpen,
     importModalOpen,
     language,
     normalizedPlans,
@@ -610,6 +639,9 @@ function App() {
     setArchiveSummary(normalizedTrip.archiveSummary);
     setDayReviewTarget(null);
     setSelectedDateId(getSmartSelectedDate(normalizedTrip.startDateStr, normalizedTrip.tripDays));
+    setMobileOverviewOpen(false);
+    setShowingAlternatives(false);
+    setDayFocusRequest(null);
     clearWeatherError();
   };
 
@@ -827,7 +859,12 @@ function App() {
     });
   };
 
-  const openPlanEditor = (planId: string = NEW_PLAN_EDITOR_ID) => {
+  const openPlanEditor = (planId: string = NEW_PLAN_EDITOR_ID, initialMode: 'content' | 'constraints' = 'content', stopId?: string) => {
+    const trigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    editorReturnFocusRef.current = trigger?.closest('.stop-more-menu')?.querySelector('summary') || trigger;
+    setEditorReturnTarget(editorOpen ? 'list' : showingAlternatives ? 'alternatives' : 'itinerary');
+    setEditorInitialStopId(stopId);
+    setEditorInitialMode(initialMode);
     startUiTransition(() => {
       setEditorPlanId(planId);
       setEditorTab('itinerary');
@@ -852,10 +889,28 @@ function App() {
 
   const closePlanEditor = () => {
     setEditorPlanId(null);
+    setEditorInitialStopId(undefined);
+    if (editorReturnTarget !== 'list') setEditorOpen(false);
+    restoreEditorFocus();
+  };
+
+  const restoreEditorFocus = () => {
+    window.requestAnimationFrame(() => {
+      const trigger = editorReturnFocusRef.current;
+      if (trigger?.isConnected && trigger.getClientRects().length) trigger.focus({ preventScroll: true });
+    });
+  };
+
+  const closeTripEditor = () => {
+    setEditorOpen(false);
+    restoreEditorFocus();
   };
 
   const {
     applyAiPlannerResult,
+    pendingImport,
+    confirmImport,
+    cancelImportPreview,
     applyPlanEditDraft,
     parseSinglePlanDraft,
     handleChecklistImportFile,
@@ -865,6 +920,7 @@ function App() {
     handleTripImportFile,
   } = useJsonPayloadController({
     aiPlannerResultRef,
+    planningFrom: selectedDate?.id || startDateStr,
     archiveSummary,
     checklistState,
     checklistText,
@@ -1016,22 +1072,30 @@ function App() {
     notify(t('archivedRestored'));
   };
 
-  const scrollToScheduleDate = (dateId: string) => {
-    if (!window.matchMedia('(max-width: 560px)').matches) return;
-
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        dayTileRefs.current.get(dateId)?.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start',
-        });
-      });
-    });
+  const selectScheduleDate = (dateId: string) => {
+    setSelectedDateId(dateId);
+    setMobileOverviewOpen(false);
+    setMobileRisksOpen(false);
+    setShowingAlternatives(false);
+    setDayFocusRequest({ dateId, section: 'heading' });
   };
 
-  const selectScheduleDate = (dateId: string, options: { scroll?: boolean } = {}) => {
-    setSelectedDateId(dateId);
-    if (options.scroll) scrollToScheduleDate(dateId);
+  const showDayAlternatives = () => {
+    if (!selectedDate) return;
+    setShowingAlternatives(true);
+    setDayFocusRequest({ dateId: selectedDate.id, section: 'heading' });
+  };
+
+  const openRisk = (target: RiskActionTarget) => {
+    if (!plansById.has(target.planId)) return;
+    if (target.dateId) selectScheduleDate(target.dateId);
+    if (target.section === 'constraints' || !target.dateId) {
+      setDayFocusRequest(null);
+      openPlanEditor(target.planId, 'constraints');
+    } else {
+      setShowingAlternatives(target.section === 'alternatives');
+      setDayFocusRequest({ dateId: target.dateId, section: target.section === 'alternatives' ? 'heading' : 'bookings' });
+    }
   };
 
   const copyText = async (text: string, message: string) => {
@@ -1182,7 +1246,8 @@ function App() {
 
   const renderPlanStops = (plan: NormalizedPlan | null | undefined, options: PlanRenderOptions = {}) => plan ? (
     <PlanStops
-      plan={plan}
+      plan={options.dateId && !options.readOnly ? resolveLodgingStops(plan, options.dateId,
+        { ...schedule, [options.dateId]: { ...(schedule[options.dateId]?.planId === plan.id || schedule[options.dateId]?.lodgingLocked ? schedule[options.dateId] : {}), planId: plan.id } }, plansById, lodgings) : plan}
       t={t}
       language={language}
       mapPreferences={mapPreferences}
@@ -1190,6 +1255,7 @@ function App() {
       dateId={options.dateId}
       onToggleStopAbandoned={toggleStopAbandoned}
       onTogglePlaceBlacklist={togglePlaceBlacklist}
+      onEditStop={(planId, stopId) => openPlanEditor(planId, 'content', stopId)}
       placeFeedback={options.placeFeedback || placeFeedback}
       stopOutcomes={options.stopOutcomes || stopOutcomes}
       readOnly={options.readOnly}
@@ -1213,17 +1279,25 @@ function App() {
 
   const renderCandidateGroups = (gridClassName: string = 'plan-grid') => (
     <CandidateGroups
+      key={`${activeTripId}-${selectedDate?.id}`}
       candidateGroups={candidateGroups}
       gridClassName={gridClassName}
       t={t}
       language={language}
       tripDates={tripDates}
       selectedDate={selectedDate}
-      requestAssignPlan={requestAssignPlan}
+      requestAssignPlan={(dateId, planId) => {
+        if (requestAssignPlan(dateId, planId)) selectScheduleDate(dateId);
+      }}
       openPlanEditor={openPlanEditor}
       getPriorityLabel={getPriorityLabel}
       getPlanBookingBadge={getPlanBookingBadge}
       getBlacklistedStopCount={(plan) => countBlacklistedPlanStops(plan, placeFeedback)}
+      getLodgingLabel={(plan) => {
+        if (!selectedDate) return '';
+        const night = resolveNightLodging(selectedDate.id, { ...schedule, [selectedDate.id]: { ...(schedule[selectedDate.id]?.lodgingLocked ? schedule[selectedDate.id] : {}), planId: plan.id } }, plansById, lodgings);
+        return night.status === 'missing' ? '' : nightLodgingLabel(night, t);
+      }}
       renderPlanStops={renderPlanStops}
       renderPlanBookings={renderPlanBookings}
       renderPlanNotes={renderPlanNotes}
@@ -1232,7 +1306,23 @@ function App() {
 
   const renderCurrentPlanCard = (className: string) => (
     <CurrentPlanCard
+      availableCandidateCount={availableCandidateCount}
+      onShowAlternatives={showDayAlternatives}
       className={className}
+      lodgingContent={selectedDate && <DayLodgingCard key={selectedDate.id} dateId={selectedDate.id} schedule={schedule} plans={plansById} lodgings={lodgings} mapPreferences={mapPreferences} t={t}
+        onChoose={(id) => setSchedule((current) => {
+          const entry = { ...current[selectedDate.id], planId: current[selectedDate.id]?.planId || '' };
+          if (id) entry.lodgingId = id;
+          else { delete entry.lodgingId; delete entry.lodgingLocked; }
+          return { ...current, [selectedDate.id]: entry };
+        })}
+        onLock={(locked) => setSchedule((current) => {
+          const night = resolveNightLodging(selectedDate.id, current, plansById, lodgings);
+          return { ...current, [selectedDate.id]: { ...current[selectedDate.id], planId: current[selectedDate.id]?.planId || '', lodgingId: night.selected?.id || NO_LODGING, lodgingLocked: locked } };
+        })}
+        onBooked={(id) => setLodgings((current) => current.map((hotel) => hotel.id === id ? { ...hotel, reservations: [...(hotel.reservations || []), { id: `reservation-${Date.now()}`, checkIn: selectedDate.id, checkOut: addDays(selectedDate.id, 1), status: 'booked', cancelBy: '', cancelUrl: '', note: '' }] } : hotel))}
+        onManage={openLodgingEditor}
+      />}
       selectedDate={selectedDate}
       selectedPlan={selectedPlan}
       currentCandidate={selectedDayAbandoned ? null : currentCandidate}
@@ -1374,7 +1464,11 @@ function App() {
       {hasInitializedPlans ? (
         <main className="app-layout">
           <SchedulePanel
-            availableCandidateCount={availableCandidateCount}
+            mobileOverviewOpen={mobileOverviewOpen}
+            onToggleOverview={() => setMobileOverviewOpen((open) => !open)}
+            todayId={todayId}
+            onOpenRisk={openRisk}
+            onOpenChecklist={openChecklist}
             dayTileRefs={dayTileRefs}
             formatMiniDate={formatMiniDate}
             getCalendarDayState={getCalendarDayState}
@@ -1385,8 +1479,6 @@ function App() {
             onEditLodging={openLodgingEditor}
             onToggleMobileRisks={() => setMobileRisksOpen((current) => !current)}
             plansById={plansById}
-            renderCandidateGroups={renderCandidateGroups}
-            renderCurrentPlanCard={renderCurrentPlanCard}
             riskGroups={riskGroups}
             schedule={schedule}
             dayReviews={dayReviews}
@@ -1399,10 +1491,17 @@ function App() {
           />
 
           <MainDayPanel
+            panelRef={mainDayRef}
+            todayId={todayId}
+            canReturnToToday={tripDates.some((date) => date.id === todayId)}
+            onReturnToToday={() => selectScheduleDate(todayId)}
+            showingAlternatives={showingAlternatives}
+            onReturnToItinerary={() => selectedDate && selectScheduleDate(selectedDate.id)}
+            mobileOverviewOpen={mobileOverviewOpen}
             availableCandidateCount={availableCandidateCount}
             renderCandidateGroups={renderCandidateGroups}
             renderCurrentPlanCard={renderCurrentPlanCard}
-            selectNeighborDate={selectNeighborDate}
+            selectNeighborDate={(step) => { const date = tripDates[selectedIndex + step]; if (date) selectScheduleDate(date.id); }}
             selectedDate={selectedDate}
             selectedIndex={selectedIndex}
             t={t}
@@ -1410,6 +1509,8 @@ function App() {
           />
 
           <StatusPanel
+            onOpenRisk={openRisk}
+            onOpenChecklist={openChecklist}
             riskGroups={riskGroups}
             t={t}
             language={language}
@@ -1438,6 +1539,9 @@ function App() {
 
       {editorOpen && (
         <TripEditorModal
+          editorInitialMode={editorInitialMode}
+          editorInitialStopId={editorInitialStopId}
+          editorBackLabel={t(editorReturnTarget === 'list' ? 'backToList' : editorReturnTarget === 'alternatives' ? 'backToAlternatives' : 'backToItinerary')}
           activeTripId={activeTripId}
           aiGenerateText={aiGenerateText}
           aiPlannerQuestionRef={aiPlannerQuestionRef}
@@ -1466,7 +1570,7 @@ function App() {
           normalizedPlans={normalizedPlans}
           onChangeEndDate={changeEditorEndDate}
           onChangeStartDate={changeEditorStartDate}
-          onClose={() => setEditorOpen(false)}
+          onClose={closeTripEditor}
           onCommitTripName={setTripName}
           onOpenImport={openImportModal}
           onOpenPlanEditor={openPlanEditor}
@@ -1513,12 +1617,12 @@ function App() {
 
       {checklistOpen && (
         <ChecklistModal
-          checklistDraftRef={checklistDraftRef}
           checklistEditing={checklistEditing}
           checklistGroups={checklistGroups}
           checklistState={checklistState}
           checklistStats={checklistStats}
           checklistText={checklistText}
+          language={language}
           handleExportChecklist={handleExportChecklist}
           loadChecklistExample={loadChecklistExample}
           onClose={() => setChecklistOpen(false)}
@@ -1618,13 +1722,14 @@ function App() {
         <AssignmentImpactModal
           language={language}
           onClose={() => setPendingAssignment(null)}
-          onConfirm={confirmPendingAssignment}
+          onConfirm={() => { const dateId = pendingAssignment.dateId; confirmPendingAssignment(); selectScheduleDate(dateId); }}
           pendingAssignment={pendingAssignment}
           t={t}
           translateIssue={translateIssue}
           translateRiskTitle={translateRiskTitle}
         />
       )}
+      {pendingImport && <ImportPreviewModal preview={pendingImport.preview} warnings={Array.isArray(pendingImport.parsed.warnings) ? pendingImport.parsed.warnings.map(String) : []} t={t} onClose={cancelImportPreview} onConfirm={confirmImport} />}
 
       {dayReviewTarget && (
         <DayReviewModal

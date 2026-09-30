@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { PlanConstraintEditor } from './PlanConstraintEditor';
 import { PlanContentEditor } from './PlanContentEditor';
+import { LodgingImpactList, PlanLodgingEditor } from './LodgingPanel';
+import { getLodgingImpacts, mergeLodgings, resolveLodgingStops, type NormalizedLodging } from '../domain/lodging';
 import { evaluateWeather } from '../domain/dayInsight';
 import { translateIssue, type DisplayTripDate } from '../domain/display';
 import { applyPlanConstraintDraft, getPlanConstraintDraft, getPlanEditImpacts } from '../domain/planConstraints';
@@ -11,15 +13,19 @@ import type { WeatherDataMap } from '../types/weatherData';
 import type { PlanRenderer, TranslateFn } from '../types/ui';
 
 interface PlanEditorDetailProps {
+  initialMode?: 'content' | 'constraints';
+  initialStopId?: string;
+  backLabel: string;
   editorPlan: NormalizedPlan | null | undefined;
   initialDraftJson: string;
   isCreatingPlan: boolean;
   language: string;
   t: TranslateFn;
   onBack: () => void;
-  onCopyPrompt: (question: string, draft: NormalizedPlan, assignedDay: string) => void;
+  onCopyPrompt: (question: string, draft: NormalizedPlan, assignedDay: string, hotels?: NormalizedLodging[]) => void;
   onApplyDraft: (draftJson: string) => void;
-  parseDraft: (draftJson: string) => PlanEditDraft;
+  parseDraft: (draftJson: string, hotels?: NormalizedLodging[]) => PlanEditDraft;
+  lodgings: NormalizedLodging[];
   onDirtyChange: (dirty: boolean) => void;
   plans: NormalizedPlan[];
   schedule: NormalizedSchedule;
@@ -31,8 +37,11 @@ interface PlanEditorDetailProps {
 }
 
 export function PlanEditorDetail({
+  initialMode = 'content',
+  initialStopId,
+  backLabel,
   isCreatingPlan, editorPlan, initialDraftJson, language, t, onBack, onCopyPrompt,
-  onApplyDraft, parseDraft, onDirtyChange, plans, schedule, tripDates, weatherData,
+  onApplyDraft, parseDraft, onDirtyChange, plans, schedule, tripDates, weatherData, lodgings,
   renderPlanStops, renderPlanBookings, renderPlanNotes,
 }: PlanEditorDetailProps) {
   const [initialDraft] = useState<PlanEditDraft>(() => {
@@ -41,7 +50,7 @@ export function PlanEditorDetail({
   });
   const [draft, setDraft] = useState(initialDraft);
   const [locationSource, setLocationSource] = useState(initialDraft.plan);
-  const [mode, setMode] = useState<'content' | 'constraints' | 'ai'>(isCreatingPlan ? 'ai' : 'content');
+  const [mode, setMode] = useState<'content' | 'constraints' | 'ai'>(isCreatingPlan ? 'ai' : initialMode);
   const [question, setQuestion] = useState('');
   const [resultJson, setResultJson] = useState('');
   const [readError, setReadError] = useState('');
@@ -52,13 +61,18 @@ export function PlanEditorDetail({
   const dirty = changed || hasPendingResult || Boolean(question.trim());
   const nextPlans = useMemo(() => isCreatingPlan ? [...plans, draft.plan] : plans.map((plan) => plan.id === editorPlan?.id ? draft.plan : updateRelatedPlan(plan, editorPlan?.id || null, draft.plan)), [plans, draft.plan, editorPlan, isCreatingPlan]);
   const nextSchedule = useMemo(() => getEditedPlanSchedule(schedule, editorPlan?.id || null, draft.plan.id, draft.assignedDay), [schedule, editorPlan, draft]);
+  const hotels = useMemo(() => mergeLodgings(lodgings, draft.lodgings || [], true), [lodgings, draft.lodgings]);
+  const hotelChanges = hotels.filter((hotel) => JSON.stringify(lodgings.find((saved) => saved.id === hotel.id)) !== JSON.stringify(hotel));
+  const lodgingImpacts = getLodgingImpacts(schedule, nextSchedule, new Map(plans.map((plan) => [plan.id, plan])), new Map(nextPlans.map((plan) => [plan.id, plan])), lodgings, hotels, tripDates.map((date) => date.id));
+  const previewPlan = draft.assignedDay ? resolveLodgingStops(draft.plan, draft.assignedDay, nextSchedule, new Map(nextPlans.map((plan) => [plan.id, plan])), hotels) : draft.plan;
   const impacts = useMemo(() => getPlanEditImpacts(plans, nextPlans, schedule, nextSchedule, weatherData, evaluateWeather), [plans, nextPlans, schedule, nextSchedule, weatherData]);
   const replacedPlanId = draft.assignedDay !== initialDraft.assignedDay ? schedule[draft.assignedDay]?.planId : null;
   const replacedPlan = plans.find((plan) => plan.id === replacedPlanId && plan.id !== editorPlan?.id);
-  const hasImpacts = Boolean(impacts.length || replacedPlan);
+  const hasImpacts = Boolean(impacts.length || replacedPlan || lodgingImpacts.length);
   const validationMessage = !draft.plan.name.trim() ? t('planNameRequired')
     : !draft.plan.stops.length || draft.plan.stops.some((stop) => !stop.title.trim() && !stop.location.label.trim()) ? t('planStopsRequired')
-      : !tripDates.some((date) => draft.plan.available_dates.includes(date.id) && !draft.plan.closed_dates.includes(date.id)) ? t('constraintNoAvailableDate') : '';
+      : draft.plan.lodging?.mode === 'options' && !draft.plan.lodging.optionIds.length ? t('lodgingReferenceMissing')
+        : !tripDates.some((date) => draft.plan.available_dates.includes(date.id) && !draft.plan.closed_dates.includes(date.id)) ? t('constraintNoAvailableDate') : '';
 
   useEffect(() => { onDirtyChange(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
@@ -71,7 +85,7 @@ export function PlanEditorDetail({
 
   const readResult = () => {
     try {
-      const next = parseDraft(resultJson);
+      const next = parseDraft(resultJson, hotels);
       setDraft(next);
       setLocationSource(next.plan);
       setResultJson('');
@@ -80,20 +94,20 @@ export function PlanEditorDetail({
       setReadVersion((version) => version + 1);
       setMode('content');
     } catch (error) {
-      setReadError(error instanceof Error ? error.message : String(error));
+      setReadError(t(error instanceof Error ? error.message : String(error)));
     }
   };
 
   return (
     <div className="plan-editor-detail">
       <div className="plan-editor-topline">
-        <button className="btn btn-small btn-outline" type="button" onClick={onBack}>{t('backToList')}</button>
+        <button className="btn btn-small btn-outline" type="button" onClick={onBack}>‹ {backLabel}</button>
         <span className="editor-draft-status">{dirty || isCreatingPlan ? t('draftUnsaved') : t('draftSaved')}</span>
       </div>
       <div className="plan-editor-heading"><h3>{isCreatingPlan ? t('addPlan') : editorPlan?.name || t('planMissing')}</h3></div>
       <div className="editor-tabs plan-editor-mode-tabs has-constraints" role="tablist" aria-label={t('editSinglePlan')}>
         {(['content', 'constraints', 'ai'] as const).map((tab) => (
-          <button key={tab} className={mode === tab ? 'is-active' : ''} type="button" role="tab" aria-selected={mode === tab} aria-controls={`plan-editor-${tab}`} id={`plan-editor-tab-${tab}`} onClick={() => setMode(tab)}>
+          <button key={tab} className={mode === tab ? 'is-active' : ''} type="button" role="tab" autoFocus={mode === tab} aria-selected={mode === tab} aria-controls={`plan-editor-${tab}`} id={`plan-editor-tab-${tab}`} onClick={() => setMode(tab)}>
             {t(tab === 'content' ? 'contentEditTab' : tab === 'constraints' ? 'constraintTab' : 'aiEditTab')}
           </button>
         ))}
@@ -101,7 +115,9 @@ export function PlanEditorDetail({
       {resultLoaded && <p className="editor-inline-notice" role="status">{t('planResultLoaded')}</p>}
 
       <div className="plan-editor-pane" id="plan-editor-content" role="tabpanel" aria-labelledby="plan-editor-tab-content" hidden={mode !== 'content'}>
-        <PlanContentEditor key={readVersion} plan={draft.plan} locationSource={locationSource} onChange={(plan) => setDraft({ ...draft, plan })} t={t} />
+        <PlanContentEditor key={readVersion} initialStopId={readVersion === 0 ? initialStopId : undefined} plan={draft.plan} locationSource={locationSource} onChange={(plan) => setDraft({ ...draft, plan })} t={t} />
+        <PlanLodgingEditor plan={draft.plan} hotels={hotels} onChange={(plan) => setDraft({ ...draft, plan })} t={t} />
+        {hotelChanges.length > 0 && <div className="lodging-impact-item"><strong>{t('lodgingProposedHotels')}</strong>{hotelChanges.map((hotel) => <p key={hotel.id}>{hotel.name} · {hotel.location.address}</p>)}</div>}
       </div>
       <div className="plan-editor-pane" id="plan-editor-constraints" role="tabpanel" aria-labelledby="plan-editor-tab-constraints" hidden={mode !== 'constraints'}>
         <PlanConstraintEditor language={language} draft={getPlanConstraintDraft(draft.plan)} onChange={(constraints) => setDraft({ ...draft, plan: applyPlanConstraintDraft(draft.plan, constraints) })} plan={draft.plan} plans={nextPlans} t={t} tripDates={tripDates} />
@@ -109,7 +125,7 @@ export function PlanEditorDetail({
       <div className="plan-editor-pane plan-editor-ai-pane" id="plan-editor-ai" role="tabpanel" aria-labelledby="plan-editor-tab-ai" hidden={mode !== 'ai'}>
         <p className="editor-help">{t('planAiSteps')}</p>
         <label><span>{t('yourRequest')}</span><textarea className="textarea plan-ai-question" value={question} placeholder={isCreatingPlan ? t('newPlanPlaceholder') : t('editPlanPlaceholder')} onChange={(event) => setQuestion(event.target.value)} /></label>
-        <div className="plan-ai-copy-row"><button className="btn btn-outline" type="button" onClick={() => onCopyPrompt(question, draft.plan, draft.assignedDay)}>{t('copyToAi')}</button></div>
+        <div className="plan-ai-copy-row"><button className="btn btn-outline" type="button" onClick={() => onCopyPrompt(question, draft.plan, draft.assignedDay, hotels)}>{t('copyToAi')}</button></div>
         <label><span>{t('aiResult')}</span><textarea className="textarea plan-ai-result" value={resultJson} placeholder={t('planAiResultPlaceholder')} spellCheck={false} onChange={(event) => { setResultJson(event.target.value); setReadError(''); }} /></label>
         {readError && <p className="constraint-error" role="alert">{readError}</p>}
         <div className="plan-result-actions">
@@ -127,11 +143,13 @@ export function PlanEditorDetail({
           {impacts.length > 0 && <ul>{impacts.map((impact) => <li key={`${impact.dateId}-${impact.planName}`}><strong>{impact.dateId} · {impact.planName}</strong><span>{impact.reasons.map((reason) => translateIssue(reason, language)).join(' / ')}</span></li>)}</ul>}
         </div>
       )}
+      {draft.warnings?.length ? <ul className="lodging-tasks">{draft.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul> : null}
+      <LodgingImpactList impacts={lodgingImpacts} t={t} />
       <details className="plan-editor-preview">
         <summary>{t('previewEditedPlan')}</summary>
         <section className="plan-editor-current">
           <h2>{draft.plan.name}</h2><p>{draft.plan.description}</p>
-          {renderPlanStops(draft.plan, { readOnly: true })}
+          {renderPlanStops(previewPlan, { readOnly: true })}
           {renderPlanBookings(draft.plan, { readOnly: true })}
           {renderPlanNotes(draft.plan, { readOnly: true })}
         </section>

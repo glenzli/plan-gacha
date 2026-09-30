@@ -1,9 +1,12 @@
 import type { NormalizedLocation, NormalizedPlan, PlanStop } from './plan';
 import { ScheduleEntryStatus, type NormalizedSchedule } from './trip';
+import type { NormalizedLodging } from './lodging';
 
 export interface PlanEditDraft {
   plan: NormalizedPlan;
   assignedDay: string;
+  lodgings?: NormalizedLodging[];
+  warnings?: string[];
 }
 
 export function getEditablePlan(plan: NormalizedPlan, plans: NormalizedPlan[]): NormalizedPlan {
@@ -51,15 +54,22 @@ export function getEditedPlanSchedule(
   Object.entries(schedule).forEach(([dateId, entry]) => {
     if (!entry) return;
     const belongsToPlan = entry.planId === previousPlanId;
-    if (belongsToPlan && assignedDay && dateId !== assignedDay && entry.status !== ScheduleEntryStatus.Abandoned) return;
+    if (belongsToPlan && assignedDay && dateId !== assignedDay && entry.status !== ScheduleEntryStatus.Abandoned) {
+      if (entry.lodgingLocked) next[dateId] = { planId: '', lodgingId: entry.lodgingId, lodgingLocked: true };
+      return;
+    }
     next[dateId] = belongsToPlan ? { ...entry, planId } : entry;
   });
-  if (assignedDay && next[assignedDay]?.planId !== planId) next[assignedDay] = { planId };
+  if (assignedDay && next[assignedDay]?.planId !== planId) next[assignedDay] = {
+    planId,
+    ...(schedule[assignedDay]?.lodgingLocked ? { lodgingId: schedule[assignedDay].lodgingId, lodgingLocked: true } : {}),
+  };
   return next;
 }
 
 export function serializePlanEditDraft(draft: PlanEditDraft): string {
   // Persist the complete normalized model, including stable stop/reminder IDs
   // and transfer metadata that the compact AI prompt intentionally omits.
-  return JSON.stringify({ ...draft.plan, assigned_day: draft.assignedDay }, null, 2);
+  const plan = { ...draft.plan, assigned_day: draft.assignedDay };
+  return JSON.stringify(draft.lodgings?.length || draft.warnings?.length ? { plan, lodgings: draft.lodgings, warnings: draft.warnings } : plan, null, 2);
 }

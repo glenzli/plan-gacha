@@ -43,6 +43,7 @@ interface PlanStopsProps {
   dateId?: string;
   onToggleStopAbandoned?: (dateId: string, planId: string, stopId: string, stopTitle: string) => void;
   onTogglePlaceBlacklist?: (location: NormalizedLocation) => void;
+  onEditStop?: (planId: string, stopId: string) => void;
   placeFeedback?: NormalizedPlaceFeedback;
   stopOutcomes?: NormalizedStopOutcomes;
   readOnly?: boolean;
@@ -89,6 +90,7 @@ export function PlanStops({
   dateId,
   onToggleStopAbandoned,
   onTogglePlaceBlacklist,
+  onEditStop,
   placeFeedback = {},
   stopOutcomes = {},
   readOnly = false,
@@ -100,7 +102,7 @@ export function PlanStops({
   return (
     <ol className="stop-list" aria-label={t('stopsAria', { name: plan.name })}>
       {plan.stops.map((stop, index) => {
-        const previousStop = index > 0 ? plan.stops[index - 1] : null;
+        const previousStop = index > 0 && !stop.lodgingUnresolved && !plan.stops[index - 1].lodgingUnresolved ? plan.stops[index - 1] : null;
         const preferredRouteMode = getPreferredMapRouteMode(stop.transferFromPrevious);
         const routeModes: MapRouteMode[] = preferredRouteMode
           ? [preferredRouteMode, ...(['transit', 'driving', 'walking'] as MapRouteMode[]).filter((mode) => mode !== preferredRouteMode)]
@@ -164,13 +166,13 @@ export function PlanStops({
             )}
             <li className={`stop-item ${abandoned ? 'is-abandoned-stop' : ''} ${blacklisted ? 'is-blacklisted' : ''}`}>
               <span className="stop-time">{stop.time || t('flexible')}</span>
-              <span className="stop-detail">
+              <div className="stop-detail">
                 <span className="stop-title-row">
                   <strong>{stop.title}</strong>
                   {abandoned && <span className="stop-outcome-badge">{t('stopAbandoned')}</span>}
                   {blacklisted && <span className="place-feedback-badge">{t('placeBlacklisted')}</span>}
                 </span>
-                <span className="stop-location">
+                <div className="stop-location">
                   <span className="stop-location-text">
                     <span className="stop-location-line">
                       <span className="stop-location-label">{stop.location.label}</span>
@@ -182,12 +184,12 @@ export function PlanStops({
                       )}
                     </span>
                   </span>
-                  <span className="stop-location-actions">
+                  {!stop.lodgingUnresolved && <div className="stop-location-actions">
                     {previousStop && (
                       <span className="stop-route-menu">
                         {directRoute ? (
                           <a
-                            className="stop-location-action"
+                            className="stop-location-action stop-primary-action"
                             href={directRoute.url}
                             target="_blank"
                             rel="noreferrer"
@@ -198,7 +200,7 @@ export function PlanStops({
                           </a>
                         ) : (
                           <button
-                            className="stop-location-action"
+                            className="stop-location-action stop-primary-action"
                             type="button"
                             aria-label={t('openRouteInMaps')}
                             title={t('openRouteInMaps')}
@@ -240,7 +242,7 @@ export function PlanStops({
                     )}
                     {mapsLink.url && (
                       <a
-                        className="stop-location-action"
+                        className={`stop-location-action ${!previousStop ? 'stop-primary-action' : ''}`}
                         href={mapsLink.url}
                         target="_blank"
                         rel="noreferrer"
@@ -257,8 +259,21 @@ export function PlanStops({
                         onClick={() => onCopyPlace(copyValue)}
                         aria-label={t('copyPlace')}
                         title={t('copyPlace')}
+                        data-screenshot-exclude="true"
                       >
                         <Icon name="copy" />
+                      </button>
+                    )}
+                    {!readOnly && onEditStop && (
+                      <button
+                        className="stop-location-action"
+                        type="button"
+                        onClick={() => onEditStop(plan.id, stop.id)}
+                        aria-label={t('editThisStop')}
+                        title={t('editThisStop')}
+                        data-screenshot-exclude="true"
+                      >
+                        <Icon name="pencil" />
                       </button>
                     )}
                     {!readOnly && dateId && onToggleStopAbandoned && (
@@ -268,8 +283,10 @@ export function PlanStops({
                         onClick={() => onToggleStopAbandoned(dateId, plan.id, stop.id, stop.title)}
                         aria-label={abandoned ? t('restoreAbandonedStop') : t('abandonStop')}
                         title={abandoned ? t('restoreAbandonedStop') : t('abandonStop')}
+                        aria-pressed={abandoned}
+                        data-screenshot-exclude="true"
                       >
-                          <Icon name="mapPinX" />
+                        <Icon name="mapPinX" />
                       </button>
                     )}
                     {!readOnly && onTogglePlaceBlacklist && (
@@ -279,14 +296,18 @@ export function PlanStops({
                         onClick={() => onTogglePlaceBlacklist(stop.location)}
                         aria-label={blacklisted ? t('removePlaceBlacklist') : t('blacklistPlace')}
                         title={blacklisted ? t('removePlaceBlacklist') : t('blacklistPlace')}
+                        aria-pressed={blacklisted}
+                        data-screenshot-exclude="true"
                       >
                         <Icon name="ban" />
                       </button>
                     )}
-                  </span>
-                </span>
+                  </div>}
+                </div>
+                {stop.lodgingUnresolved && <em className="lodging-route-notice">{t('lodgingRouteUnresolved')}</em>}
+                {stop.lodgingRouteChanged && !stop.lodgingUnresolved && <em className="lodging-route-notice">{t('lodgingRouteChanged')}</em>}
                 {stop.note && <em>{stop.note}</em>}
-              </span>
+              </div>
             </li>
           </Fragment>
         );

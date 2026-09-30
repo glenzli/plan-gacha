@@ -8,6 +8,7 @@ import {
   parseChecklistImportPayload,
   parseChecklistText,
   reconcileChecklistStateForGroups,
+  serializeChecklistDraft,
 } from './checklist';
 
 describe('checklist parsing', () => {
@@ -82,6 +83,69 @@ describe('checklist parsing', () => {
 确认交通票
 确认酒店入住信息
 检查预约和门票`, {})).toBe(true);
+  });
+});
+
+describe('checklist category editing', () => {
+  it('retains done and skipped statuses when categories and items are renamed', () => {
+    const groups = parseChecklistText('# 证件\n护照\n驾照');
+    groups[0].title = '随身证件';
+    groups[0].items[0].text = '身份证 / 护照';
+    const saved = serializeChecklistDraft(groups, {
+      '证件::护照': CHECKLIST_STATUS.done,
+      '证件::驾照': CHECKLIST_STATUS.skipped,
+    });
+    expect(saved.checklistState).toEqual({
+      '随身证件::身份证 / 护照': CHECKLIST_STATUS.done,
+      '随身证件::驾照': CHECKLIST_STATUS.skipped,
+    });
+    const reopened = parseChecklistText(saved.checklistText);
+    expect(reopened).toEqual(saved.groups);
+    expect(serializeChecklistDraft(reopened, saved.checklistState)).toEqual(saved);
+  });
+
+  it('re-keys remaining duplicates without borrowing the removed item status', () => {
+    const groups = parseChecklistText('# 行李\n充电器\n充电器\n充电器');
+    groups[0].items.splice(0, 1);
+    groups[0].items.push({ id: 'new-item', text: '充电器' });
+    const saved = serializeChecklistDraft(groups, {
+      '行李::充电器': CHECKLIST_STATUS.done,
+      '行李::充电器::2': CHECKLIST_STATUS.skipped,
+      '行李::充电器::3': CHECKLIST_STATUS.done,
+    });
+    expect(saved.checklistState).toEqual({
+      '行李::充电器': CHECKLIST_STATUS.skipped,
+      '行李::充电器::2': CHECKLIST_STATUS.done,
+    });
+  });
+
+  it('keeps uncategorized items and literal heading/bullet text through raw round trips', () => {
+    const groups = parseChecklistText('证件\n# 其他\n雨伞');
+    groups[1].items.push({ id: 'new-hash', text: '# 标签' }, { id: 'new-bullet', text: '- [x] 样例' });
+    const saved = serializeChecklistDraft(groups, { '__uncategorized__::证件': CHECKLIST_STATUS.done });
+    expect(saved.groups.map((group) => group.id)).toEqual(['__uncategorized__', '其他']);
+    expect(saved.groups[1].items.map((item) => item.text)).toEqual(['雨伞', '# 标签', '- [x] 样例']);
+    expect(saved.checklistState).toEqual({ '__uncategorized__::证件': CHECKLIST_STATUS.done });
+  });
+
+  it('keeps empty categories available in the editor without counting empty draft rows', () => {
+    const groups = parseChecklistText('# 出发前\n# 衣物\n外套', 'zh', { keepEmptyGroups: true });
+    expect(groups).toHaveLength(2);
+    groups[0].items.push({ id: 'blank', text: '  ' });
+    const saved = serializeChecklistDraft(groups, {});
+    expect(parseChecklistText(saved.checklistText, 'zh', { keepEmptyGroups: true })).toHaveLength(2);
+    expect(getChecklistStats(saved.groups, saved.checklistState).total).toBe(1);
+    expect(serializeChecklistDraft([], {}).checklistText).toBe('');
+  });
+
+  it('combines same-name categories consistently and rejects a blank category name', () => {
+    const groups = parseChecklistText('# A\n雨伞\n# B\n雨伞');
+    groups[1].title = 'A';
+    const saved = serializeChecklistDraft(groups, { 'B::雨伞': CHECKLIST_STATUS.done });
+    expect(saved.groups).toHaveLength(1);
+    expect(saved.checklistState).toEqual({ 'A::雨伞::2': CHECKLIST_STATUS.done });
+    groups[0].title = ' ';
+    expect(() => serializeChecklistDraft(groups, {})).toThrow('checklistCategoryRequired');
   });
 });
 

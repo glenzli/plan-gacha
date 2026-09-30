@@ -1,4 +1,4 @@
-import type { RiskGroup as RiskGroupData } from '../domain/risk';
+import type { RiskActionTarget, RiskGroup as RiskGroupData } from '../domain/risk';
 import type { TranslateFn, VoidFn } from '../types/ui';
 
 interface RiskGroupProps {
@@ -7,11 +7,14 @@ interface RiskGroupProps {
   language: string;
   translateRiskTitle: (title: string, language: string) => string;
   onEditLodging: VoidFn;
+  onOpenRisk: (target: RiskActionTarget) => void;
+  onOpenChecklist: VoidFn;
 }
 
 const PREPARATION_RISK_TITLES = new Set([
   '旅行清单未完成',
   '住宿信息未填写',
+  '住宿待处理',
 ]);
 
 function getRiskTone(group?: RiskGroupData) {
@@ -39,8 +42,11 @@ export function RiskGroup({
   language,
   translateRiskTitle,
   onEditLodging,
+  onOpenRisk,
+  onOpenChecklist,
 }: RiskGroupProps) {
-  const isLodgingRisk = group.title === '住宿信息未填写';
+  const isLodgingRisk = group.title === '住宿信息未填写' || group.title === '住宿待处理';
+  const isChecklistRisk = group.title === '旅行清单未完成';
   const tone = getRiskTone(group);
 
   return (
@@ -49,17 +55,21 @@ export function RiskGroup({
         <strong>{translateRiskTitle(group.title, language)}</strong>
         {isLodgingRisk && (
           <button className="btn btn-small btn-outline" type="button" onClick={onEditLodging}>
-            {t('editLodging')}
+            {t(group.title === '住宿待处理' ? 'lodgingManage' : 'editLodging')}
           </button>
         )}
+        {isChecklistRisk && <button className="btn btn-small btn-outline" type="button" onClick={onOpenChecklist}>{t('viewChecklist')}</button>}
       </div>
       <ul>
-        {group.items.slice(0, 6).map((item) => (
-          <li key={item}><RiskItemLabel item={item} /></li>
-        ))}
-        {group.items.length > 6 && (
-          <li><span className="risk-item-label">{t('moreItems', { count: group.items.length - 6 })}</span></li>
-        )}
+        {group.items.map((item, index) => {
+          const target = group.entries?.[index]?.target;
+          const action = target?.section === 'bookings' ? t('viewBooking') : target?.section === 'alternatives' ? t('changeArrangement') : t('reviewConstraints');
+          return <li key={`${target?.planId || item}-${index}`}>
+            {target ? <button className="risk-action" type="button" onClick={() => onOpenRisk(target)} aria-label={`${item} · ${action}`}>
+              <span><RiskItemLabel item={item} /></span><span className="risk-action-label">{action} ›</span>
+            </button> : <RiskItemLabel item={item} />}
+          </li>;
+        })}
       </ul>
     </div>
   );
@@ -73,6 +83,8 @@ export function MobileRiskPanel({
   language,
   translateRiskTitle,
   onEditLodging,
+  onOpenRisk,
+  onOpenChecklist,
 }: {
   riskGroups: RiskGroupData[];
   mobileRisksOpen: boolean;
@@ -81,6 +93,8 @@ export function MobileRiskPanel({
   language: string;
   translateRiskTitle: (title: string, language: string) => string;
   onEditLodging: VoidFn;
+  onOpenRisk: (target: RiskActionTarget) => void;
+  onOpenChecklist: VoidFn;
 }) {
   const primaryRisk = riskGroups[0];
   const primaryTone = getRiskTone(primaryRisk);
@@ -113,6 +127,8 @@ export function MobileRiskPanel({
               language={language}
               translateRiskTitle={translateRiskTitle}
               onEditLodging={onEditLodging}
+              onOpenRisk={onOpenRisk}
+              onOpenChecklist={onOpenChecklist}
             />
           ))}
         </div>

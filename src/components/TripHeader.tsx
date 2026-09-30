@@ -1,4 +1,4 @@
-import type { Dispatch, SetStateAction } from 'react';
+import { useRef, type Dispatch, type SetStateAction } from 'react';
 import type { NormalizedTripSnapshot } from '../domain/trip';
 import type { TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
@@ -64,6 +64,7 @@ export function TripHeader({
   visibleTrips,
   weatherLoading,
 }: TripHeaderProps) {
+  const moreRef = useRef<HTMLDetailsElement>(null);
   return (
     <header className="trip-header">
       <div className="trip-brand">
@@ -123,87 +124,21 @@ export function TripHeader({
           </button>
         </div>
         <div className="trip-actions">
-          {archivedTripCount > 0 && (
-            <button
-              className="icon-btn archive-library-shortcut"
-              type="button"
-              onClick={onOpenArchiveLibrary}
-              aria-label={t('openArchiveLibrary', { count: archivedTripCount })}
-              title={t('openArchiveLibrary', { count: archivedTripCount })}
-            >
-              <Icon name="history" />
-              <span>{t('archived')}</span>
-              <em>{archivedTripCount}</em>
-            </button>
-          )}
-          {hasInitializedPlans && (
-            <>
-              <button
-                className="icon-btn ai-replan-btn"
-                type="button"
-                onClick={() => openAiPlanner('replan')}
-                aria-label={t('aiReplan')}
-                title={t('aiReplan')}
-              >
-                <Icon name="sparkles" />
-              </button>
-              <button
-                className="icon-btn mobile-weather-refresh-btn"
-                type="button"
-                onClick={refreshWeather}
-                disabled={weatherLoading}
-                aria-label={weatherLoading ? t('updating') : t('updateWeather')}
-                title={weatherLoading ? t('updating') : t('updateWeather')}
-              >
-                <Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />
-              </button>
-            </>
-          )}
-          <button className="icon-btn checklist-btn" type="button" onClick={openChecklist} aria-label={t('checklistTitle')} title={t('checklistTitle')}>
-            <Icon name="listChecks" />
-          </button>
-          <button
-            className="icon-btn lodging-shortcut-btn"
-            type="button"
-            disabled={activeTripDisplay.isEmpty}
-            onClick={openLodgingEditor}
-            aria-label={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('lodgingSection')}
-            title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('lodgingSection')}
-          >
-            <Icon name="home" />
-          </button>
-          {driveFeatureEnabled && Boolean(driveStorage) && (
-            <button className="icon-btn drive-sync-btn" type="button" onClick={onOpenDriveSync} aria-label={t('driveSync')} title={t('driveSync')}>
-              <Icon name="cloud" />
-            </button>
-          )}
-          <button className="icon-btn" type="button" onClick={onOpenMapSettings} aria-label={t('mapSettingsTitle')} title={t('mapSettingsTitle')}>
-            <Icon name="settings" />
-          </button>
-          {hasInitializedPlans && (
-            <button
-              className="icon-btn archive-shortcut-btn"
-              type="button"
-              onClick={onArchiveTrip}
-              aria-label={t('archive')}
-              title={t('archive')}
-            >
-              <Icon name="archive" />
-            </button>
-          )}
-          <button
-            className="icon-btn trip-edit-btn"
-            type="button"
-            disabled={activeTripDisplay.isEmpty}
-            onClick={onOpenTripEditor}
-            aria-label={activeTripDisplay.isEmpty ? t('noEditablePlan') : t('editPlan')}
-            title={activeTripDisplay.isEmpty ? t('createOrImportFirst') : t('editPlan')}
-          >
-            <Icon name="pencil" />
-          </button>
-          <button className="icon-btn" type="button" onClick={createNewTrip} aria-label={t('createTrip')} title={t('createTrip')}>
-            <Icon name="plus" />
-          </button>
+          {hasInitializedPlans && <button className="btn btn-small header-action" type="button" onClick={() => openAiPlanner('replan')} title={t('aiReplan')}><Icon name="sparkles" />{t('aiReplan')}</button>}
+          <button className="btn btn-small header-action" type="button" onClick={openChecklist} title={t('checklistTitle')}><Icon name="listChecks" />{t('checklistShort')}</button>
+          <button className="btn btn-small header-action" type="button" disabled={activeTripDisplay.isEmpty} onClick={openLodgingEditor} title={t('lodgingSection')}><Icon name="home" />{t('lodgingSection')}</button>
+          {archivedTripCount > 0 && <button className="btn btn-small header-action archive-library-shortcut" type="button" onClick={onOpenArchiveLibrary} aria-label={t('openArchiveLibrary', { count: archivedTripCount })} title={t('openArchiveLibrary', { count: archivedTripCount })}><Icon name="history" /><span>{t('archived')}</span><em>{archivedTripCount}</em></button>}
+          <details className="action-menu" ref={moreRef} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) event.currentTarget.open = false; }} onKeyDown={(event) => { if (event.key === 'Escape') { event.currentTarget.open = false; event.currentTarget.querySelector('summary')?.focus(); } }}>
+            <summary className="btn btn-small header-action">{t('moreActions')}<Icon name="chevronDown" /></summary>
+            <div className="action-menu-panel" onClick={(event) => { if (event.target instanceof Element && event.target.closest('button') && moreRef.current) moreRef.current.open = false; }}>
+              <button type="button" disabled={activeTripDisplay.isEmpty} onClick={onOpenTripEditor}><Icon name="pencil" />{t('manageTrip')}</button>
+              <button type="button" onClick={createNewTrip}><Icon name="plus" />{t('createTrip')}</button>
+              {hasInitializedPlans && <button type="button" onClick={refreshWeather} disabled={weatherLoading}><Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />{t(weatherLoading ? 'updating' : 'updateWeather')}</button>}
+              <button type="button" onClick={onOpenMapSettings}><Icon name="settings" />{t('mapSettingsTitle')}</button>
+              {driveFeatureEnabled && Boolean(driveStorage) && <button type="button" onClick={onOpenDriveSync}><Icon name="cloud" />{t('driveSync')}</button>}
+              {hasInitializedPlans && <button type="button" onClick={onArchiveTrip}><Icon name="archive" />{t('archive')}</button>}
+            </div>
+          </details>
         </div>
       </div>
     </header>
