@@ -2820,7 +2820,7 @@ label {
 }
 
 .drive-sync-panel.is-unavailable {
-  opacity: 0.82;
+  border-left: 2px solid var(--amber);
 }
 
 .drive-sync-head {
@@ -2918,9 +2918,16 @@ label {
 
 .drive-sync-actions .btn,
 .drive-conflict .btn {
-  min-height: 2rem;
+  min-height: 2.75rem;
   padding: 0.32rem 0.62rem;
   font-size: 0.78rem;
+}
+
+.drive-recovery-error {
+  margin: 0;
+  color: var(--coral-strong);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .drive-sync-main {
@@ -3397,6 +3404,23 @@ label {
 .checklist-groups {
   display: grid;
   gap: 1.15rem;
+}
+
+.ai-mode-tabs.checklist-filter button {
+  min-height: 2.75rem;
+}
+
+.checklist-filter-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.checklist-filter-empty p {
+  margin: 0 0 0.75rem;
 }
 
 .checklist-group {

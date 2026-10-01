@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { createPlanGachaDriveStorage, hasStoredDriveStorageFile } from '../driveStorageAdapter';
+import { createPlanGachaDriveStorage, getStoredDriveStorageFile, hasStoredDriveStorageFile } from '../driveStorageAdapter';
 import { STORAGE_KEYS, readStoredValue, writeStoredValue } from '../domain/appStorage';
 import {
   mergeAppSnapshots,
@@ -94,8 +94,37 @@ export function useDriveSyncController({
   const [driveConflict, setDriveConflict] = useState(false);
   const [drivePanelOpen, setDrivePanelOpen] = useState(false);
   const [driveAutoSync, setDriveAutoSync] = useState(() => readStoredValue(STORAGE_KEYS.driveAutoSync) === 'true');
+  const [driveError, setDriveError] = useState('');
+  const [driveOffline, setDriveOffline] = useState(() => !navigator.onLine);
   const driveBusyRef = useRef('');
   const driveConflictRef = useRef(false);
+  const detectionGeneration = useRef(0);
+
+  const redetectDriveStorage = useCallback(async () => {
+    if (driveBusyRef.current) return;
+    const generation = ++detectionGeneration.current;
+    driveBusyRef.current = 'detect';
+    setDriveBusy('detect');
+    setDriveError('');
+    setDriveOffline(!navigator.onLine);
+    try {
+      const storage = await createPlanGachaDriveStorage();
+      if (generation !== detectionGeneration.current) return;
+      const status = storage?.status() || { connected: false, file: getStoredDriveStorageFile() };
+      setDriveStorage(storage);
+      setDriveStatus(status);
+    } catch {
+      if (generation !== detectionGeneration.current) return;
+      setDriveStorage(null);
+      setDriveStatus({ connected: false, file: getStoredDriveStorageFile() });
+      setDriveError('driveDetectionFailed');
+    } finally {
+      if (generation === detectionGeneration.current) {
+        driveBusyRef.current = '';
+        setDriveBusy('');
+      }
+    }
+  }, []);
 
   const callbacks = useCallback(() => {
     const current = callbacksRef.current;
@@ -117,25 +146,27 @@ export function useDriveSyncController({
   useEffect(() => {
     if (!driveFeatureEnabled) return undefined;
 
-    let cancelled = false;
-
-    createPlanGachaDriveStorage().then((storage: PlanGachaDriveStorage | null) => {
-      if (cancelled) return;
-      setDriveStorage(storage);
-      setDriveStatus(storage?.status() || null);
-    });
+    const timer = window.setTimeout(() => { void redetectDriveStorage(); }, 0);
 
     return () => {
-      cancelled = true;
+      window.clearTimeout(timer);
+      detectionGeneration.current += 1;
+      driveBusyRef.current = '';
     };
-  }, [driveFeatureEnabled]);
+  }, [driveFeatureEnabled, redetectDriveStorage]);
+
+  useEffect(() => {
+    const updateNetwork = () => setDriveOffline(!navigator.onLine);
+    window.addEventListener('online', updateNetwork);
+    window.addEventListener('offline', updateNetwork);
+    return () => { window.removeEventListener('online', updateNetwork); window.removeEventListener('offline', updateNetwork); };
+  }, []);
 
   useEffect(() => {
     writeStoredValue(STORAGE_KEYS.driveAutoSync, driveAutoSync ? 'true' : 'false');
   }, [driveAutoSync]);
 
   useEffect(() => {
-    driveBusyRef.current = driveBusy;
     driveConflictRef.current = driveConflict;
   });
 
@@ -181,11 +212,13 @@ export function useDriveSyncController({
 
     driveBusyRef.current = busyKey;
     setDriveBusy(busyKey);
+    setDriveError('');
     try {
       await action(storage);
       refreshDriveStatus(storage);
     } catch (error) {
       const errorLike = asErrorLike(error);
+      setDriveError(t('driveActionFailed', { message: formatDriveMergeError(error) }));
       if (errorLike.name === 'DriveStorageAmbiguousFileError') {
         notify(t('driveAmbiguousFile'));
         refreshDriveStatus(storage);
@@ -335,6 +368,8 @@ export function useDriveSyncController({
     driveStorage,
     driveStatus,
     driveBusy,
+    driveError,
+    driveOffline,
     driveConflict,
     drivePanelOpen,
     setDrivePanelOpen,
@@ -344,9 +379,12 @@ export function useDriveSyncController({
     mergeDriveFile,
     overwriteDriveFile,
     syncDrive,
+    redetectDriveStorage,
   }), [
     driveAutoSync,
     driveBusy,
+    driveError,
+    driveOffline,
     driveConflict,
     driveFeatureEnabled,
     drivePanelOpen,
@@ -356,5 +394,6 @@ export function useDriveSyncController({
     mergeDriveFile,
     overwriteDriveFile,
     syncDrive,
+    redetectDriveStorage,
   ]);
 }

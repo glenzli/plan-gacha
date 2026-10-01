@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   CHECKLIST_STATUS,
+  filterChecklistGroups,
   getChecklistStats,
   isUntouchedExampleChecklist,
   mergeChecklistPayload,
@@ -10,6 +11,47 @@ import {
   reconcileChecklistStateForGroups,
   serializeChecklistDraft,
 } from './checklist';
+
+describe('checklist visibility', () => {
+  it('hides checked items without changing groups, progress, or skipped statuses', () => {
+    const groups = parseChecklistText('# Documents\nPassport\nCash\n# Bags\nCharger\nCamera');
+    const state = { 'Documents::Passport': CHECKLIST_STATUS.done, 'Bags::Camera': CHECKLIST_STATUS.skipped };
+    const before = JSON.stringify({ groups, state });
+    const stats = getChecklistStats(groups, state);
+    expect(filterChecklistGroups(groups, state, true)).toEqual([
+      { ...groups[0], items: [groups[0].items[1]] },
+      groups[1],
+    ]);
+    expect(JSON.stringify({ groups, state })).toBe(before);
+    expect(getChecklistStats(groups, state)).toEqual(stats);
+    expect(filterChecklistGroups(groups, state, false)).toBe(groups);
+  });
+
+  it('removes finished groups and returns an empty view when every item is checked', () => {
+    const groups = parseChecklistText('# Documents\nPassport\n# Bags\nCharger');
+    const state = { 'Documents::Passport': CHECKLIST_STATUS.done };
+    expect(filterChecklistGroups(groups, state, true)).toEqual([groups[1]]);
+    expect(filterChecklistGroups(groups, { ...state, 'Bags::Charger': CHECKLIST_STATUS.done }, true)).toEqual([]);
+    expect(filterChecklistGroups(groups, state, false)).toHaveLength(2);
+    expect(filterChecklistGroups([], {}, true)).toEqual([]);
+  });
+
+  it('reflects new, deleted, renamed and duplicate items after saving the full editor draft', () => {
+    const groups = parseChecklistText('# Bags\nCharger\nCharger\nCamera');
+    const state = { 'Bags::Charger': CHECKLIST_STATUS.done, 'Bags::Camera': CHECKLIST_STATUS.skipped };
+    groups[0].title = 'Carry-on';
+    groups[0].items.splice(2, 1);
+    groups[0].items.push({ id: 'new-item', text: 'Adapter' });
+    groups.push({ id: 'new-group', title: 'Documents', items: [{ id: 'passport', text: 'Passport' }] });
+    const saved = serializeChecklistDraft(groups, state);
+    const visible = filterChecklistGroups(saved.groups, saved.checklistState, true);
+    expect(visible.map((group) => [group.title, group.items.map((item) => item.text)])).toEqual([
+      ['Carry-on', ['Charger', 'Adapter']], ['Documents', ['Passport']],
+    ]);
+    expect(saved.checklistState).toEqual({ 'Carry-on::Charger': CHECKLIST_STATUS.done });
+    expect(getChecklistStats(saved.groups, saved.checklistState)).toMatchObject({ total: 4, done: 1 });
+  });
+});
 
 describe('checklist parsing', () => {
   it('parses headings, bullet syntax, checkbox syntax, and duplicate item ids', () => {

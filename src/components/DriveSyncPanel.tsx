@@ -20,6 +20,8 @@ interface DriveSyncPanelProps {
   driveStorage?: DriveSyncStorageView | null;
   driveStatus?: DriveSyncStatus | null;
   driveBusy: string;
+  driveError: string;
+  driveOffline: boolean;
   driveConflict: boolean;
   driveAutoSync: boolean;
   setDriveAutoSync: (enabled: boolean) => void;
@@ -27,6 +29,9 @@ interface DriveSyncPanelProps {
   mergeDriveFile: VoidFn;
   overwriteDriveFile: VoidFn;
   syncDrive: VoidFn;
+  redetectDriveStorage: VoidFn;
+  exportLocalBackup: VoidFn;
+  reloadSite: VoidFn;
   t: TranslateFn;
   language: string;
 }
@@ -35,6 +40,8 @@ export function DriveSyncPanel({
   driveStorage,
   driveStatus,
   driveBusy,
+  driveError,
+  driveOffline,
   driveConflict,
   driveAutoSync,
   setDriveAutoSync,
@@ -42,22 +49,23 @@ export function DriveSyncPanel({
   mergeDriveFile,
   overwriteDriveFile,
   syncDrive,
+  redetectDriveStorage,
+  exportLocalBackup,
+  reloadSite,
   t,
   language,
 }: DriveSyncPanelProps) {
-  if (!driveStorage) return null;
-
   const file = driveStatus?.file;
   const hasFile = Boolean(file?.id);
   const isConnected = Boolean(driveStatus?.connected);
-  const isAvailable = driveStorage.available !== false;
+  const isAvailable = Boolean(driveStorage) && driveStorage?.available !== false && driveStatus?.configured !== false;
   const isBusy = Boolean(driveBusy);
   const disabled = !isAvailable || isBusy;
   const syncDisabled = disabled || driveConflict;
   const canAutoSync = isAvailable && isConnected && hasFile;
   const modifiedAt = file?.modifiedTime ? new Date(file.modifiedTime) : null;
   const modifiedLabel = modifiedAt && !Number.isNaN(modifiedAt.getTime())
-    ? t('driveUpdatedAt', {
+    ? t('driveLastKnownUpdatedAt', {
       time: modifiedAt.toLocaleString(language === 'en' ? 'en-US' : 'zh-CN', {
         month: 'numeric',
         day: 'numeric',
@@ -66,13 +74,16 @@ export function DriveSyncPanel({
       }),
     })
     : '';
-  const statusLabel = !isAvailable
+  const statusLabel = driveBusy === 'detect'
+    ? t('driveDetecting')
+    : !isAvailable
     ? t(driveStatus?.configured === false ? 'driveNotConfigured' : 'driveUnavailable')
-    : hasFile
-    ? t('driveConnectedFile', { name: file?.name || 'plan-gacha.state.json' })
-    : isConnected
-      ? t('driveNoFile')
-      : t('driveNotConnected');
+    : !isConnected ? t('driveNotConnected')
+    : hasFile ? t('driveConnectedFile', { name: file?.name || 'plan-gacha.state.json' })
+    : t('driveNoFile');
+  const recoveryHelp = driveOffline ? 'driveOfflineHelp'
+    : !isAvailable ? driveStatus?.configured === false ? 'driveNotConfiguredHelp' : 'driveUnavailableHelp'
+    : !isConnected ? 'driveNotConnectedHelp' : '';
 
   return (
     <div className={`drive-sync-panel ${isAvailable ? '' : 'is-unavailable'}`}>
@@ -81,12 +92,15 @@ export function DriveSyncPanel({
           <strong>{t('driveSync')}</strong>
           <span>{t('driveSyncHelp')}</span>
         </div>
-        {isBusy && <em>{t('driveBusy')}</em>}
+        {isBusy && <em>{t(driveBusy === 'detect' ? 'driveDetecting' : 'driveBusy')}</em>}
       </div>
-      <div className="drive-sync-status">
+      <div className="drive-sync-status" role="status">
         <span>{statusLabel}</span>
+        {hasFile && (!isConnected || !isAvailable) && <span>{t('driveStoredFile', { name: file?.name || 'plan-gacha.state.json' })}</span>}
         {modifiedLabel && <span>{modifiedLabel}</span>}
       </div>
+      {recoveryHelp && driveBusy !== 'detect' && <p className="helper-text drive-recovery-help">{t(recoveryHelp)}</p>}
+      {driveError && <p className="drive-recovery-error" role="alert">{t(driveError, { defaultValue: driveError })}</p>}
       {isAvailable && (
         <label className={`drive-auto-sync ${canAutoSync ? '' : 'is-disabled'}`}>
           <input
@@ -122,6 +136,11 @@ export function DriveSyncPanel({
         <button className="btn btn-primary drive-sync-main" type="button" onClick={syncDrive} disabled={syncDisabled}>
           {isConnected ? t('driveSyncNow') : t('driveConnectAndSync')}
         </button>
+        <button className="btn btn-outline" type="button" onClick={redetectDriveStorage} disabled={isBusy}>
+          {t(driveBusy === 'detect' ? 'driveDetecting' : 'driveRedetect')}
+        </button>
+        {!isAvailable && <button className="btn btn-outline" type="button" onClick={reloadSite} disabled={isBusy}>{t('driveReloadSite')}</button>}
+        <button className="btn btn-outline" type="button" onClick={exportLocalBackup}>{t('driveExportLocalBackup')}</button>
       </div>
     </div>
   );

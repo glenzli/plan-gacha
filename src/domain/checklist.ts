@@ -187,6 +187,13 @@ export function getChecklistStats(groups: ChecklistGroup[], state: ChecklistStat
   };
 }
 
+export function filterChecklistGroups(groups: ChecklistGroup[], state: ChecklistState, incompleteOnly: boolean) {
+  if (!incompleteOnly) return groups;
+  return groups
+    .map((group) => ({ ...group, items: group.items.filter((item) => state[item.id] !== CHECKLIST_STATUS.done) }))
+    .filter((group) => group.items.length > 0);
+}
+
 export function reconcileChecklistStateForGroups(state: unknown, groups: ChecklistGroup[]) {
   const validItemIds = new Set(groups.flatMap((group) => group.items.map((item) => item.id)));
   return Object.fromEntries(

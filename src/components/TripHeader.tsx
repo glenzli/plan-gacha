@@ -15,7 +15,6 @@ interface TripHeaderProps {
   archivedTripCount: number;
   createNewTrip: () => void;
   driveFeatureEnabled: boolean;
-  driveStorage: unknown;
   getTripDisplay: (trip: Partial<NormalizedTripSnapshot>, isCurrentTrip?: boolean) => TripDisplay;
   hasInitializedPlans: boolean;
   onOpenDriveSync: () => void;
@@ -43,7 +42,6 @@ export function TripHeader({
   archivedTripCount,
   createNewTrip,
   driveFeatureEnabled,
-  driveStorage,
   getTripDisplay,
   hasInitializedPlans,
   onOpenDriveSync,
@@ -177,7 +175,7 @@ export function TripHeader({
               <button type="button" onClick={createNewTrip}><Icon name="plus" />{t('createTrip')}</button>
               {hasInitializedPlans && <button type="button" onClick={refreshWeather} disabled={weatherLoading}><Icon name="refresh" className={weatherLoading ? 'is-spinning' : ''} />{t(weatherLoading ? 'updating' : 'updateWeather')}</button>}
               <button type="button" onClick={onOpenMapSettings}><Icon name="settings" />{t('mapSettingsTitle')}</button>
-              {driveFeatureEnabled && Boolean(driveStorage) && <button type="button" onClick={onOpenDriveSync}><Icon name="cloud" />{t('driveSync')}</button>}
+              {driveFeatureEnabled && <button type="button" onClick={onOpenDriveSync}><Icon name="cloud" />{t('driveSync')}</button>}
               {hasInitializedPlans && <button type="button" onClick={onArchiveTrip}><Icon name="archive" />{t('archive')}</button>}
             </div>
           </details>

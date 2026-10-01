@@ -1,6 +1,6 @@
 import { useModalDialog } from '../hooks/useModalDialog';
 import { Icon } from './Icon';
-import { CHECKLIST_STATUS, getChecklistStats, parseChecklistText, reconcileChecklistStateForGroups, serializeChecklistDraft, type ChecklistGroup, type ChecklistState } from '../domain/checklist';
+import { CHECKLIST_STATUS, filterChecklistGroups, getChecklistStats, parseChecklistText, reconcileChecklistStateForGroups, serializeChecklistDraft, type ChecklistGroup, type ChecklistState } from '../domain/checklist';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { TranslateFn } from '../types/ui';
 
@@ -64,7 +64,10 @@ export function ChecklistModal({
   const [expandedGroups, setExpandedGroups] = useState<string[]>([]);
   const [editError, setEditError] = useState('');
   const [pendingExit, setPendingExit] = useState<'close' | 'cancel' | null>(null);
+  const [incompleteOnly, setIncompleteOnly] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const visibleGroups = filterChecklistGroups(checklistGroups, checklistState, incompleteOnly);
+  const visibleItemCount = visibleGroups.reduce((count, group) => count + group.items.length, 0);
   const hasChanges = checklistEditing && (draft.groupsChanged || draft.text !== checklistText);
   useEffect(() => {
     if (!hasChanges) return;
@@ -141,11 +144,16 @@ export function ChecklistModal({
 
   const renderChecklistItems = () => {
     if (!checklistGroups.length) return <div className="empty-state">{t('checklistEmpty')}</div>;
+    if (!visibleGroups.length) return <div className="empty-state checklist-filter-empty">
+      <p>{t('checklistAllDone')}</p>
+      <button className="btn btn-outline" type="button" onClick={() => setIncompleteOnly(false)}>{t('checklistShowAll')}</button>
+    </div>;
 
     return (
       <div className="checklist-groups">
-        {checklistGroups.map((group) => {
-          const groupStats = getChecklistStats([group], checklistState);
+        {visibleGroups.map((group) => {
+          const fullGroup = checklistGroups.find((item) => item.id === group.id)!;
+          const groupStats = getChecklistStats([fullGroup], checklistState);
 
           return (
             <section className="checklist-group" key={group.id}>
@@ -166,7 +174,15 @@ export function ChecklistModal({
                       <button
                         className="checklist-check"
                         type="button"
-                        onClick={() => toggleChecklistDone(item.id)}
+                        onClick={(event) => {
+                          if (incompleteOnly) {
+                            const modal = event.currentTarget.closest('.checklist-modal');
+                            const controls = [...(modal?.querySelectorAll<HTMLButtonElement>('.checklist-check') || [])];
+                            const index = controls.indexOf(event.currentTarget);
+                            (controls[index + 1] || controls[index - 1] || modal?.querySelector<HTMLButtonElement>('.checklist-filter button'))?.focus({ preventScroll: true });
+                          }
+                          toggleChecklistDone(item.id);
+                        }}
                         aria-label={`${isDone ? t('checklistTodo') : t('checklistDone')}: ${item.text}`}
                         aria-pressed={isDone}
                         title={isDone ? t('checklistTodo') : t('checklistDone')}
@@ -209,6 +225,13 @@ export function ChecklistModal({
           <div className="checklist-progress" aria-hidden="true">
             <span style={{ width: `${checklistStats.total ? Math.round((checklistStats.done / checklistStats.total) * 100) : 0}%` }} />
           </div>
+          {!checklistEditing && <>
+            <div className="ai-mode-tabs checklist-filter" role="group" aria-label={t('checklistFilter')}>
+              <button type="button" className={!incompleteOnly ? 'is-selected' : ''} aria-pressed={!incompleteOnly} onClick={() => setIncompleteOnly(false)}>{t('checklistAll')}</button>
+              <button type="button" className={incompleteOnly ? 'is-selected' : ''} aria-pressed={incompleteOnly} onClick={() => setIncompleteOnly(true)}>{t('checklistIncompleteOnly')}</button>
+            </div>
+            <p className="checklist-filter-status" role="status">{t(incompleteOnly ? 'checklistShowingIncomplete' : 'checklistShowingAll', { count: visibleItemCount })}</p>
+          </>}
         </div>
 
         <div className="checklist-scroll">

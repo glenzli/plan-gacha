@@ -221,6 +221,8 @@ function App() {
     driveStorage,
     driveStatus,
     driveBusy,
+    driveError,
+    driveOffline,
     driveConflict,
     drivePanelOpen,
     setDrivePanelOpen,
@@ -230,6 +232,7 @@ function App() {
     mergeDriveFile,
     overwriteDriveFile,
     syncDrive,
+    redetectDriveStorage,
   } = useDriveSyncController({
     callbacksRef: driveCallbacksRef,
     language,
@@ -1238,6 +1241,8 @@ function App() {
         driveStorage={driveStorage}
         driveStatus={driveStatus}
         driveBusy={driveBusy}
+        driveError={driveError}
+        driveOffline={driveOffline}
         driveConflict={driveConflict}
         driveAutoSync={driveAutoSync}
         setDriveAutoSync={setDriveAutoSync}
@@ -1245,6 +1250,16 @@ function App() {
         mergeDriveFile={mergeDriveFile}
         overwriteDriveFile={overwriteDriveFile}
         syncDrive={syncDrive}
+        redetectDriveStorage={redetectDriveStorage}
+        exportLocalBackup={() => {
+          try {
+            downloadBlob(new Blob([JSON.stringify(exportAppSnapshot(), null, 2)], { type: 'application/json;charset=utf-8' }), 'plan-gacha-workspace.json');
+            notify(t('jsonDownloaded'));
+          } catch { notify(t('downloadFailed')); }
+        }}
+        reloadSite={() => {
+          try { window.parent.location.reload(); } catch { window.location.reload(); }
+        }}
         t={t}
         language={language}
       />
@@ -1443,7 +1458,6 @@ function App() {
         archivedTripCount={archivedTrips.length}
         createNewTrip={createNewTrip}
         driveFeatureEnabled={driveFeatureEnabled}
-        driveStorage={driveStorage}
         getTripDisplay={getTripDisplay}
         hasInitializedPlans={hasInitializedPlans}
         onArchiveTrip={() => requestArchiveCurrentTrip(false)}
@@ -1622,7 +1636,7 @@ function App() {
         />
       )}
 
-      {driveFeatureEnabled && drivePanelOpen && driveStorage && (
+      {driveFeatureEnabled && drivePanelOpen && (
         <DriveSyncModal
           onClose={() => setDrivePanelOpen(false)}
           renderDriveSyncPanel={renderDriveSyncPanel}

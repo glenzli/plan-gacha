@@ -76,6 +76,10 @@ function getStoredFile() {
   }
 }
 
+export function getStoredDriveStorageFile() {
+  return getStoredFile();
+}
+
 export function hasStoredDriveStorageFile() {
   return Boolean(getStoredFile()?.id);
 }
@@ -141,38 +145,46 @@ function createConflictError(
   return error;
 }
 
+let scriptLoad: Promise<void> | null = null;
+let scriptAttempt = 0;
+const failedScripts = new WeakSet<HTMLScriptElement>();
+
 function loadScript(src: string) {
-  return new Promise<void>((resolve, reject) => {
-    if (typeof document === 'undefined') {
-      reject(new Error('Drive storage is browser-only'));
-      return;
-    }
-
+  if (scriptLoad) return scriptLoad;
+  const pending = new Promise<void>((resolve, reject) => {
+    if (typeof document === 'undefined') { reject(new Error('Drive storage is browser-only')); return; }
     const absoluteSrc = new URL(src, window.location.href).href;
-    const existing = Array.from(document.scripts).find((script) => script.src === absoluteSrc);
-    if (existing) {
-      if (window.driveStorage) {
-        resolve();
-        return;
+    const attempt = ++scriptAttempt;
+    const existing = Array.from(document.scripts).find((script) => script.src.split('?')[0] === absoluteSrc.split('?')[0] && !failedScripts.has(script));
+    const script = existing || document.createElement('script');
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      script.removeEventListener('load', finish);
+      script.removeEventListener('error', finish);
+      if (isDriveStorageApi(window.driveStorage)) resolve();
+      else {
+        failedScripts.add(script);
+        if (!existing) script.remove();
+        reject(new Error(`Failed to load ${src}`));
       }
-
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true });
-      window.setTimeout(() => {
-        if (window.driveStorage) resolve();
-        else reject(new Error(`Failed to load ${src}`));
-      }, 5000);
-      return;
+    };
+    const timer = window.setTimeout(finish, 5000);
+    script.addEventListener('load', finish);
+    script.addEventListener('error', finish);
+    if (!existing) {
+      const retrySrc = new URL(absoluteSrc);
+      if (attempt > 1) retrySrc.searchParams.set('pg_sync_retry', String(attempt));
+      script.src = retrySrc.href;
+      script.async = true;
+      script.defer = true;
+      document.head.append(script);
     }
-
-    const script = document.createElement('script');
-    script.src = src;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.append(script);
   });
+  scriptLoad = pending.finally(() => { scriptLoad = null; });
+  return scriptLoad;
 }
 
 export async function getDriveStorageApi() {
