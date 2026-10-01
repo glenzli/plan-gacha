@@ -23,7 +23,7 @@
 - **天气**：通过 [Open-Meteo](https://open-meteo.com/) 查询计划地点的天气，并在浏览器中缓存结果。天气风险用于提示，不代替用户决定。
 - **地图链接**：中国大陆默认高德，可在设置中改用百度；其他地区和地区不明使用 Google。路线图标按 `preferred_route_mode`（`walking`、`transit`、`driving`）打开所选地图，菜单可选中国大陆另一家地图。高德需要前后站的精确地点坐标；百度可按名称规划。驾车路段可提供必经点，高德链接支持 1 个，Google 链接支持最多 3 个；百度调起链接不支持必经点时不会生成忽略必经点的路线。住宿可按名称和地址打开地图搜索。地图跳转无需 API Key。
 - **旅行记录**：记录未去的日期或地点、地点黑名单、每日评价和归档摘要；已归档旅行可继续补写每日评价、旅行总结和开销，行程安排保持只读，也可恢复。
-- **清单与 JSON**：维护独立旅行清单，一键切换全部或仅看未完成项；旅行和清单分别支持 JSON 导入、导出，清单导入可以替换或合并。
+- **清单与 JSON**：维护独立旅行清单，一键切换全部或仅看仍需处理的未完成项，排除“本次不需要”；旅行和清单分别支持 JSON 导入、导出，清单导入可以替换或合并。
 - **外部 AI 配合**：根据当前行程生成提示词，供用户复制到外部 AI；AI 返回的 JSON 仍由用户粘贴并确认应用。应用本身不调用通用 AI API。
 - **旅途编辑**：直接修改节点时间、地点、交通和备注，调整节点顺序；行程内容与安排限制共用草稿并统一保存。单计划 AI 结果先预览再保存，关闭未保存的编辑会提醒。
 - **界面**：提供中文和英文界面，并包含 PWA `standalone` 安装信息。
@@ -94,7 +94,7 @@ The current version is a frontend-only application with no account system or bac
 - **Weather**: query plan locations through [Open-Meteo](https://open-meteo.com/) and cache results in the browser. Weather risk is advisory and does not replace user decisions.
 - **Map links**: AMap is the default in mainland China, with Baidu Maps as an option; other and unknown regions use Google Maps. Route links use the planned transport mode. AMap requires exact place coordinates, while Baidu can route by place name. Driving transfers can specify a required waypoint: AMap URLs support one and Google Maps URLs support up to three; unsupported links are withheld rather than dropping required waypoints. Map links need no API key.
 - **Trip records**: record skipped days or stops, place blacklists, daily reviews, and archive summaries; archived trips allow later edits to reviews, summaries, and expenses while the itinerary stays read-only, and can be restored.
-- **Checklist and JSON**: maintain a separate travel checklist and switch between all items and unchecked items; trips and checklists have separate JSON import and export flows, and checklist import can replace or merge data.
+- **Checklist and JSON**: maintain a separate travel checklist and switch between all items and items still to do, excluding skipped items; trips and checklists have separate JSON import and export flows, and checklist import can replace or merge data.
 - **External AI workflow**: generate prompts from the current trip for use with an external AI, then paste and confirm the returned JSON. The application does not call a general-purpose AI API itself.
 - **Editing on the trip**: edit stop times, places, transport, notes, and order directly. Itinerary content and constraints share one draft and save together. Single-plan AI responses are previewed before saving, with a reminder before leaving unsaved edits.
 - **Interface**: provide Chinese and English UI, together with PWA `standalone` installation metadata.

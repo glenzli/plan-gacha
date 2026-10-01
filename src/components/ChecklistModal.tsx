@@ -142,10 +142,19 @@ export function ChecklistModal({
     setExpandedGroups((current) => [...current, id]);
   };
 
+  const focusAfterHiding = (control: HTMLButtonElement) => {
+    if (!incompleteOnly) return;
+    const modal = control.closest('.checklist-modal');
+    const item = control.closest('.checklist-item');
+    const controls = [...(modal?.querySelectorAll<HTMLButtonElement>('.checklist-check') || [])];
+    const index = controls.findIndex((button) => button.closest('.checklist-item') === item);
+    (controls[index + 1] || controls[index - 1] || modal?.querySelector<HTMLButtonElement>('.checklist-filter button'))?.focus({ preventScroll: true });
+  };
+
   const renderChecklistItems = () => {
     if (!checklistGroups.length) return <div className="empty-state">{t('checklistEmpty')}</div>;
     if (!visibleGroups.length) return <div className="empty-state checklist-filter-empty">
-      <p>{t('checklistAllDone')}</p>
+      <p>{t('checklistNoPending')}</p>
       <button className="btn btn-outline" type="button" onClick={() => setIncompleteOnly(false)}>{t('checklistShowAll')}</button>
     </div>;
 
@@ -175,12 +184,7 @@ export function ChecklistModal({
                         className="checklist-check"
                         type="button"
                         onClick={(event) => {
-                          if (incompleteOnly) {
-                            const modal = event.currentTarget.closest('.checklist-modal');
-                            const controls = [...(modal?.querySelectorAll<HTMLButtonElement>('.checklist-check') || [])];
-                            const index = controls.indexOf(event.currentTarget);
-                            (controls[index + 1] || controls[index - 1] || modal?.querySelector<HTMLButtonElement>('.checklist-filter button'))?.focus({ preventScroll: true });
-                          }
+                          focusAfterHiding(event.currentTarget);
                           toggleChecklistDone(item.id);
                         }}
                         aria-label={`${isDone ? t('checklistTodo') : t('checklistDone')}: ${item.text}`}
@@ -190,7 +194,10 @@ export function ChecklistModal({
                         {isDone && <Icon name="check" />}
                       </button>
                       <span>{item.text}</span>
-                      <button className="checklist-skip" type="button" onClick={() => toggleChecklistSkipped(item.id)}>
+                      <button className="checklist-skip" type="button" onClick={(event) => {
+                        focusAfterHiding(event.currentTarget);
+                        toggleChecklistSkipped(item.id);
+                      }}>
                         {isSkipped ? t('checklistUndoSkip') : t('checklistNotNeeded')}
                       </button>
                     </div>

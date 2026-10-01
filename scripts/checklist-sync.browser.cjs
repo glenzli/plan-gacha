@@ -91,7 +91,7 @@ const readyScript = `window.driveStorage={isConfigured:()=>true,status:()=>({con
     ['desktop', zh, { width: 1440, height: 900 }],
     ['phone', zh, { width: 320, height: 740 }],
     ['English phone', en, { width: 390, height: 844 }],
-  ]) await test(`${name}: filter preserves data/counts, completes immediately, restores all and keeps keyboard focus`, async () => {
+  ]) await test(`${name}: todo filter excludes done/skipped, preserves data/counts and handles last-item focus`, async () => {
     const { p, context, url } = await make(locale, { viewport });
     await p.goto(url);
     await button(p, locale, 'checklistShort').click();
@@ -103,36 +103,76 @@ const readyScript = `window.driveStorage={isConfigured:()=>true,status:()=>({con
     await filter.focus();
     await p.keyboard.press('Space');
     assert.equal(await filter.getAttribute('aria-pressed'), 'true');
-    assert.equal(await p.locator('.checklist-item').count(), 3);
+    assert.equal(await p.locator('.checklist-item').count(), 2);
     assert.deepEqual(await saved(p), before);
     assert((await p.locator('.checklist-group-head').first().innerText()).includes(label(locale, 'checklistProgress', { done: 1, total: 2 })));
     assert((await p.locator('.checklist-overview').innerText()).includes(label(locale, 'checklistProgress', { done: 1, total: 3 })));
-    assert.equal(await p.locator('.checklist-item.status-skipped').count(), 1);
+    assert.equal(await p.locator('.checklist-item.status-skipped').count(), 0);
+    assert.equal(await p.locator('.checklist-filter-status').innerText(), label(locale, 'checklistShowingIncomplete', { count: 2 }));
     assert(await p.evaluate(() => document.querySelector('.checklist-modal').scrollWidth <= document.querySelector('.checklist-modal').clientWidth));
     await accessibility(p);
     await screenshot(p, 'checklist-filter-' + name.replace(/ /g, '-'));
     await p.locator('.checklist-check').first().focus();
     await p.keyboard.press('Enter');
-    assert.equal(await p.locator('.checklist-item').count(), 2);
+    assert.equal(await p.locator('.checklist-item').count(), 1);
     assert.equal(await p.locator('.checklist-group').count(), 1);
     assert.equal(await p.locator('.checklist-check:focus').count(), 1);
     await p.keyboard.press('Space');
-    assert.equal(await p.locator('.checklist-item').count(), 1);
-    await p.keyboard.press('Enter');
     await p.locator('.checklist-filter-empty').waitFor();
-    assert((await p.locator('.checklist-filter-empty').innerText()).includes(locale.checklistAllDone));
+    assert((await p.locator('.checklist-filter-empty').innerText()).includes(locale.checklistNoPending));
+    assert.equal(await p.locator('.checklist-filter-status').innerText(), label(locale, 'checklistShowingIncomplete', { count: 0 }));
     assert.equal(await button(p, locale, 'checklistAll').evaluate(e => e === document.activeElement), true);
     await accessibility(p);
     await button(p, locale, 'checklistShowAll').click();
-    assert.equal(await p.locator('.checklist-item.status-done').count(), 4);
+    assert.equal(await p.locator('.checklist-item.status-done').count(), 3);
+    assert.equal(await p.locator('.checklist-item.status-skipped').count(), 1);
     const completed = await saved(p);
     await filter.click();
     await button(p, locale, 'checklistAll').click();
     assert.deepEqual(await saved(p), completed);
+    await p.locator('.checklist-item.status-skipped .checklist-skip').click();
+    await filter.click();
+    assert.deepEqual(await p.locator('.checklist-item > span').allTextContents(), ['Camera']);
+    await p.locator('.checklist-skip').focus();
+    await p.keyboard.press('Space');
+    await p.locator('.checklist-filter-empty').waitFor();
+    assert.equal(await button(p, locale, 'checklistAll').evaluate(e => e === document.activeElement), true);
+    await button(p, locale, 'checklistShowAll').click();
+    const restored = await saved(p);
+    assert.equal(restored.text, completed.text);
+    assert.equal(restored.trips, completed.trips);
+    assert.deepEqual(JSON.parse(restored.state), JSON.parse(completed.state));
     await p.keyboard.press('Escape');
     await button(p, locale, 'checklistShort').click();
     await p.locator('.checklist-item').first().waitFor();
-    assert.equal(await p.locator('.checklist-item.status-done').count(), 4);
+    assert.equal(await p.locator('.checklist-item.status-done').count(), 3);
+    assert.equal(await p.locator('.checklist-item.status-skipped').count(), 1);
+    await context.close();
+  });
+
+  await test('all-not-needed checklist has accurate empty view, preserves skipped states and can restore an item', async () => {
+    const { p, context, url } = await make();
+    await p.goto(url);
+    await p.evaluate(() => localStorage.setItem('pg_checklistState', JSON.stringify({
+      'Documents::Passport': 'skipped', 'Documents::Cash': 'skipped',
+      'Bags::Charger': 'skipped', 'Bags::Camera': 'skipped',
+    })));
+    await p.reload();
+    await button(p, zh, 'checklistShort').click();
+    await p.locator('.checklist-item').first().waitFor();
+    const before = await saved(p);
+    await button(p, zh, 'checklistIncompleteOnly').click();
+    assert.equal(await p.locator('.checklist-group').count(), 0);
+    assert((await p.locator('.checklist-filter-empty').innerText()).includes(zh.checklistNoPending));
+    assert.equal(await p.locator('.checklist-filter-status').innerText(), label(zh, 'checklistShowingIncomplete', { count: 0 }));
+    assert((await p.locator('.checklist-overview').innerText()).includes(label(zh, 'checklistSkipped', { count: 4 })));
+    await accessibility(p);
+    await button(p, zh, 'checklistShowAll').click();
+    assert.equal(await p.locator('.checklist-item.status-skipped').count(), 4);
+    assert.deepEqual(await saved(p), before);
+    await p.locator('.checklist-skip').first().click();
+    await button(p, zh, 'checklistIncompleteOnly').click();
+    assert.deepEqual(await p.locator('.checklist-item > span').allTextContents(), ['Passport']);
     await context.close();
   });
 

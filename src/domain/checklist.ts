@@ -190,7 +190,7 @@ export function getChecklistStats(groups: ChecklistGroup[], state: ChecklistStat
 export function filterChecklistGroups(groups: ChecklistGroup[], state: ChecklistState, incompleteOnly: boolean) {
   if (!incompleteOnly) return groups;
   return groups
-    .map((group) => ({ ...group, items: group.items.filter((item) => state[item.id] !== CHECKLIST_STATUS.done) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => (state[item.id] ?? CHECKLIST_STATUS.todo) === CHECKLIST_STATUS.todo) }))
     .filter((group) => group.items.length > 0);
 }
 

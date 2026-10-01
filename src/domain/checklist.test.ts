@@ -13,18 +13,38 @@ import {
 } from './checklist';
 
 describe('checklist visibility', () => {
-  it('hides checked items without changing groups, progress, or skipped statuses', () => {
+  it('shows only explicit or implicit todo items without changing groups, progress, or statuses', () => {
     const groups = parseChecklistText('# Documents\nPassport\nCash\n# Bags\nCharger\nCamera');
-    const state = { 'Documents::Passport': CHECKLIST_STATUS.done, 'Bags::Camera': CHECKLIST_STATUS.skipped };
+    const state = { 'Documents::Passport': CHECKLIST_STATUS.done, 'Bags::Charger': CHECKLIST_STATUS.todo, 'Bags::Camera': CHECKLIST_STATUS.skipped };
     const before = JSON.stringify({ groups, state });
     const stats = getChecklistStats(groups, state);
     expect(filterChecklistGroups(groups, state, true)).toEqual([
       { ...groups[0], items: [groups[0].items[1]] },
-      groups[1],
+      { ...groups[1], items: [groups[1].items[0]] },
     ]);
     expect(JSON.stringify({ groups, state })).toBe(before);
     expect(getChecklistStats(groups, state)).toEqual(stats);
     expect(filterChecklistGroups(groups, state, false)).toBe(groups);
+  });
+
+  it('hides groups containing only done or skipped items while all view keeps them intact', () => {
+    const groups = parseChecklistText('# Documents\nPassport\n# Bags\nCamera');
+    const state = { 'Documents::Passport': CHECKLIST_STATUS.done, 'Bags::Camera': CHECKLIST_STATUS.skipped };
+    const before = JSON.stringify({ groups, state });
+    expect(filterChecklistGroups(groups, state, true)).toEqual([]);
+    expect(filterChecklistGroups(groups, state, false)).toBe(groups);
+    expect(JSON.stringify({ groups, state })).toBe(before);
+    expect(getChecklistStats(groups, state)).toEqual({ total: 1, done: 1, skipped: 1, all: 2 });
+  });
+
+  it('removes the final todo item when marked not needed and shows it again after restoring its need', () => {
+    const groups = parseChecklistText('# Bags\nCamera');
+    expect(filterChecklistGroups(groups, {}, true)).toEqual(groups);
+    const skipped = { 'Bags::Camera': CHECKLIST_STATUS.skipped };
+    expect(filterChecklistGroups(groups, skipped, true)).toEqual([]);
+    expect(filterChecklistGroups(groups, skipped, false)).toBe(groups);
+    expect(filterChecklistGroups(groups, { 'Bags::Camera': CHECKLIST_STATUS.todo }, true)).toEqual(groups);
+    expect(skipped).toEqual({ 'Bags::Camera': CHECKLIST_STATUS.skipped });
   });
 
   it('removes finished groups and returns an empty view when every item is checked', () => {
