@@ -178,6 +178,8 @@ try {
   assert.equal(failure('apply', '--store', routeStore, '--input', await save('route-mismatch-request', request(deniedPreview, 'bad-route'))).error.code, 'constraint_violation');
   assert.equal(await readFile(routeStore, 'utf8'), routeSavedBytes);
   const failedObservation = await library.importWalkingObservation(descriptor, { schemaVersion: 1, requestHash: descriptor.requestHash, query: descriptor.query, captureKind: 'fixture', observedAt: '2026-10-02T12:00:01Z', ok: false, httpStatus: 200, infocode: '10003', failureCode: 'quota_exhausted' });
+  assert.equal(failedObservation.source, 'fixture:amap-walking');
+  assert.equal(library.assessWalkingFact(routeSnapshot, failedObservation, '2026-10-02T12:00:02Z').synthetic, true);
   assert.equal(library.assessWalkingFact(routeSnapshot, failedObservation, '2026-10-02T12:00:02Z').canUseForComparison, false);
   assert.equal(library.assessWalkingFact(routeSnapshot, failedObservation, '2026-10-02T12:00:02Z').status, 'unavailable');
   const routeUndo = run('preview', '--store', routeStore, '--input', await save('route-undo', { type: 'undo', commitId: 'record-route' }), '--revision', '1');

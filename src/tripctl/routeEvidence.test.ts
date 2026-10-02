@@ -68,6 +68,16 @@ describe('activity-bound walking observations', () => {
     expect(result.legs[1]).toMatchObject({ status: 'unknown', reasonCodes: ['route_observation_missing'], canUseForComparison: false });
     expect(result).toMatchObject({ allLegsHaveUsableEstimates: false, feasibility: 'not_proven' });
   });
+  it.each(['auth_unavailable', 'quota_exhausted', 'rate_limited', 'provider_unavailable'] as const)('preserves fixture and live capture provenance for %s without changing clocks or TTL', async (failureCode) => {
+    const current = snapshot(); const descriptor = prepareWalkingQuery(current, request);
+    for (const captureKind of ['fixture', 'live'] as const) {
+      const failed = await importWalkingObservation(descriptor, { schemaVersion: 1, requestHash: descriptor.requestHash, query: descriptor.query, observedAt: asOf, captureKind, ok: false, failureCode });
+      expect(failed).toMatchObject({ status: 'unavailable', failureCode, source: captureKind === 'fixture' ? 'fixture:amap-walking' : 'amap:v3/direction/walking', observedAt: '2026-10-02T12:00:00.000Z', expiresAt: '2026-10-02T12:01:00.000Z', binding: descriptor.binding });
+      const assessment = assessWalkingFact(current, failed, asOf);
+      expect(assessment).toMatchObject({ status: 'unavailable', synthetic: captureKind === 'fixture', canUseForComparison: false, feasibility: 'not_proven' });
+      expect(assessment.comparisonEstimate).toBeUndefined();
+    }
+  });
   it('reports complete fresh coverage separately from schedule feasibility', async () => {
     const current = snapshot(); const first = await observation(current);
     const secondDescriptor = prepareWalkingQuery(current, { ...request, fromStopId: 'afternoon-stop', toStopId: 'dinner-stop' });

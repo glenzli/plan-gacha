@@ -68,7 +68,7 @@ export async function importWalkingObservation(descriptorInput: unknown, respons
   const provider = createMapProvider(async () => { if (!response.ok) throw new MapProviderError(response.failureCode); return { ...response.estimate, source }; }, () => instant, { maxCalls: 1, minIntervalMs: 1000, ttlMs: descriptor.ttlSeconds * 1000, failureTtlMs: Math.min(descriptor.ttlSeconds, 60) * 1000 });
   const fact = await provider.query(descriptor.query);
   // Binding participates in the ID so distinct simultaneous observations do not collide.
-  return mapFactSchema.parse({ ...fact, id: `route-${hash({ requestHash: descriptor.requestHash, observedAt: response.observedAt }).slice(7, 47)}`, binding: descriptor.binding });
+  return mapFactSchema.parse({ ...fact, source, id: `route-${hash({ requestHash: descriptor.requestHash, observedAt: response.observedAt }).slice(7, 47)}`, binding: descriptor.binding });
 }
 export function assessWalkingFact(snapshot: PlanningSnapshot, input: MapFact, asOfInput: string) {
   const fact = parse(mapFactSchema, input, 'invalid_route_fact'); const asOf = parse(timestamp, asOfInput, 'invalid_as_of');
