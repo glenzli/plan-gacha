@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useModalDialog } from '../hooks/useModalDialog';
 import type { AiModeText, TextAreaRef, TranslateFn, VoidFn } from '../types/ui';
 import { Icon } from './Icon';
@@ -10,6 +11,7 @@ interface AiPlannerModalProps {
   copyAiPlanningPrompt: VoidFn;
   onClose: VoidFn;
   t: TranslateFn;
+  toolsPanel: ReactNode;
 }
 
 export function AiPlannerModal({
@@ -20,6 +22,7 @@ export function AiPlannerModal({
   copyAiPlanningPrompt,
   onClose,
   t,
+  toolsPanel,
 }: AiPlannerModalProps) {
   const dialogRef = useModalDialog(onClose);
   return (
@@ -39,6 +42,8 @@ export function AiPlannerModal({
           {t('aiPlanningSummary')}
           <span>{aiReplanText.helper}</span>
         </p>
+
+        {toolsPanel}
 
         <label>
           <span>{t('extraQuestion')}</span>

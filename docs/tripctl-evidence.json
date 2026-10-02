@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "baseline": "3dc8f7c8d90ef40a1d24f0308fcbcbf153a50eac",
+  "runtime": {
+    "tested": "Node v24.13.0 on macOS",
+    "target": "Node >=22.13",
+    "dependenciesInstalledOnConsumer": false,
+    "cloudExecution": "pending parent verification; separate filesystem"
+  },
+  "checks": {
+    "repository": "28 files / 170 tests; lint and typecheck passed",
+    "webBuild": "passed; final web inputs unchanged from verified build; existing >500kB chunk warning",
+    "realMcp": "SDK discovery/calls and errors covered by suite; full structured transcript planning-tools-evidence.json",
+    "browser": "synthetic manual handoff and 10 checklist/sync scenarios previously passed; exact production web bytes unchanged",
+    "portable": "independent processes; CLI/lib same preview; no-write preview/stage; CAS race; idempotency; locked lodging; issues retained; monotonic undo; local checkpoint recovery; retained lock safety"
+  },
+  "persistence": {
+    "libraryFileId": "libfile_b9d3a10688808191b462dbac28aa3689",
+    "currentNativeVersion": 2,
+    "journeyRevision": 2,
+    "nativeCreateAndGuardedReplace": "succeeded",
+    "staleGuard": "expected 0 / observed 1 rejected with CONFLICT",
+    "nativeFullJsonReadRecovery": "versions 1 and 2 complete; reconstructed JSON verified by CLI, canonical hashes exactly equal candidates",
+    "restoredV1Hash": "sha256:3d903a2567c20b749ec1cbb33118ba08bdcac62544745c56a1884e2477e9aa1b",
+    "restoredV2Hash": "sha256:a3d875efbfac54228d37915e21f0e16e61b1fc8db7259c627928b4f108092e5f",
+    "signedDownload": "failed twice; stopped; cloud byte materialization not yet verified"
+  },
+  "map": {
+    "shadowConfig": "Web Service and JS entries found in user-private local INI, mode 0600; not Keychain",
+    "requestsAttempted": 1,
+    "successfulProviderResponses": 0,
+    "remainingQuota": "unknown",
+    "credentialsPrintedOrPackaged": false,
+    "liveTransportBundled": false,
+    "adapterTests": "GCJ02/WGS84 explicit; mixed CRS rejected; provenance/time/uncertainty; positive/negative cache; expiry; rate/budget caps"
+  },
+  "portableManifest": {
+    "schemaVersion": 1,
+    "runtime": "Node >=22.13; no install required",
+    "files": {
+      "tripctl.mjs": "c3140d41ca1869d81c2150b941fb31845f65673df171ecbfc5d9d8bb5a333724",
+      "tripctl-lib.mjs": "65c74b3c31c40ddefadbd8bfcf61891c1c4c32dde8c74c2487c8c049ed1a4b03",
+      "synthetic.snapshot.json": "f230343b796f1bd4e1e5e70f894ad5cb43ed62362194015393600a035868a2fe",
+      "verify.mjs": "83ae7dc2242c00fee71c7ea7022b453a077027879583acb4e845278b5544dfc4",
+      "README.md": "5be6ac051f86ec1437782c3e25a7455e2af4bb7fd574cf77c16ac298e649c567",
+      "ZOD-LICENSE.txt": "3f1189b28e3866e0d979968d466b78f813f76827cfdca1fbb124cc0a5c8841f8"
+    }
+  },
+  "scope": {
+    "syntheticDataOnly": true,
+    "push": false,
+    "deployment": false,
+    "newOAuth": false,
+    "realTripMigration": false,
+    "externalOrdersOrMessages": false
+  }
+}

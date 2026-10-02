@@ -1,0 +1,17 @@
+import { build } from 'esbuild';
+import { mkdir, readFile, copyFile, writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+const output = resolve(process.argv[2] || 'dist/tripctl');
+await mkdir(output, { recursive: true });
+await build({ entryPoints: ['src/tripctl/cli.ts'], bundle: true, platform: 'node', target: 'node22', format: 'esm', minify: true, outfile: `${output}/tripctl.mjs`, legalComments: 'eof' });
+await build({ entryPoints: ['src/tripctl/index.ts'], bundle: true, platform: 'node', target: 'node22', format: 'esm', minify: true, outfile: `${output}/tripctl-lib.mjs`, legalComments: 'eof' });
+await copyFile('fixtures/planning-tools.snapshot.json', `${output}/synthetic.snapshot.json`);
+await copyFile('scripts/tripctl-portable.verify.mjs', `${output}/verify.mjs`);
+await copyFile('docs/tripctl.md', `${output}/README.md`);
+await copyFile('node_modules/zod/LICENSE', `${output}/ZOD-LICENSE.txt`);
+const files = ['tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'verify.mjs', 'README.md', 'ZOD-LICENSE.txt'];
+const hashes = {};
+for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
+await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));
+console.log(JSON.stringify({ output, files: hashes }));

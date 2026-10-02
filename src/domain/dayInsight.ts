@@ -1,13 +1,8 @@
 import { getDateHardIssues } from './planning';
+import type { NormalizedPlan } from './plan';
+import { evaluateWeather } from './planWeather';
+export { evaluateWeather, getPlanWeatherSnapshot } from './planWeather';
 import {
-  getPlanWeatherLocations,
-  getWeatherLocationKey,
-  type NormalizedPlan,
-} from './plan';
-import {
-  buildAggregatedWeatherSnapshot,
-  buildWeatherSnapshot,
-  evaluateWeatherForSnapshot,
   formatWeatherDataSummary,
   getWeatherIconCondition,
 } from './weather';
@@ -18,7 +13,7 @@ import {
 } from './display';
 import { ScheduleEntryStatus, type NormalizedSchedule } from './trip';
 import type { WeatherDataMap } from '../types/weatherData';
-import type { WeatherCondition, WeatherEvaluation, WeatherSnapshot } from './weather';
+import type { WeatherCondition } from './weather';
 
 export interface DayInsight {
   level: string;
@@ -34,25 +29,6 @@ export interface CalendarDayState {
   key: string;
   ariaLabel: string;
   label?: string;
-}
-
-export function getPlanWeatherSnapshot(plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap) {
-  const snapshots = getPlanWeatherLocations(plan)
-    .map((location) => {
-      const key = getWeatherLocationKey(location);
-      const autoDay = weatherData[key]?.dailyByDate?.[dateId];
-      const snapshot = buildWeatherSnapshot(autoDay);
-      return snapshot ? { location, snapshot } : null;
-    })
-    .filter((entry): entry is { location: ReturnType<typeof getPlanWeatherLocations>[number]; snapshot: WeatherSnapshot } => Boolean(entry));
-
-  if (!snapshots.length) return null;
-  return buildAggregatedWeatherSnapshot(snapshots);
-}
-
-export function evaluateWeather(plan: NormalizedPlan, dateId: string, weatherData: WeatherDataMap, language: string = DEFAULT_LANGUAGE): WeatherEvaluation {
-  const snapshot = getPlanWeatherSnapshot(plan, dateId, weatherData);
-  return evaluateWeatherForSnapshot(plan, snapshot, language);
 }
 
 export function getDayInsight(

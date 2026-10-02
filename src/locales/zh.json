@@ -678,5 +678,19 @@
   "importPreviewTitle": "确认行程与住宿变化",
   "importPreviewSummary": "{{plans}} 个计划 · {{hotels}} 家酒店 · {{dates}} 天排期",
   "confirmImportChanges": "确认应用",
-  "importPreviewRefreshed": "期间数据发生变化，已刷新预览，请重新核对。"
+  "importPreviewRefreshed": "期间数据发生变化，已刷新预览，请重新核对。",
+  "planningToolsTitle": "本地 MCP 工具建议",
+  "planningToolsHandoff": "导出当前浏览器快照，将 JSON 传给本地 MCP 工具，再把返回的建议粘贴到这里。数据仍需手动传递，确认前不会保存。",
+  "planningToolsExport": "导出工具快照",
+  "planningToolsProposal": "MCP 建议 JSON",
+  "planningToolsProposalPlaceholder": "粘贴 proposal 或 MCP 结构化预览结果",
+  "planningToolsPreview": "预览工具建议",
+  "planningToolsReview": "请检查所有受影响日期，再确认保存。",
+  "planningToolsConfirm": "确认并保存建议",
+  "planningToolsEmpty": "未安排",
+  "planningToolsInvalid": "快照或建议格式无效。请重新导出快照，再调用本地 MCP 工具。",
+  "planningToolsStale": "行程、日期、天气或清单已变化。请重新导出快照并请求新预览。",
+  "planningToolsBlocked": "这条建议无法应用，请检查日期限制和已完成的计划。",
+  "planningToolsArchived": "已归档旅行只读，请恢复旅行后再提出安排建议。",
+  "planningToolsWeather": "该计划的天气不合适，确认保存表示你接受此天气风险。"
 }

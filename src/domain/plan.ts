@@ -1003,7 +1003,7 @@ export function normalizeWeatherRules(plan: AnyRecord): WeatherRules {
   };
 }
 
-export function normalizePlan(planInput: unknown, index = 0, tripDates: TripDateLike[] = []): NormalizedPlan {
+export function normalizePlan(planInput: unknown, index = 0, tripDates: TripDateLike[] = [], createId: (index: number) => string = (i) => `plan-${Date.now()}-${i}`): NormalizedPlan {
   const plan = isRecord(planInput) ? planInput : {};
   const tripDateIds = tripDates.map((date) => date.id);
   const availableDates = toArray<string>(plan.available_dates || plan.suitable_days);
@@ -1021,7 +1021,7 @@ export function normalizePlan(planInput: unknown, index = 0, tripDates: TripDate
     : PlanPriority.Preferred;
 
   return {
-    id: plan.id || `plan-${Date.now()}-${index}`,
+    id: plan.id || createId(index),
     name: plan.name || '未命名计划',
     description: plan.description || '暂无说明。',
     priority: normalizedPriority,

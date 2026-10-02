@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslation } from 'react-i18next';
+import { PlanningToolsPanel } from './components/PlanningToolsPanel';
 import { AiPlannerModal } from './components/AiPlannerModal';
 import { ArchiveLibraryModal } from './components/ArchiveLibraryModal';
 import { ArchiveTripModal } from './components/ArchiveTripModal';
@@ -191,6 +192,7 @@ function App() {
   const [dayFocusRequest, setDayFocusRequest] = useState<{ dateId: string; section: 'heading' | 'bookings' | 'alternatives' } | null>(null);
   const [editorTab, setEditorTab] = useState<EditorTab>('itinerary');
   const [batchAiOpen, setBatchAiOpen] = useState(false);
+  const [planningToolDraft, setPlanningToolDraft] = useState('');
   const [aiPlannerOpen, setAiPlannerOpen] = useState(false);
   const [aiPlannerMode, setAiPlannerMode] = useState<AiPlannerMode>('replan');
   const [tripMenuOpen, setTripMenuOpen] = useState(false);
@@ -1572,6 +1574,15 @@ function App() {
           aiPlannerQuestionRef={aiPlannerQuestionFieldRef}
           aiPlannerResultRef={aiPlannerResultFieldRef}
           aiReplanText={aiReplanText}
+          toolsPanel={<PlanningToolsPanel
+            getSnapshot={() => ({ schemaVersion: 1, todayId: getTodayId(), trip: { id: activeTripId, name: tripName, startDateStr, tripDays, plans: normalizedPlans, schedule, lodgings, checklistText, checklistState, archived: activeTripArchived }, weatherData })}
+            draftText={planningToolDraft}
+            onDraftTextChange={setPlanningToolDraft}
+            planNames={Object.fromEntries(normalizedPlans.map((plan) => [plan.id, plan.name]))}
+            language={language}
+            onConfirm={(nextSchedule) => { setSchedule(nextSchedule); notify(t('dayPlanUpdated')); }}
+            t={t}
+          />}
           applyAiPlannerResult={applyAiPlannerResult}
           copyAiPlanningPrompt={copyAiPlanningPrompt}
           onClose={() => setAiPlannerOpen(false)}

@@ -9,16 +9,25 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mcp": "tsx src/mcp/stdio.ts",
+    "mcp:demo": "tsx scripts/planning-tools-demo.ts",
+    "tripctl": "tsx src/tripctl/cli.ts",
+    "tripctl:build": "node scripts/build-tripctl.mjs",
+    "tripctl:verify": "node scripts/tripctl-portable.verify.mjs dist/tripctl"
   },
   "dependencies": {
+    "@modelcontextprotocol/server": "2.2.0",
     "i18next": "^26.3.4",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-i18next": "^17.0.8"
+    "react-i18next": "^17.0.8",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@modelcontextprotocol/client": "2.2.0",
+    "@types/node": "24.19.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
@@ -26,9 +35,11 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "tsx": "4.23.15",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.63.0",
     "vite": "^8.0.12",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "esbuild": "0.28.2"
   }
 }

@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "todayId": "2026-10-02",
+  "trip": {
+    "id": "synthetic-tools-trip",
+    "name": "Synthetic MCP demo",
+    "startDateStr": "2026-10-10",
+    "tripDays": 3,
+    "plans": [
+      {
+        "id": "museum",
+        "name": "Synthetic museum",
+        "priority": "preferred",
+        "location": {
+          "label": "Synthetic city",
+          "query": "fixture"
+        },
+        "stops": [
+          {
+            "id": "museum-stop",
+            "title": "Museum visit",
+            "time": "10:00"
+          }
+        ],
+        "available_dates": [
+          "2026-10-10",
+          "2026-10-11",
+          "2026-10-12"
+        ],
+        "closed_dates": [],
+        "conflicts": [
+          "gallery"
+        ],
+        "weather_rules": {
+          "best": [
+            "sunny"
+          ],
+          "ok": [
+            "cloudy"
+          ],
+          "blocked": [
+            "storm"
+          ]
+        }
+      },
+      {
+        "id": "gallery",
+        "name": "Synthetic gallery",
+        "priority": "optional",
+        "location": {
+          "query": "fixture"
+        },
+        "stops": [
+          {
+            "id": "gallery-stop",
+            "title": "Gallery visit"
+          }
+        ],
+        "conflicts": []
+      },
+      {
+        "id": "indoor",
+        "name": "Synthetic indoor backup",
+        "priority": "backup",
+        "location": {
+          "query": "fixture"
+        },
+        "stops": [
+          {
+            "id": "indoor-stop",
+            "title": "Indoor visit"
+          }
+        ],
+        "conflicts": []
+      },
+      {
+        "id": "closed",
+        "name": "Synthetic closed venue",
+        "priority": "must",
+        "location": {
+          "query": "fixture"
+        },
+        "stops": [
+          {
+            "id": "closed-stop",
+            "title": "Closed venue"
+          }
+        ],
+        "closed_dates": [
+          "2026-10-11"
+        ],
+        "conflicts": []
+      }
+    ],
+    "schedule": {
+      "2026-10-10": {
+        "planId": "museum"
+      },
+      "2026-10-11": {
+        "planId": "",
+        "lodgingId": "hotel",
+        "lodgingLocked": true
+      },
+      "2026-10-12": {
+        "planId": "gallery"
+      }
+    },
+    "lodgings": [
+      {
+        "id": "hotel",
+        "name": "Synthetic hotel",
+        "checkIn": "2026-10-10",
+        "checkOut": "2026-10-13"
+      }
+    ],
+    "checklistText": "# Preparation\nConfirm ticket\nPack umbrella",
+    "checklistState": {},
+    "archived": false
+  },
+  "weatherData": {
+    "fixture": {
+      "dailyByDate": {
+        "2026-10-10": {
+          "weatherCode": 0
+        },
+        "2026-10-11": {
+          "weatherCode": 0
+        },
+        "2026-10-12": {
+          "weatherCode": 0
+        }
+      }
+    }
+  }
+}

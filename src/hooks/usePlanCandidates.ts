@@ -1,16 +1,7 @@
 import { useMemo } from 'react';
-import {
-  buildAssignmentPreview,
-  AssignmentBlockReason,
-  buildRiskItems,
-  getClearPenalty,
-  getPlanPriorityWeight,
-  getRiskIdentity,
-  getRiskPenalty,
-  getWeatherScore,
-} from '../domain/planning';
-import { evaluateWeather } from '../domain/dayInsight';
-import { uniq, type DisplayTripDate } from '../domain/display';
+import { rankPlanCandidates, candidateReasonTranslation } from '../domain/planCandidates';
+import { getTodayId } from '../domain/date';
+import type { DisplayTripDate } from '../domain/display';
 import type { NormalizedPlan } from '../domain/plan';
 import type { RiskItem } from '../domain/risk';
 import type { NormalizedSchedule } from '../domain/trip';
@@ -47,16 +38,14 @@ export function usePlanCandidates({
   importModalOpen,
   language,
   normalizedPlans,
-  planAssignments,
-  plansById,
   riskItems,
   schedule,
   selectedDate,
-  selectedPlan,
   t,
   tripDates,
   weatherData,
 }: UsePlanCandidatesOptions) {
+  const todayId = getTodayId();
   const candidates = useMemo(() => {
     if (
       !selectedDate
@@ -69,62 +58,8 @@ export function usePlanCandidates({
     ) {
       return [] as PlanCandidate[];
     }
-    const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
-
-    return normalizedPlans
-      .map((plan) => {
-        const hardReasons: string[] = [];
-        const notes: string[] = [];
-        const isCurrent = selectedPlan?.id === plan.id;
-        const assignedDateId = planAssignments.get(plan.id) || '';
-        const weather = evaluateWeather(plan, selectedDate.id, weatherData, language);
-        const { blocks, clears, nextSchedule } = buildAssignmentPreview(schedule, selectedDate.id, plan, plansById);
-        const nextRisks = buildRiskItems({
-          plans: normalizedPlans,
-          tripDates,
-          schedule: nextSchedule,
-          plansById,
-          weatherData,
-          evaluateWeather,
-        })
-          .filter((risk) => risk.level !== 'info');
-        const newRisks = nextRisks.filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
-
-        if (!plan.available_dates.includes(selectedDate.id)) hardReasons.push(t('dateNotSuitable'));
-        if (plan.closed_dates.includes(selectedDate.id)) hardReasons.push(t('closedOrUnavailable'));
-        if (!isCurrent) {
-          if (blocks.some((item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited)) {
-            hardReasons.push(t('planAlreadyVisited'));
-          }
-          if (blocks.some((item) => item.reason === AssignmentBlockReason.ConflictsWithVisitedPlan)) {
-            hardReasons.push(t('conflictsWithVisitedPlan'));
-          }
-        }
-        if (weather.level === 'unknown') notes.push(t('weatherUnknown'));
-
-        const priorityScore = getPlanPriorityWeight(plan) * 3;
-        const score = priorityScore + getWeatherScore(weather.level) - getClearPenalty(clears) - getRiskPenalty(newRisks);
-
-        return {
-          plan,
-          canAssign: hardReasons.length === 0,
-          hardReasons: uniq(hardReasons),
-          notes: uniq(notes),
-          clears,
-          newRisks,
-          score,
-          isCurrent,
-          assignedDateId,
-          isAlreadyVisited: blocks.some((item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited),
-          weather,
-          weatherOverride: weather.level === 'blocked',
-        } satisfies PlanCandidate;
-      })
-      .sort((a, b) => {
-        if (a.isCurrent !== b.isCurrent) return a.isCurrent ? -1 : 1;
-        if (a.canAssign !== b.canAssign) return a.canAssign ? -1 : 1;
-        return b.score - a.score;
-      });
+    return rankPlanCandidates({ plans: normalizedPlans, tripDates, schedule, weatherData, todayId }, selectedDate.id, language, riskItems)
+      .map((candidate) => ({ ...candidate, hardReasons: candidate.reasonCodes.map((code) => t(candidateReasonTranslation[code])), notes: candidate.noteCodes.map(() => t('weatherUnknown')) }));
   }, [
     aiPlannerOpen,
     archivedViewTripId,
@@ -134,15 +69,13 @@ export function usePlanCandidates({
     importModalOpen,
     language,
     normalizedPlans,
-    planAssignments,
-    plansById,
     riskItems,
     schedule,
     selectedDate,
-    selectedPlan,
     t,
     tripDates,
     weatherData,
+    todayId,
   ]);
 
   return useMemo(() => {

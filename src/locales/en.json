@@ -678,5 +678,19 @@
   "importPreviewTitle": "Review itinerary and lodging changes",
   "importPreviewSummary": "{{plans}} plans · {{hotels}} hotels · {{dates}} scheduled days",
   "confirmImportChanges": "Confirm changes",
-  "importPreviewRefreshed": "Data changed while previewing. Review the refreshed preview."
+  "importPreviewRefreshed": "Data changed while previewing. Review the refreshed preview.",
+  "planningToolsTitle": "Local MCP suggestions",
+  "planningToolsHandoff": "Export this browser’s snapshot, pass the JSON to the local MCP tools, then paste the returned proposal here. Data is transferred manually; nothing is saved until you confirm.",
+  "planningToolsExport": "Export tool snapshot",
+  "planningToolsProposal": "MCP proposal JSON",
+  "planningToolsProposalPlaceholder": "Paste proposal or structured MCP preview result",
+  "planningToolsPreview": "Preview tool proposal",
+  "planningToolsReview": "Review every affected date before saving.",
+  "planningToolsConfirm": "Confirm and save proposal",
+  "planningToolsEmpty": "Unassigned",
+  "planningToolsInvalid": "The snapshot or proposal is invalid. Export a fresh snapshot and use the local MCP tools again.",
+  "planningToolsStale": "The trip, date, weather or checklist has changed. Export a fresh snapshot and request a new preview.",
+  "planningToolsBlocked": "This proposal cannot be applied. Check date restrictions and completed plans.",
+  "planningToolsArchived": "Archived trips are read-only. Restore the trip before proposing an assignment.",
+  "planningToolsWeather": "Weather is unsuitable for this plan. Confirm only if you accept this weather risk."
 }

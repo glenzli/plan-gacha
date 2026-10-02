@@ -145,3 +145,9 @@ npm run lint
 npm test
 npm run build
 ```
+
+## AI 操作员工具 / AI operator tool
+
+可移植 `tripctl` 让 AI 读取同一旅程、校验并预览修改、保存版本、记录问题与依据、查看历史和撤销。`npm run tripctl:build` 生成无需安装依赖的 Node 运行包；`npm run tripctl:verify` 用合成行程验证跨进程保存、并发版本冲突、幂等和恢复。参见 [运行及持久备份说明](docs/tripctl.md)。临时云目录只作工作副本，持久源需由父操作员实际完成带版本守卫的备份；成功前不声称改好。
+
+The portable `tripctl` shares the planning core and keeps explicit journey memory, issues, revisions and undo history. Build with `npm run tripctl:build`, then run its dependency-free Node verifier with `npm run tripctl:verify`. See [operator and durable-backup instructions](docs/tripctl.md). A temporary cloud filesystem needs an acknowledged persistent backup before reporting a saved change. The optional stateless [MCP and web handoff](docs/planning-tools.md) remain available.

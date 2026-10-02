@@ -2,7 +2,7 @@ import { CHECKLIST_STATUS } from './checklist';
 import { getTodayId } from './date';
 import { hasUsefulLodgingInfo, ScheduleEntryStatus, type NormalizedSchedule } from './trip';
 import type { NormalizedPlan } from './plan';
-import type { DisplayTripDate } from './display';
+import type { TripDateLike } from './plan';
 import type { RiskItem } from './risk';
 import type { WeatherEvaluation } from './weather';
 import type { WeatherDataMap } from '../types/weatherData';
@@ -100,7 +100,7 @@ export function getDateHardIssues(
 
 function getFeasibleDates(
   plan: NormalizedPlan,
-  tripDates: DisplayTripDate[],
+  tripDates: TripDateLike[],
   schedule: NormalizedSchedule,
   plansById: Map<string, NormalizedPlan>,
   weatherData: WeatherDataMap,
@@ -137,7 +137,7 @@ export function buildRiskItems({
   evaluateWeather,
 }: {
   plans: NormalizedPlan[];
-  tripDates: DisplayTripDate[];
+  tripDates: TripDateLike[];
   schedule: NormalizedSchedule;
   plansById: Map<string, NormalizedPlan>;
   weatherData: WeatherDataMap;

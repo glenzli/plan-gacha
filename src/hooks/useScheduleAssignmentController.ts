@@ -2,18 +2,17 @@ import { useState, type Dispatch, type SetStateAction } from 'react';
 import {
   AssignmentBlockReason,
   buildAssignmentPreview,
-  buildRiskItems,
-  getRiskIdentity,
   type AssignmentClearItem,
 } from '../domain/planning';
-import { evaluateWeather } from '../domain/dayInsight';
+import { previewPlanAssignment } from '../domain/planningCore';
+import { getTodayId } from '../domain/date';
 import type { DisplayTripDate } from '../domain/display';
 import type { NormalizedPlan } from '../domain/plan';
 import type { RiskItem } from '../domain/risk';
 import { ScheduleEntryStatus, type NormalizedSchedule } from '../domain/trip';
 import type { TranslateFn } from '../types/ui';
 import type { WeatherDataMap } from '../types/weatherData';
-import { getLodgingImpacts, type LodgingImpact, type NormalizedLodging } from '../domain/lodging';
+import type { LodgingImpact, NormalizedLodging } from '../domain/lodging';
 
 export interface PendingAssignment {
   blocks: ReturnType<typeof buildAssignmentPreview>['blocks'];
@@ -60,21 +59,9 @@ export function useScheduleAssignmentController({
     const targetPlan = plansById.get(planId);
     if (!targetPlan) return null;
 
-    const { blocks, clears, nextSchedule } = buildAssignmentPreview(schedule, dateId, targetPlan, plansById);
-    const currentRiskKeys = new Set(riskItems.map(getRiskIdentity));
-
-    const nextRisks = buildRiskItems({
-      plans: normalizedPlans,
-      tripDates,
-      schedule: nextSchedule,
-      plansById,
-      weatherData,
-      evaluateWeather,
-    })
-      .filter((risk) => risk.level !== 'info')
-      .filter((risk) => !currentRiskKeys.has(getRiskIdentity(risk)));
-
-    const lodgingImpacts = getLodgingImpacts(schedule, nextSchedule, plansById, plansById, lodgings, lodgings, tripDates.map((date) => date.id));
+    const { blocks, clears, nextSchedule, nextRisks, lodgingImpacts } = previewPlanAssignment(
+      { plans: normalizedPlans, lodgings, tripDates, schedule, weatherData, todayId: getTodayId() }, dateId, targetPlan, riskItems,
+    );
     return { blocks, clears, nextSchedule, nextRisks, targetPlan, dateId, lodgingImpacts };
   };
 
