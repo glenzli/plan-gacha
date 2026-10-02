@@ -110,7 +110,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
   return { schemaVersion: 1 as const, revision: state.revision, operation, canApply, reasonCodes: [...new Set(blocks)], weatherOverride, detail,
-    previewToken: hash({ coreVersion: 1, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
+    previewToken: hash({ coreVersion: 2, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
 }
 export async function apply(stateInput: unknown, mutationInput: unknown) {
   const state = parseState(stateInput); const parsed = mutationSchema.safeParse(mutationInput);

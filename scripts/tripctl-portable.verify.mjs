@@ -63,5 +63,23 @@ try {
   const lock = `${store}.lock`; await writeFile(lock, 'recovery-required');
   assert.equal(failure('apply', '--store', store, '--input', ir).error.code, 'store_busy');
   await rm(lock);
-  console.log(JSON.stringify({ ok: true, runtime: process.version, independentProcesses: true, installedDependencies: false, checks: ['manifest', 'init-no-overwrite', 'preview-no-write', 'restart-persistence', 'idempotent-replay', 'stage-not-saved', 'concurrent-CAS', 'locked-lodging', 'retained-issue', 'stale-revision', 'constraints', 'monotonic-undo', 'checkpoint-recovery', 'retained-lock'] }));
+  const bookedStore = `${scratch}/booked.json`;
+  run('init', '--store', bookedStore, '--input', `${folder}/booked-day.snapshot.json`);
+  const bookedBefore = await readFile(bookedStore, 'utf8');
+  const dinnerOperation = await save('replace-dinner', { type: 'assign', dateId: '2026-10-11', planId: 'indoor' });
+  const dinner = run('preview', '--store', bookedStore, '--input', dinnerOperation, '--revision', '0');
+  assert.equal(dinner.canApply, false); assert.ok(dinner.reasonCodes.includes('booked_plan_displaced'));
+  assert.equal(failure('apply', '--store', bookedStore, '--input', await save('blocked-dinner', request(dinner, 'blocked-dinner'))).error.code, 'constraint_violation');
+  assert.equal(await readFile(bookedStore, 'utf8'), bookedBefore);
+  const reviewed = await save('reviewed-dinner', { type: 'assign', dateId: '2026-10-11', planId: 'indoor', commitmentChanges: [{ dateId: '2026-10-11', planId: 'museum', reason: 'Synthetic explicit itinerary change; reservation remains to be reviewed' }] });
+  const reviewedPreview = run('preview', '--store', bookedStore, '--input', reviewed, '--revision', '0');
+  assert.equal(reviewedPreview.canApply, true); assert.equal(reviewedPreview.detail.commitmentImpacts[0].accepted, true);
+  run('apply', '--store', bookedStore, '--input', await save('reviewed-dinner-request', request(reviewedPreview, 'reviewed-dinner')));
+  const bookedRead = run('read', '--store', bookedStore);
+  assert.equal(bookedRead.snapshot.trip.plans[0].bookings[0].status, 'done'); assert.equal(bookedRead.memory.progress.length, 0);
+  assert.ok(run('check', '--store', bookedStore).result.data.risks.some((risk) => risk.code === 'booked_plan_unscheduled'));
+  const dinnerUndo = run('preview', '--store', bookedStore, '--input', await save('undo-dinner', { type: 'undo', commitId: 'reviewed-dinner' }), '--revision', '1');
+  run('apply', '--store', bookedStore, '--input', await save('undo-dinner-request', request(dinnerUndo, 'undo-dinner')));
+  assert.equal(run('read', '--store', bookedStore).snapshot.trip.schedule['2026-10-11'].planId, 'museum');
+  console.log(JSON.stringify({ ok: true, runtime: process.version, independentProcesses: true, installedDependencies: false, checks: ['manifest', 'init-no-overwrite', 'preview-no-write', 'restart-persistence', 'idempotent-replay', 'stage-not-saved', 'concurrent-CAS', 'locked-lodging', 'retained-issue', 'stale-revision', 'constraints', 'monotonic-undo', 'checkpoint-recovery', 'retained-lock', 'booked-dinner-blocked', 'blocked-apply-no-write', 'explicit-commitment-review', 'booking-not-progress', 'booked-dinner-undo'] }));
 } finally { await rm(scratch, { recursive: true, force: true }); }

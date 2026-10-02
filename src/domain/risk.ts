@@ -87,7 +87,7 @@ export function buildRiskGroups(riskItems: RiskItem[], tripDates: TripDateLike[]
       target: {
         planId: risk.plan.id,
         dateId: risk.dateId,
-        section: risk.title === '预约/订票未完成' ? 'bookings'
+        section: ['预约/订票未完成', '已订预约未在行程中', '已订预约日期未保留'].includes(risk.title) ? 'bookings'
           : risk.title === '天气不合适' && risk.dateId ? 'alternatives' : 'constraints',
       },
       dateId: risk.dateId || '',

@@ -26,11 +26,14 @@ export interface AssignmentPreview {
   blocks: AssignmentBlockItem[];
   clears: AssignmentClearItem[];
   nextSchedule: NormalizedSchedule;
+  commitmentImpacts: CommitmentImpact[];
 }
 
 export const AssignmentBlockReason = {
   PlanAlreadyVisited: 'plan_already_visited',
   ConflictsWithVisitedPlan: 'conflicts_with_visited_plan',
+  BookedPlanDisplaced: 'booked_plan_displaced',
+  LockedPlanDisplaced: 'locked_plan_displaced',
 } as const;
 
 export type AssignmentBlockReason = typeof AssignmentBlockReason[keyof typeof AssignmentBlockReason];
@@ -41,8 +44,33 @@ export interface AssignmentBlockItem {
   reason: AssignmentBlockReason;
 }
 
-interface AssignmentPreviewOptions {
+export interface CommitmentChange { dateId: string; planId: string; reason: string }
+export interface CommitmentImpact {
+  dateId: string;
+  planId: string;
+  bookingIds: string[];
+  bookingTitles: string[];
+  bookingDateUncertain: boolean;
+  planLocked: boolean;
+  accepted: boolean;
+  reason: string;
+}
+export interface AssignmentPreviewOptions {
   todayId?: string;
+  commitmentChanges?: CommitmentChange[];
+}
+
+/** Compare active arrangements, including the selected day's replacement and indirect clearouts.
+ * A completed booking procedure is an obligation, never actual-visit evidence. */
+export function getCommitmentImpacts(before: NormalizedSchedule, after: NormalizedSchedule, plansById: Map<string, NormalizedPlan>, changes: CommitmentChange[] = []): CommitmentImpact[] {
+  return Object.entries(before).flatMap(([dateId, entry]) => {
+    const plan = plansById.get(entry.planId);
+    if (!plan || after[dateId]?.planId === entry.planId && after[dateId]?.status !== ScheduleEntryStatus.Abandoned) return [];
+    const bookings = plan.bookings.filter((booking) => booking.status === 'done');
+    if (!bookings.length && !entry.planLocked) return [];
+    const authorization = changes.find((change) => change.dateId === dateId && change.planId === plan.id && change.reason.trim());
+    return [{ dateId, planId: plan.id, bookingIds: bookings.map((booking) => booking.id), bookingTitles: bookings.map((booking) => booking.title), bookingDateUncertain: bookings.some((booking) => !booking.dateId), planLocked: Boolean(entry.planLocked), accepted: Boolean(authorization), reason: authorization?.reason || '' }];
+  });
 }
 
 const PRIORITY_RANK: Record<string, number> = {
@@ -208,7 +236,18 @@ export function buildRiskItems({
     })
     .filter(Boolean) as RiskItem<NormalizedPlan>[];
 
-  return [...scheduledRisks, ...unscheduledRisks as RiskItem<NormalizedPlan>[], ...bookingRisks].sort((a, b) => {
+  const bookedArrangementRisks: RiskItem<NormalizedPlan>[] = plans.flatMap((plan) => {
+    const activeDates = Object.entries(schedule).filter(([, entry]) => entry.planId === plan.id && entry.status !== ScheduleEntryStatus.Abandoned).map(([date]) => date);
+    const booked = plan.bookings.filter((booking) => booking.status === 'done');
+    const dated = booked.filter((booking) => booking.dateId && !activeDates.includes(booking.dateId));
+    const unplaced = booked.filter((booking) => !booking.dateId && !activeDates.length);
+    return [
+      ...(dated.length ? [{ plan, level: 'warning', title: '已订预约日期未保留', reasons: dated.map((booking) => `${booking.title} · ${booking.dateId}`) }] : []),
+      ...(unplaced.length ? [{ plan, level: 'warning', title: '已订预约未在行程中', reasons: [...unplaced.map((booking) => booking.title), '未提供独立预约日期，请核对；预约办好不代表活动已发生'] }] : []),
+    ];
+  });
+
+  return [...scheduledRisks, ...unscheduledRisks as RiskItem<NormalizedPlan>[], ...bookingRisks, ...bookedArrangementRisks].sort((a, b) => {
     const levelRank: Record<string, number> = { critical: 3, warning: 2, info: 1 };
     const levelDiff = levelRank[b.level] - levelRank[a.level];
     if (levelDiff) return levelDiff;
@@ -265,14 +304,17 @@ export function buildAssignmentPreview(
     nextSchedule[dateId] = {
       planId: targetPlan.id,
       ...(existing?.lodgingLocked ? { lodgingId: existing.lodgingId, lodgingLocked: true } : {}),
+      ...(existing?.planId === targetPlan.id && existing.planLocked ? { planLocked: true } : {}),
     };
   }
 
-  return {
-    blocks: Array.from(blocksByDate.values()),
-    clears: Array.from(clearsByDate.values()),
-    nextSchedule,
-  };
+  const commitmentImpacts = getCommitmentImpacts(schedule, nextSchedule, plansById, options.commitmentChanges);
+  const commitmentBlocks = commitmentImpacts.filter((impact) => !impact.accepted).flatMap((impact) => [
+    ...(impact.bookingIds.length ? [{ dateId: impact.dateId, plan: plansById.get(impact.planId)!, reason: AssignmentBlockReason.BookedPlanDisplaced }] : []),
+    ...(impact.planLocked ? [{ dateId: impact.dateId, plan: plansById.get(impact.planId)!, reason: AssignmentBlockReason.LockedPlanDisplaced }] : []),
+  ]);
+  const blocks = [...blocksByDate.values(), ...commitmentBlocks];
+  return { blocks, clears: blocks.length ? [] : [...clearsByDate.values()], nextSchedule: blocks.length ? { ...schedule } : nextSchedule, commitmentImpacts };
 }
 
 export function getRiskIdentity(risk: AnyRecord) {

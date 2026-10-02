@@ -81,6 +81,14 @@ export function PlanningToolsPanel({ getSnapshot, onConfirm, draftText, onDraftT
         <p>{data.canApply ? t('planningToolsReview') : t('planningToolsBlocked')}</p>
         {data.reasonCodes.length > 0 && <p>{data.reasonCodes.map((code) => t(candidateReasonTranslation[code as CandidateReason] || 'planningToolsBlocked')).join(', ')}</p>}
         <ul>{data.changes.map((change) => <li key={change.dateId}>{change.dateId}: {planNames[change.before?.planId || ''] || t('planningToolsEmpty')} → {planNames[change.after?.planId || ''] || t('planningToolsEmpty')}</li>)}</ul>
+        {data.commitmentImpacts.length > 0 && <div role="alert">
+          <p>{t('commitmentChangeWarning')}</p>
+          <ul>{data.commitmentImpacts.map((impact) => <li key={`${impact.dateId}:${impact.planId}`}>
+            {impact.dateId} · {planNames[impact.planId] || impact.planId}: {impact.bookingTitles.join(', ') || t('lockedPlanDisplaced')}
+            {impact.bookingDateUncertain && <p>{t('bookingDateUncertain')}</p>}
+            {impact.accepted && <p>{t('commitmentChangeAccepted', { reason: impact.reason })}</p>}
+          </li>)}</ul>
+        </div>}
         {data.weatherOverride && <p>{t('planningToolsWeather')}</p>}
         <ul>{data.newRisks.map((risk, index) => <li key={index}>{planNames[risk.planId] || risk.planId}: {translateRiskTitle(risk.title, language)} · {risk.reasons.map((reason) => translateIssue(reason, language)).join(', ')}</li>)}</ul>
         <ul>{data.lodgingImpacts.map((impact) => <li key={impact.dateId}>

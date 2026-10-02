@@ -158,6 +158,7 @@ export function compactPlanForAi(plan: any, assignedDay: string | null) {
       type: booking.type,
       title: booking.title,
       status: booking.status,
+      ...(booking.dateId ? { dateId: booking.dateId } : {}),
       address: booking.address,
       url: booking.url,
       cancel_url: booking.cancelUrl,

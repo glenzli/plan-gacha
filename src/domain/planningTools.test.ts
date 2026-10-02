@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import fixture from '../../fixtures/planning-tools.snapshot.json';
+import bookedFixture from '../../fixtures/booked-day.snapshot.json';
 import { callPlanningTool, getSnapshotToken, planningSnapshotSchema, preparePlanningContext, planningToolResponseSchema } from './planningTools';
 import { rankPlanCandidates } from './planCandidates';
 import { previewPlanAssignment } from './planningCore';
@@ -86,5 +87,60 @@ describe('stateless planning contract', () => {
     expect(result).toMatchObject({ ok: true, data: { canApply: true, weatherOverride: true, nextSchedule: { '2026-10-10': { planId: 'museum', status: 'abandoned' } } } });
     input.trip.archived = true;
     expect(await callPlanningTool('preview_changes', { snapshot: input, operation, expectedSnapshotToken: await getSnapshotToken(input) })).toMatchObject({ ok: false, error: { code: 'archived_snapshot' } });
+  });
+});
+
+
+describe('booked and locked arrangements', () => {
+  const replacement = { type: 'assign', dateId: '2026-10-11', planId: 'indoor' } as const;
+  const acknowledgment = { dateId: '2026-10-11', planId: 'museum', reason: 'Synthetic user explicitly permits the itinerary change and will review the reservation separately' };
+  const booked = () => planningSnapshotSchema.parse(structuredClone(bookedFixture));
+  const run = async (input: ReturnType<typeof booked>, op: unknown = replacement) => callPlanningTool('preview_changes', { snapshot: input, operation: op, expectedSnapshotToken: await getSnapshotToken(input) });
+  it('blocks the exact reserved-dinner replacement in web core, ranking and tool preview without writes', async () => {
+    const input = booked(); const original = structuredClone(input); const context = preparePlanningContext(input);
+    const web = previewPlanAssignment(context, replacement.dateId, context.plans.find((plan) => plan.id === 'indoor')!);
+    expect(web.blocks.map((block) => block.reason)).toEqual(['booked_plan_displaced']);
+    expect(web.nextSchedule).toEqual(input.trip.schedule);
+    const response = await run(input);
+    expect(response).toMatchObject({ ok: true, data: { canApply: false, reasonCodes: ['booked_plan_displaced'], changes: [], nextSchedule: input.trip.schedule, commitmentImpacts: [{ dateId: replacement.dateId, planId: 'museum', bookingIds: ['dinner-booking'], bookingDateUncertain: true, accepted: false }] } });
+    const rank = await callPlanningTool('rank_candidates', { snapshot: input, dateId: replacement.dateId });
+    expect(rank.ok && rank.data.kind === 'ranking' && rank.data.candidates.find((candidate) => candidate.planId === 'indoor')).toMatchObject({ canAssign: false, reasonCodes: ['booked_plan_displaced'] });
+    expect(input).toEqual(original);
+  });
+  it('warns on an imported unsafe snapshot, while booking done does not become actual visit evidence', async () => {
+    const input = booked(); input.trip.schedule['2026-10-11'].planId = 'indoor';
+    expect(await callPlanningTool('evaluate_plan', { snapshot: input })).toMatchObject({ ok: true, data: { risks: [{ code: 'booked_plan_unscheduled', planId: 'museum', level: 'warning' }] } });
+    const invalidDate = booked(); invalidDate.trip.plans[0].bookings![0].date_id = '2026-02-30';
+    expect(await callPlanningTool('evaluate_plan', { snapshot: invalidDate })).toMatchObject({ ok: false, error: { code: 'invalid_schema' } });
+    input.trip.plans[0].bookings![0].dateId = '2026-10-11';
+    expect(await callPlanningTool('evaluate_plan', { snapshot: input })).toMatchObject({ ok: true, data: { risks: [{ code: 'booked_date_mismatch', planId: 'museum' }] } });
+    input.trip.schedule = { '2026-10-12': { planId: 'museum' } };
+    const context = preparePlanningContext(input);
+    expect(context.plans[0].bookings[0].dateId).toBe('2026-10-11');
+    expect(await callPlanningTool('evaluate_plan', { snapshot: input })).toMatchObject({ ok: true, data: { risks: [{ code: 'booked_date_mismatch' }] } });
+    expect((await run(input, { ...replacement, planId: 'museum' })).ok).toBe(true);
+  });
+  it('allows only explicitly named affected arrangements and retains reservation records and warning', async () => {
+    const input = booked();
+    const response = await run(input, { ...replacement, commitmentChanges: [acknowledgment] });
+    expect(response).toMatchObject({ ok: true, data: { canApply: true, reasonCodes: [], commitmentImpacts: [{ accepted: true, reason: acknowledgment.reason }], newRisks: [{ code: 'booked_plan_unscheduled' }], nextSchedule: { '2026-10-11': { planId: 'indoor', lodgingId: 'hotel', lodgingLocked: true } } } });
+    expect(input.trip.plans[0].bookings![0].status).toBe('done');
+    expect(await run(input, { ...replacement, commitmentChanges: [{ ...acknowledgment, dateId: '2026-10-10' }] })).toMatchObject({ ok: false, error: { code: 'invalid_reference' } });
+    expect(await run(input, { ...replacement, commitmentChanges: [acknowledgment, acknowledgment] })).toMatchObject({ ok: false, error: { code: 'invalid_reference' } });
+    expect(await run(input, { ...replacement, commitmentChanges: [{ ...acknowledgment, reason: ' ' }] })).toMatchObject({ ok: false, error: { code: 'invalid_schema' } });
+    expect(await run(input, { ...replacement, planId: 'closed', commitmentChanges: [acknowledgment] })).toMatchObject({ ok: true, data: { canApply: false, reasonCodes: ['closed_or_unavailable'] } });
+  });
+  it('guards moving a booked plan and indirect conflict clearouts atomically, but leaves pending/none unconstrained', async () => {
+    const input = booked();
+    expect(await run(input, { ...replacement, dateId: '2026-10-12', planId: 'museum' })).toMatchObject({ ok: true, data: { canApply: false, reasonCodes: ['booked_plan_displaced'], nextSchedule: input.trip.schedule } });
+    expect(await run(input, { ...replacement, dateId: '2026-10-12', planId: 'gallery' })).toMatchObject({ ok: true, data: { canApply: false, reasonCodes: ['booked_plan_displaced'], changes: [] } });
+    for (const status of ['pending', 'none'] as const) { input.trip.plans[0].bookings![0].status = status; expect(await run(input)).toMatchObject({ ok: true, data: { canApply: true, commitmentImpacts: [] } }); }
+  });
+  it('preserves independent plan locks, including reselecting the same plan, with a deliberate exception path', async () => {
+    const input = booked(); input.trip.plans[0].bookings = []; input.trip.schedule['2026-10-11'].planLocked = true;
+    expect(preparePlanningContext(input).schedule['2026-10-11'].planLocked).toBe(true);
+    expect(await run(input)).toMatchObject({ ok: true, data: { canApply: false, reasonCodes: ['locked_plan_displaced'] } });
+    expect(await run(input, { ...replacement, planId: 'museum' })).toMatchObject({ ok: true, data: { canApply: true, nextSchedule: { '2026-10-11': { planId: 'museum', planLocked: true } } } });
+    expect(await run(input, { ...replacement, commitmentChanges: [acknowledgment] })).toMatchObject({ ok: true, data: { canApply: true, commitmentImpacts: [{ planLocked: true, accepted: true }] } });
   });
 });

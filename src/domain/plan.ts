@@ -105,6 +105,8 @@ export interface PlanBooking {
   type: BookingType;
   title: string;
   status: BookingStatus;
+  /** Booking date, not evidence that the activity has happened. */
+  dateId?: string;
   address: string;
   url: string;
   cancelUrl: string;
@@ -931,6 +933,7 @@ function normalizeBookingItem(item: unknown, index: number, fallbackType: Bookin
     type,
     title: item.title || item.name || item.label || (type === BookingType.Ticket ? '订票' : '预约'),
     status: normalizeBookingStatus(item.status, item),
+    ...((item.dateId || item.date_id) ? { dateId: String(item.dateId || item.date_id) } : {}),
     address: item.address || item.addr || location?.address || item.place || location?.label || '',
     url: normalizeExternalLinkUrl(item.url || item.link || item.booking_url || item.bookingUrl || item.reserve_url || item.reserveUrl),
     cancelUrl: normalizeExternalLinkUrl(item.cancel_url || item.cancelUrl || item.refund_url || item.refundUrl || item.manage_url || item.manageUrl),

@@ -1,0 +1,114 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "6c0d726e2db1a27a1939ac65569d7db69569d01a",
+  "guardVersion": 2,
+  "fixture": "fixtures/booked-day.snapshot.json",
+  "beforeFix": {
+    "canApply": true,
+    "reasonCodes": [],
+    "afterPlanId": "indoor",
+    "afterEvaluateRisks": []
+  },
+  "afterFix": {
+    "canApply": false,
+    "reasonCodes": [
+      "booked_plan_displaced"
+    ],
+    "commitmentImpacts": [
+      {
+        "dateId": "2026-10-11",
+        "planId": "museum",
+        "bookingIds": [
+          "dinner-booking"
+        ],
+        "bookingTitles": [
+          "Synthetic reserved dinner 18:30"
+        ],
+        "bookingDateUncertain": true,
+        "planLocked": false,
+        "accepted": false,
+        "reason": ""
+      }
+    ],
+    "changes": [],
+    "reviewedCanApply": true,
+    "reviewedNewRisks": [
+      {
+        "code": "booked_plan_unscheduled",
+        "planId": "museum",
+        "level": "warning",
+        "title": "已订预约未在行程中",
+        "reasons": [
+          "Synthetic reserved dinner 18:30",
+          "未提供独立预约日期，请核对；预约办好不代表活动已发生"
+        ]
+      }
+    ],
+    "afterEvaluation": {
+      "kind": "evaluation",
+      "risks": [
+        {
+          "code": "booked_plan_unscheduled",
+          "planId": "museum",
+          "level": "warning",
+          "title": "已订预约未在行程中",
+          "reasons": [
+            "Synthetic reserved dinner 18:30",
+            "未提供独立预约日期，请核对；预约办好不代表活动已发生"
+          ]
+        }
+      ],
+      "scheduledIssues": [
+        {
+          "dateId": "2026-10-11",
+          "planId": "indoor",
+          "issues": []
+        }
+      ]
+    }
+  },
+  "validation": {
+    "fullTests": {
+      "files": 29,
+      "tests": 178,
+      "result": "passed"
+    },
+    "lint": "passed",
+    "typecheck": "passed",
+    "webBuild": "passed; existing chunk size warning",
+    "mcpTransport": "real SDK client with separate stdio process; discovery and blocked/reviewed/evaluate calls",
+    "portable": {
+      "runtime": "Node v24.13.0",
+      "independentProcesses": true,
+      "checkCount": 19,
+      "result": "passed"
+    },
+    "ui": {
+      "components": "Original PlanningToolsPanel and useScheduleAssignmentController; loopback in-memory synthetic harness",
+      "replacementClearAbandon": "blocked; original schedule retained",
+      "reviewedProposal": "explicit impacts and uncovered booking shown; save enabled only after review",
+      "confirmation": "changed memory fixture to indoor and retained booking coverage risk",
+      "persistentUserStateTouched": false
+    }
+  },
+  "screenshots": {
+    "booking-guard-blocked.jpg": "b2e8a713d4fbae391935912ac99d72eae31eda13207aab30e7bf24041916d3db",
+    "booking-guard-reviewed.jpg": "a7c748993af877d2653a0c1094917373b6632b025608d1dabc5b7e14f2a71103",
+    "booking-guard-saved.jpg": "494ddfea3c0a48f75997dd4c2c027ad550d25af5f32734968da32d36b9fce503"
+  },
+  "limitations": [
+    "No stop-level booking association or partial-day editing operation",
+    "Free-text walking preferences and unassociated/stale route facts are not deterministic ranking inputs",
+    "Direct catalog edits/imports are separate broader editing surfaces",
+    "No authentication of caller intent",
+    "No real trip, order, Shadow source or parent Library journey changed"
+  ],
+  "network": {
+    "defaultSandbox": "DNS failed for public AMap and control domains",
+    "macChrome": "Loaded official public AMap documentation and example.com",
+    "approvedKeylessDiagnostic": "All three public domains resolved; HTTPS failed before response",
+    "authorizedSinglePoiAttempt": "tls_certificate_error before HTTP/provider response; maxCalls=1; retries=0; certificate verification retained",
+    "keyValidity": "unknown",
+    "quota": "unknown"
+  }
+}

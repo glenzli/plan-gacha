@@ -35,6 +35,7 @@ export interface NormalizedScheduleEntry {
   status?: ScheduleEntryStatus;
   lodgingId?: string;
   lodgingLocked?: boolean;
+  planLocked?: boolean;
 }
 
 export type NormalizedSchedule = Record<string, NormalizedScheduleEntry>;
@@ -119,6 +120,7 @@ export function normalizeSchedule(schedule: unknown): NormalizedSchedule {
           planId: String(value.planId || value.plan_id || value.id || ''),
           ...((value.lodgingId || value.lodging_id) ? { lodgingId: String(value.lodgingId || value.lodging_id) } : {}),
           ...((value.lodgingLocked || value.lodging_locked) ? { lodgingLocked: true } : {}),
+          ...((value.planLocked || value.plan_locked) ? { planLocked: true } : {}),
           ...(status ? { status } : {}),
         }];
       })

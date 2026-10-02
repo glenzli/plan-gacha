@@ -49,4 +49,30 @@ History retains full before/after contents, actor, reason, explicit timestamp, o
 
 `src/tripctl/mapFacts.ts` accepts an approved replaceable transport and explicit clock. Inputs label GCJ02/WGS84, mode, provider and endpoints; mixed coordinate systems are rejected, never silently converted. Outputs include source, observation/expiry, estimate/uncertainty or bounded failure. Success and failures cache with separate TTLs; calls have explicit rate and budget caps. No credentials, provider exception text or raw URL enter the fact schema. Estimates are not promises; hours, reservations and real-time traffic require separate evidence. Current tests use fixtures; no live AMap connection is bundled.
 
-Shadow's actual credential backend is a user-private local INI file, not Keychain. Both AMap Web Service and JS entry metadata were found in its configured application-data location with mode 0600. One public-place Web Service request was attempted using the existing credential in Mac memory only; it returned a bounded request failure, with no successful provider response. No retry was made; remaining account quota is unknown. No key was printed, copied, configured for this package or transferred to the cloud. Future live connection needs an approved safe credential path on that execution host. Provider quota/rate errors follow [AMap's official error-code documentation](https://lbs.amap.com/api/webservice/guide/tools/info/).
+Shadow's actual credential backend is a user-private local INI file, not Keychain. Both AMap Web Service and JS entry metadata were found in its configured application-data location with mode 0600. Separate bounded diagnostics were performed under explicit authorization. The default task sandbox failed DNS resolution for all tested domains, while ordinary Mac Chrome loaded the public AMap documentation. A formally approved keyless diagnostic restored tool-side DNS resolution. The subsequently authorized single public-place query failed TLS certificate verification before receiving an HTTP or provider response. No automatic retry, TLS bypass or network-setting change was made; key validity and remaining account quota remain unknown. No key was printed, copied, configured for this package or transferred to the cloud. Future live connection needs an approved safe credential path on that execution host. Provider quota/rate errors follow [AMap's official error-code documentation](https://lbs.amap.com/api/webservice/guide/tools/info/).
+
+
+## Booked and locked arrangements (guard revision 2)
+
+`bookings.status:"done"` means the reservation/ticket procedure is complete. It does **not** mean a visit happened. Actual progress remains in `memory.progress`. Assignment now blocks displacement of any current arrangement containing a done booking (`booked_plan_displaced`) or `schedule[dateId].planLocked:true` (`locked_plan_displaced`). This applies to replacing the selected day, moving the same plan, and clearing conflicting plans elsewhere. A blocked preview is atomic and returns the original schedule; blocked apply writes nothing. Locked lodging remains independent.
+
+Legacy bookings with no separate date conservatively protect their currently assigned **whole-day plan**. `commitmentImpacts` identifies the date, plan, booking IDs/titles, lock and `bookingDateUncertain`. Optional `bookings[].dateId` records an explicit reservation date and survives normalization/export. Evaluation warns if a done booking has no active plan (`booked_plan_unscheduled`) or its explicit date is not covered (`booked_date_mismatch`). These warnings identify missing itinerary coverage; they do not claim that an order was cancelled, or that a past activity did not happen.
+
+A caller with an actual explicit instruction can preview an exception naming each affected original arrangement and the reason:
+
+```json
+{
+  "type": "assign",
+  "dateId": "2026-10-11",
+  "planId": "indoor",
+  "commitmentChanges": [{
+    "dateId": "2026-10-11",
+    "planId": "museum",
+    "reason": "Synthetic user explicitly permits this itinerary change; reservation still requires separate review"
+  }]
+}
+```
+
+A missing acknowledgment still blocks its arrangement. Wrong, duplicate or unaffected IDs/dates fail `invalid_reference`; blank reasons fail `invalid_schema`. This exception does not bypass date/closure/visited rules, memory exclusions, confirmed decisions or actual-progress constraints. It preserves booking records/status, returns explicit accepted impacts and any coverage warning, and uses normal preview/CAS/audit/undo. It does not contact a booking provider. Old CLI preview tokens must be regenerated under guard revision 2; idempotent receipts from already committed history remain readable.
+
+The ordinary web assignment controller, clear-day and abandon-day actions use the same guard. It rechecks a pending confirmation against current arrangements. The optional proposal panel shows affected commitments and requires its existing traveller save confirmation even for an explicit exception. Direct catalog/JSON editing and imports remain broader editing surfaces: this guard is not a complete protected-stop editor. The present schema has no authenticated user intent or stop-level reservation linkage. See `planning-evolution.md` for the next compatible choices; do not silently infer a walking limit or an afternoon-only edit from free text.

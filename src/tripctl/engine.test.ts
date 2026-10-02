@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import fixture from '../../fixtures/planning-tools.snapshot.json';
+import bookedFixture from '../../fixtures/booked-day.snapshot.json';
 import { initialize, preview, apply, mutationFromPreview, parseState, inspect } from './engine';
 import { createMapProvider, MapProviderError, mapFactSchema } from './mapFacts';
 import type { TripState, TripOperation } from './schema';
@@ -97,5 +98,26 @@ describe('map fact adapter', () => {
     await provider.query(query); expect(provider.callCount).toBe(1);
     instant += 61_000; await provider.query(query); expect(provider.callCount).toBe(2);
     await expect(provider.query({ ...query, to: { ...query.to, crs: 'WGS84' } })).rejects.toMatchObject({ code: 'provider_unavailable' });
+  });
+});
+
+
+describe('booked dinner operator regression', () => {
+  it('blocks default apply, requires precise acknowledgment, preserves booking and supports audited undo', async () => {
+    const state = initialize(bookedFixture); const before = structuredClone(state);
+    const operation = { ...assign, planId: 'indoor' };
+    const blocked = await preview(state, operation, 0);
+    expect(blocked).toMatchObject({ canApply: false, reasonCodes: ['booked_plan_displaced', 'constraint_violation'], nextContent: state.content });
+    await expect(apply(state, mutationFromPreview(blocked, metadata('unsafe-dinner')))).rejects.toMatchObject({ code: 'constraint_violation' });
+    expect(state).toEqual(before);
+    const allowed = { ...operation, commitmentChanges: [{ dateId: assign.dateId, planId: 'museum', reason: 'Synthetic user explicitly releases this itinerary commitment, reservation still requires review' }] };
+    const next = (await change(state, allowed, 'reviewed-dinner')).state;
+    expect(next.content.snapshot.trip.plans[0].bookings![0].status).toBe('done');
+    expect(next.content.memory.progress).toEqual([]);
+    expect(next.content.snapshot.trip.schedule[assign.dateId]).toEqual({ planId: 'indoor', lodgingId: 'hotel', lodgingLocked: true });
+    expect(await inspect(next, 'evaluate_plan')).toMatchObject({ ok: true, data: { risks: [{ code: 'booked_plan_unscheduled' }] } });
+    expect((await change(next, { type: 'undo', commitId: 'reviewed-dinner' }, 'restore-dinner')).state.content).toEqual(state.content);
+    const confirmed = (await change(state, { type: 'decision', record: { id: 'keep-museum', planId: 'museum', dateId: assign.dateId, disposition: 'confirmed', reason: 'Synthetic user locks the whole plan', source } }, 'confirm-dinner')).state;
+    expect(await preview(confirmed, allowed, 1)).toMatchObject({ canApply: false, reasonCodes: ['confirmed_plan_displaced'] });
   });
 });

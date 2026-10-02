@@ -4,7 +4,7 @@ import type { NormalizedSchedule } from './trip';
 import type { WeatherDataMap } from '../types/weatherData';
 import type { RiskItem } from './risk';
 import { evaluateWeather } from './planWeather';
-import { buildAssignmentPreview, buildRiskItems, getRiskIdentity } from './planning';
+import { buildAssignmentPreview, buildRiskItems, getRiskIdentity, type CommitmentChange } from './planning';
 
 export interface PlanningContext {
   plans: NormalizedPlan[];
@@ -20,9 +20,9 @@ export function evaluatePlanning(context: PlanningContext) {
 }
 
 /** Pure preview: callers own the clock and persistence. Keep the web's historical-correction semantics. */
-export function previewPlanAssignment(context: PlanningContext, dateId: string, targetPlan: NormalizedPlan, currentRisks: RiskItem<NormalizedPlan>[] = evaluatePlanning(context)) {
+export function previewPlanAssignment(context: PlanningContext, dateId: string, targetPlan: NormalizedPlan, currentRisks: RiskItem<NormalizedPlan>[] = evaluatePlanning(context), commitmentChanges: CommitmentChange[] = []) {
   const plansById = new Map(context.plans.map((plan) => [plan.id, plan]));
-  const preview = buildAssignmentPreview(context.schedule, dateId, targetPlan, plansById, { todayId: context.todayId });
+  const preview = buildAssignmentPreview(context.schedule, dateId, targetPlan, plansById, { todayId: context.todayId, commitmentChanges });
   const currentKeys = new Set(currentRisks.map(getRiskIdentity));
   const nextRisks = evaluatePlanning({ ...context, schedule: preview.nextSchedule })
     .filter((risk) => risk.level !== 'info' && !currentKeys.has(getRiskIdentity(risk)));

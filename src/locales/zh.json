@@ -692,5 +692,13 @@
   "planningToolsStale": "行程、日期、天气或清单已变化。请重新导出快照并请求新预览。",
   "planningToolsBlocked": "这条建议无法应用，请检查日期限制和已完成的计划。",
   "planningToolsArchived": "已归档旅行只读，请恢复旅行后再提出安排建议。",
-  "planningToolsWeather": "该计划的天气不合适，确认保存表示你接受此天气风险。"
+  "planningToolsWeather": "该计划的天气不合适，确认保存表示你接受此天气风险。",
+  "bookedPlanDisplaced": "此变更会移出已订预约／订票安排；请先明确核对预约变更",
+  "lockedPlanDisplaced": "此变更会移出已锁定安排；请先明确核对变更",
+  "arrangementChangedReview": "行程或预约信息已变化，请重新预览并确认",
+  "commitmentChangeWarning": "此变更影响已订或锁定安排。这里只修改行程，不会取消订单或确认改订。",
+  "bookingDateUncertain": "未提供独立预约日期：按当前整日计划保护，请核对预约日期和时间。",
+  "commitmentChangeAccepted": "已明确允许此行程变更：{{reason}}",
+  "bookedPlanUnscheduled": "已订预约未在行程中",
+  "bookedDateMismatch": "已订预约日期未保留"
 }

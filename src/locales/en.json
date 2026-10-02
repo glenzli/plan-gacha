@@ -692,5 +692,13 @@
   "planningToolsStale": "The trip, date, weather or checklist has changed. Export a fresh snapshot and request a new preview.",
   "planningToolsBlocked": "This proposal cannot be applied. Check date restrictions and completed plans.",
   "planningToolsArchived": "Archived trips are read-only. Restore the trip before proposing an assignment.",
-  "planningToolsWeather": "Weather is unsuitable for this plan. Confirm only if you accept this weather risk."
+  "planningToolsWeather": "Weather is unsuitable for this plan. Confirm only if you accept this weather risk.",
+  "bookedPlanDisplaced": "This change would displace a booked arrangement; explicitly review the booking change first",
+  "lockedPlanDisplaced": "This change would displace a locked arrangement; explicitly review the change first",
+  "arrangementChangedReview": "The itinerary or bookings changed; preview and confirm again",
+  "commitmentChangeWarning": "This change affects booked or locked arrangements. It changes the itinerary only; it does not cancel orders or confirm rebooking.",
+  "bookingDateUncertain": "No independent booking date was supplied. The current whole-day plan is protected; verify the reservation date and time.",
+  "commitmentChangeAccepted": "Explicitly allowed itinerary change: {{reason}}",
+  "bookedPlanUnscheduled": "Booked arrangement is missing from the itinerary",
+  "bookedDateMismatch": "Booked date is missing from the itinerary"
 }

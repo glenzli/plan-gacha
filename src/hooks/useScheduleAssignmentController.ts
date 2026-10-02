@@ -2,6 +2,7 @@ import { useState, type Dispatch, type SetStateAction } from 'react';
 import {
   AssignmentBlockReason,
   buildAssignmentPreview,
+  getCommitmentImpacts,
   type AssignmentClearItem,
 } from '../domain/planning';
 import { previewPlanAssignment } from '../domain/planningCore';
@@ -78,7 +79,9 @@ export function useScheduleAssignmentController({
       const hasVisitedPlan = impact.blocks.some(
         (item) => item.reason === AssignmentBlockReason.PlanAlreadyVisited,
       );
-      notify(hasVisitedPlan ? t('planAlreadyVisited') : t('conflictsWithVisitedPlan'));
+      const booking = impact.blocks.some((item) => item.reason === AssignmentBlockReason.BookedPlanDisplaced);
+      const locked = impact.blocks.some((item) => item.reason === AssignmentBlockReason.LockedPlanDisplaced);
+      notify(booking ? t('bookedPlanDisplaced') : locked ? t('lockedPlanDisplaced') : hasVisitedPlan ? t('planAlreadyVisited') : t('conflictsWithVisitedPlan'));
       return false;
     }
 
@@ -93,14 +96,32 @@ export function useScheduleAssignmentController({
 
   const confirmPendingAssignment = () => {
     if (!pendingAssignment) return;
-    applySchedule(
-      pendingAssignment.nextSchedule,
-      pendingAssignment.clears.length ? t('impactedDatesCleared') : t('dayPlanUpdated'),
-    );
+    const fresh = buildAssignmentImpact(pendingAssignment.dateId, pendingAssignment.targetPlan.id);
+    if (!fresh || fresh.blocks.length) {
+      setPendingAssignment(null);
+      notify(t('arrangementChangedReview'));
+      return;
+    }
+    if (JSON.stringify(fresh.nextSchedule) !== JSON.stringify(pendingAssignment.nextSchedule)
+      || JSON.stringify(fresh.nextRisks) !== JSON.stringify(pendingAssignment.nextRisks)
+      || JSON.stringify(fresh.lodgingImpacts) !== JSON.stringify(pendingAssignment.lodgingImpacts)) {
+      setPendingAssignment(fresh);
+      notify(t('arrangementChangedReview'));
+      return;
+    }
+    applySchedule(fresh.nextSchedule, fresh.clears.length ? t('impactedDatesCleared') : t('dayPlanUpdated'));
     setPendingAssignment(null);
   };
 
+  const commitmentBlocksChange = (dateId: string, after: NormalizedSchedule) => {
+    const impact = getCommitmentImpacts(schedule, after, plansById).find((item) => item.dateId === dateId);
+    if (!impact) return false;
+    notify(t(impact.bookingIds.length ? 'bookedPlanDisplaced' : 'lockedPlanDisplaced'));
+    return true;
+  };
   const clearDay = (dateId: string) => {
+    const cleared = { ...schedule }; delete cleared[dateId];
+    if (commitmentBlocksChange(dateId, cleared)) return;
     setSchedule((current) => {
       const next = { ...current };
       if (current[dateId]?.lodgingLocked) next[dateId] = { planId: '', lodgingId: current[dateId].lodgingId, lodgingLocked: true };
@@ -112,6 +133,7 @@ export function useScheduleAssignmentController({
 
   const toggleDayAbandoned = (dateId: string) => {
     const shouldAbandon = schedule[dateId]?.status !== ScheduleEntryStatus.Abandoned;
+    if (shouldAbandon && commitmentBlocksChange(dateId, { ...schedule, [dateId]: { ...schedule[dateId], status: ScheduleEntryStatus.Abandoned } })) return;
     setSchedule((current) => {
       const entry = current[dateId];
       if (!entry?.planId) return current;

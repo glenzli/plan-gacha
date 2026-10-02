@@ -102,6 +102,8 @@ export function translateRiskTitle(title: string, language: string = DEFAULT_LAN
     必去计划没有可安排日期: 'mustNoAvailableDate',
     必去未排: 'mustUnscheduled',
     '预约/订票未完成': 'bookingIncomplete',
+    已订预约未在行程中: 'bookedPlanUnscheduled',
+    已订预约日期未保留: 'bookedDateMismatch',
     天气不合适: 'weatherNotSuitable',
     当天不可用: 'dayUnavailable',
     日期不合适: 'incompatibleDate',

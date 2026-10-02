@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import fixture from '../../fixtures/planning-tools.snapshot.json';
+import bookedFixture from '../../fixtures/booked-day.snapshot.json';
 import { callPlanningTool, getSnapshotToken, planningSnapshotSchema, planningToolResponseSchema, toolNames } from '../domain/planningTools';
 
 describe('real MCP stdio discovery and calls', () => {
@@ -34,6 +35,13 @@ describe('real MCP stdio discovery and calls', () => {
       expect(stale.structuredContent).toMatchObject({ ok: false, error: { code: 'stale_snapshot' } });
       const invalid = await client.callTool({ name: 'rank_candidates', arguments: { snapshot: { ...input, schemaVersion: 2 }, dateId: '2026-10-11' } });
       expect(invalid.isError).toBe(true);
+      const booked = planningSnapshotSchema.parse(bookedFixture);
+      const bookedArguments = { snapshot: booked, expectedSnapshotToken: await getSnapshotToken(booked), operation: { type: 'assign', dateId: '2026-10-11', planId: 'indoor' } };
+      const bookedResult = await client.callTool({ name: 'preview_changes', arguments: bookedArguments });
+      expect(bookedResult.structuredContent).toMatchObject({ ok: true, data: { canApply: false, reasonCodes: ['booked_plan_displaced'] } });
+      expect(planningToolResponseSchema.parse(bookedResult.structuredContent)).toEqual(await callPlanningTool('preview_changes', bookedArguments));
+      const acknowledgment = { ...bookedArguments, operation: { ...bookedArguments.operation, commitmentChanges: [{ dateId: '2026-10-11', planId: 'museum', reason: 'Synthetic explicit itinerary change instruction' }] } };
+      expect((await client.callTool({ name: 'preview_changes', arguments: acknowledgment })).structuredContent).toMatchObject({ ok: true, data: { canApply: true, commitmentImpacts: [{ accepted: true }], newRisks: [{ code: 'booked_plan_unscheduled' }] } });
       expect(input).toEqual(before);
     } finally { await client.close(); }
   }, 30000);
