@@ -2,6 +2,7 @@ import * as z from 'zod/v4';
 import { planningSnapshotSchema, assignmentOperationSchema } from '../domain/planningTools';
 import { mapFactSchema } from './mapFacts';
 import { evidenceSourceSchema } from '../domain/evidence';
+import { itinerarySchema, itineraryOperationSchemas } from './itinerarySchema';
 import { activityOperationSchemas } from '../domain/activityEditing';
 export const identifier = z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9_.:-]+$/);
 export const timestamp = z.iso.datetime({ offset: true });
@@ -18,10 +19,11 @@ export const memorySchema = z.strictObject({
   issues: z.array(issue).max(500),
   mapFacts: z.array(mapFactSchema).max(100),
 });
-export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema });
+export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema, itinerary: itinerarySchema.optional() });
 export const operationSchema = z.discriminatedUnion('type', [
   assignmentOperationSchema,
   ...activityOperationSchemas,
+  ...itineraryOperationSchemas,
   z.strictObject({ type: z.literal('fact'), record: note.extend({ certainty: z.enum(['reported', 'verified', 'uncertain']) }) }),
   z.strictObject({ type: z.literal('preference'), record: note }),
   z.strictObject({ type: z.literal('decision'), record: decision }),

@@ -1,5 +1,7 @@
 import { canonical, hash } from './identity';
 export { canonical, hash } from './identity';
+import { validateItinerary, previewItineraryOperation } from './itinerary';
+import { itineraryOperationSchema, ItineraryError } from './itinerarySchema';
 import { assessWalkingFact } from './routeEvidence';
 import { previewActivityChange, ActivityEditError } from '../domain/activityEditing';
 import { evaluateWeather } from '../domain/planWeather';
@@ -22,6 +24,7 @@ export function parseState(input: unknown): TripState {
     || new Set(state.history.map((e) => e.id)).size !== state.history.length
     || state.history.some((event, i) => i > 0 && canonical(event.before) !== canonical(state.history[i - 1].after))
     || state.history.length > 0 && canonical(state.content) !== canonical(state.history.at(-1)!.after)) throw new TripError('invalid_history', 'History, revision and current state must agree');
+  if (state.content.itinerary) validateItinerary(state.content.itinerary, state.content.snapshot);
   return state;
 }
 export function initialize(snapshot: unknown): TripState {
@@ -69,14 +72,27 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   if (state.revision !== expectedRevision) throw new TripError('revision_conflict', `Expected revision ${expectedRevision}, current ${state.revision}`);
   const operation = parsed.data; const next = structuredClone(state.content); let detail: unknown = null; const blocks: string[] = []; let weatherOverride = false;
   if (state.content.snapshot.trip.archived) blocks.push('archived_trip');
-  if (operation.type === 'assign') {
+  if (itineraryOperationSchema.safeParse(operation).success) {
+    try {
+      const result = previewItineraryOperation(next.snapshot, next.itinerary, operation);
+      blocks.push(...result.blocks); detail = result.detail; weatherOverride = result.weatherOverride;
+      for (const date of result.changedDays) {
+        const planId = state.content.snapshot.trip.schedule[date]?.planId;
+        for (const d of new Map(next.memory.decisions.map((x) => [`${x.planId}:${x.dateId || '*'}`, x])).values()) if (d.planId === planId && (!d.dateId || d.dateId === date) && d.disposition === 'confirmed') blocks.push('confirmed_plan_change');
+        for (const p of new Map(next.memory.progress.map((x) => [`${x.planId}:${x.dateId}`, x])).values()) if (p.planId === planId && p.dateId === date && p.status === 'done') blocks.push('completed_plan_change');
+      }
+      if (!blocks.length) { next.itinerary = result.nextItinerary; next.snapshot = result.nextSnapshot; }
+    } catch (error) { if (error instanceof ItineraryError) throw new TripError(error.code, error.message); throw error; }
+  } else if (operation.type === 'assign') {
     blocks.push(...rememberedBlocks(next, operation));
     const result = await callPlanningTool('preview_changes', { snapshot: next.snapshot, operation, expectedSnapshotToken: await getSnapshotToken(next.snapshot) });
     if (!result.ok) throw new TripError(result.error.code, result.error.message);
     if (result.data.kind !== 'preview') throw new TripError('invalid_preview', 'Unexpected planning response');
     detail = result.data; weatherOverride = result.data.weatherOverride;
     if (!result.data.canApply) blocks.push(...result.data.reasonCodes, 'constraint_violation');
-    next.snapshot.trip.schedule = result.data.nextSchedule;
+    const nextSchedule = result.data.nextSchedule;
+    if (next.itinerary && next.itinerary.current.some((d) => canonical(next.snapshot.trip.schedule[d.dateId]) !== canonical(nextSchedule[d.dateId]))) blocks.push('itinerary_operation_required');
+    next.snapshot.trip.schedule = nextSchedule;
     // A confirmed selection must survive incidental clearouts of other assignments.
     for (const d of new Map(next.memory.decisions.map((d) => [`${d.planId}:${d.dateId || '*'}`, d])).values()) if (d.disposition === 'confirmed' && d.dateId
       && next.snapshot.trip.schedule[d.dateId]?.planId !== d.planId
@@ -85,6 +101,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
       && state.content.snapshot.trip.schedule[p.dateId]?.planId === p.planId) blocks.push('completed_plan_displaced');
   } else if (operation.type === 'edit_activity' || operation.type === 'link_booking_activities') {
     try {
+      if (operation.type === 'edit_activity' && next.itinerary?.current.some((d) => d.planId === operation.planId)) throw new TripError('itinerary_operation_required', 'Use edit_itinerary to keep current activities and snapshot together');
       const result = previewActivityChange(next.snapshot, operation);
       blocks.push(...result.blocks); next.snapshot = result.nextSnapshot;
       detail = { ...result.detail, unassociatedMapFactIds: operation.type === 'edit_activity' && operation.patch.location ? next.memory.mapFacts.filter((fact) => !fact.binding).map((fact) => fact.id) : [], routeImpacts: operation.type === 'edit_activity' ? next.memory.mapFacts.filter((fact) => fact.binding?.planId === operation.planId && fact.binding.dateId === operation.dateId && [fact.binding.fromStopId, fact.binding.toStopId].includes(operation.stopId)).map((fact) => assessWalkingFact(next.snapshot, fact, operation.source.observedAt)) : [] };
@@ -122,12 +139,12 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   else if (operation.type === 'undo') {
     const last = state.history.at(-1);
     if (!last || last.id !== operation.commitId) throw new TripError('undo_conflict', 'Only the latest commit can be undone without overwriting subsequent changes');
-    Object.assign(next, structuredClone(last.before));
+    delete next.itinerary; Object.assign(next, structuredClone(last.before));
   }
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
   return { schemaVersion: 1 as const, revision: state.revision, operation, canApply, reasonCodes: [...new Set(blocks)], weatherOverride, detail,
-    previewToken: hash({ coreVersion: 4, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
+    previewToken: hash({ coreVersion: 5, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
 }
 export async function apply(stateInput: unknown, mutationInput: unknown) {
   const state = parseState(stateInput); const parsed = mutationSchema.safeParse(mutationInput);

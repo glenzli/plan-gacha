@@ -1,0 +1,373 @@
+{
+  "snapshot": {
+    "schemaVersion": 1,
+    "todayId": "2030-05-11",
+    "trip": {
+      "id": "anonymous-itinerary",
+      "name": "Anonymous travel fixture",
+      "startDateStr": "2030-05-11",
+      "tripDays": 6,
+      "plans": [],
+      "schedule": {},
+      "lodgings": [],
+      "checklistText": "Confirm entry reservation",
+      "checklistState": {},
+      "archived": false
+    },
+    "weatherData": {}
+  },
+  "operation": {
+    "type": "import_itinerary",
+    "timeZone": "Asia/Shanghai",
+    "days": [
+      {
+        "dateId": "2030-05-11",
+        "planId": "day-a",
+        "title": "Anonymous first day",
+        "activities": [
+          {
+            "id": "drive-a",
+            "kind": "transfer",
+            "title": "Morning drive",
+            "timing": {
+              "start": "07:30",
+              "end": "11:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Hotel A"
+              },
+              "to": {
+                "label": "Venue A"
+              }
+            }
+          },
+          {
+            "id": "visit-a",
+            "kind": "visit",
+            "title": "Outdoor visit and lunch",
+            "timing": {
+              "start": "11:30",
+              "end": "15:00"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "location": {
+              "label": "Venue A"
+            },
+            "weatherSensitive": true
+          },
+          {
+            "id": "drive-b",
+            "kind": "transfer",
+            "title": "Afternoon drive",
+            "timing": {
+              "start": "15:00",
+              "end": "16:45"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Venue A"
+              },
+              "to": {
+                "label": "Town A"
+              }
+            }
+          },
+          {
+            "id": "hotel-a",
+            "kind": "lodging",
+            "title": "Check-in and dinner",
+            "timing": {
+              "start": "16:45"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "location": {
+              "label": "Hotel B"
+            }
+          }
+        ]
+      },
+      {
+        "dateId": "2030-05-12",
+        "planId": "day-b",
+        "title": "Anonymous mountain day",
+        "activities": [
+          {
+            "id": "drive-c",
+            "kind": "transfer",
+            "title": "First drive",
+            "timing": {
+              "start": "07:30",
+              "end": "08:15"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Hotel B"
+              },
+              "to": {
+                "label": "Venue B"
+              }
+            }
+          },
+          {
+            "id": "visit-b",
+            "kind": "visit",
+            "title": "Forest walk",
+            "timing": {
+              "start": "08:15",
+              "end": "10:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "location": {
+              "label": "Venue B"
+            },
+            "weatherSensitive": true
+          },
+          {
+            "id": "drive-d",
+            "kind": "transfer",
+            "title": "Second drive",
+            "timing": {
+              "start": "10:30",
+              "end": "11:45"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Venue B"
+              },
+              "to": {
+                "label": "Venue C"
+              }
+            }
+          },
+          {
+            "id": "visit-c",
+            "kind": "visit",
+            "title": "Valley and lunch",
+            "timing": {
+              "start": "11:45",
+              "end": "14:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "location": {
+              "label": "Venue C"
+            },
+            "weatherSensitive": true
+          },
+          {
+            "id": "drive-e",
+            "kind": "transfer",
+            "title": "Mountain driving",
+            "timing": {
+              "start": "14:30",
+              "end": "17:00"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Venue C"
+              },
+              "to": {
+                "label": "Town B"
+              }
+            }
+          },
+          {
+            "id": "hotel-b",
+            "kind": "lodging",
+            "title": "Check-in and dinner",
+            "timing": {
+              "start": "17:00"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:anonymous-itinerary",
+              "observedAt": "2030-05-11T12:00:00+08:00"
+            },
+            "location": {
+              "label": "Hotel C"
+            }
+          }
+        ]
+      }
+    ],
+    "constraints": [
+      {
+        "id": "departure",
+        "dateId": "2030-05-12",
+        "activityId": "drive-e",
+        "strength": "hard",
+        "kind": "start_at",
+        "clock": "14:30",
+        "text": "User requires exact departure time",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "finish",
+        "dateId": "2030-05-12",
+        "activityId": "drive-e",
+        "strength": "hard",
+        "kind": "end_before",
+        "clock": "17:00",
+        "text": "User deadline; not verified sunset",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "effort",
+        "dateId": "2030-05-12",
+        "strength": "soft",
+        "kind": "preference",
+        "text": "Prefer less walking; no numeric maximum supplied",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      }
+    ],
+    "commitments": [],
+    "options": [
+      {
+        "id": "option-a",
+        "condition": "If first mountain entry succeeds",
+        "proposal": "Next day half-day forest group; optional distant stop, then city",
+        "dateIds": [
+          "2030-05-13",
+          "2030-05-14"
+        ],
+        "uncertainties": [
+          "Group availability",
+          "Road duration"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "option-b",
+        "condition": "If first entry fails",
+        "proposal": "Forest group then second mountain entry next day; omit distant stop",
+        "dateIds": [
+          "2030-05-13",
+          "2030-05-14"
+        ],
+        "uncertainties": [
+          "Closure not independently verified"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "option-c",
+        "condition": "If both entries fail and user still wants another attempt",
+        "proposal": "Move to backup area and consider third-day entry",
+        "dateIds": [
+          "2030-05-14",
+          "2030-05-15"
+        ],
+        "uncertainties": [
+          "User choice and backup entry availability"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      }
+    ],
+    "decisionPoints": [
+      {
+        "id": "hotel-choice",
+        "text": "Decide whether to keep redundant next-night hotels; fee policy unknown",
+        "optionIds": [
+          "option-a",
+          "option-b",
+          "option-c"
+        ],
+        "deadline": "2030-05-13T18:00:00+08:00",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "entry-choice",
+        "text": "Choose entry branch after evidence and user preference",
+        "optionIds": [
+          "option-a",
+          "option-b",
+          "option-c"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:anonymous-itinerary",
+          "observedAt": "2030-05-11T12:00:00+08:00"
+        }
+      }
+    ],
+    "source": {
+      "kind": "synthetic",
+      "reference": "synthetic:anonymous-itinerary",
+      "observedAt": "2030-05-11T12:00:00+08:00"
+    }
+  }
+}

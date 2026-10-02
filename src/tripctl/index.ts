@@ -4,3 +4,7 @@ export * from './store';
 export * from './mapFacts';
 export * from '../domain/activityEditing';
 export * from './routeEvidence';
+
+export * from './itinerarySchema';
+export * from './itinerary';
+export * from './itineraryReport';
