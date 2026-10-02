@@ -9,9 +9,10 @@ await build({ entryPoints: ['src/tripctl/index.ts'], bundle: true, platform: 'no
 await copyFile('fixtures/planning-tools.snapshot.json', `${output}/synthetic.snapshot.json`);
 await copyFile('fixtures/booked-day.snapshot.json', `${output}/booked-day.snapshot.json`);
 await copyFile('scripts/tripctl-portable.verify.mjs', `${output}/verify.mjs`);
+await copyFile('scripts/amap-walking-transport.py', `${output}/amap-walking-transport.py`);
 await copyFile('docs/tripctl.md', `${output}/README.md`);
 await copyFile('node_modules/zod/LICENSE', `${output}/ZOD-LICENSE.txt`);
-const files = ['tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'verify.mjs', 'README.md', 'ZOD-LICENSE.txt'];
+const files = ['tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));

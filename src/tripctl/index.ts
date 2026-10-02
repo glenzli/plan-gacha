@@ -3,3 +3,4 @@ export * from './schema';
 export * from './store';
 export * from './mapFacts';
 export * from '../domain/activityEditing';
+export * from './routeEvidence';

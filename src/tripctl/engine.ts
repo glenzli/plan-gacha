@@ -1,14 +1,10 @@
-import { createHash } from 'node:crypto';
+import { canonical, hash } from './identity';
+export { canonical, hash } from './identity';
+import { assessWalkingFact } from './routeEvidence';
 import { previewActivityChange, ActivityEditError } from '../domain/activityEditing';
 import { evaluateWeather } from '../domain/planWeather';
 import { callPlanningTool, getSnapshotToken, preparePlanningContext, planningSnapshotSchema, type PlanningToolResponse, type PlanningToolName } from '../domain/planningTools';
 import { contentSchema, mutationSchema, operationSchema, tripStateSchema, TripError, type TripState, type TripContent, type TripOperation, type TripMutation } from './schema';
-export function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
-  if (value && typeof value === 'object') return `{${Object.entries(value).filter(([, v]) => v !== undefined).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([k, v]) => `${JSON.stringify(k)}:${canonical(v)}`).join(',')}}`;
-  return JSON.stringify(value);
-}
-export const hash = (value: unknown) => `sha256:${createHash('sha256').update(canonical(value)).digest('hex')}`;
 export function parseState(input: unknown): TripState {
   const parsed = tripStateSchema.safeParse(input);
   if (!parsed.success) throw new TripError('invalid_state', 'Journey state schema is invalid');
@@ -91,7 +87,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
     try {
       const result = previewActivityChange(next.snapshot, operation);
       blocks.push(...result.blocks); next.snapshot = result.nextSnapshot;
-      detail = { ...result.detail, unassociatedMapFactIds: operation.type === 'edit_activity' && operation.patch.location ? next.memory.mapFacts.map((fact) => fact.id) : [] };
+      detail = { ...result.detail, unassociatedMapFactIds: operation.type === 'edit_activity' && operation.patch.location ? next.memory.mapFacts.filter((fact) => !fact.binding).map((fact) => fact.id) : [], routeImpacts: operation.type === 'edit_activity' ? next.memory.mapFacts.filter((fact) => fact.binding?.planId === operation.planId && fact.binding.dateId === operation.dateId && [fact.binding.fromStopId, fact.binding.toStopId].includes(operation.stopId)).map((fact) => assessWalkingFact(next.snapshot, fact, operation.source.observedAt)) : [] };
       if (operation.type === 'edit_activity') {
         for (const decision of new Map(next.memory.decisions.map((item) => [`${item.planId}:${item.dateId || '*'}`, item])).values())
           if (decision.planId === operation.planId && (!decision.dateId || decision.dateId === operation.dateId) && decision.disposition === 'confirmed') blocks.push('confirmed_plan_change');
@@ -116,7 +112,12 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
     if (!issue) throw new TripError('unknown_id', 'Unknown issue ID');
     if (issue.status === 'resolved') throw new TripError('already_resolved', 'Issue already resolved');
     issue.status = 'resolved'; issue.resolution = operation.resolution; issue.resolutionSource = operation.source;
-  } else if (operation.type === 'map_fact') insert(next.memory.mapFacts, operation.fact);
+  } else if (operation.type === 'map_fact') {
+    const assessment = assessWalkingFact(next.snapshot, operation.fact, operation.fact.observedAt);
+    detail = { kind: 'route_observation', assessment };
+    if (operation.fact.binding && assessment.reasonCodes.some((code) => ['unknown_binding_reference', 'endpoint_changed', 'query_endpoint_mismatch', 'unsupported_route_mode'].includes(code))) blocks.push('route_binding_mismatch');
+    insert(next.memory.mapFacts, operation.fact);
+  }
   else if (operation.type === 'set_context') next.snapshot.todayId = operation.todayId;
   else if (operation.type === 'undo') {
     const last = state.history.at(-1);
@@ -126,7 +127,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
   return { schemaVersion: 1 as const, revision: state.revision, operation, canApply, reasonCodes: [...new Set(blocks)], weatherOverride, detail,
-    previewToken: hash({ coreVersion: 3, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
+    previewToken: hash({ coreVersion: 4, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
 }
 export async function apply(stateInput: unknown, mutationInput: unknown) {
   const state = parseState(stateInput); const parsed = mutationSchema.safeParse(mutationInput);

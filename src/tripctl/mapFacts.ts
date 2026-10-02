@@ -1,11 +1,16 @@
 import * as z from 'zod/v4';
+import { planningSnapshotSchema } from '../domain/planningTools';
+const id = planningSnapshotSchema.shape.trip.shape.id;
+const token = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+export const routeBindingSchema = z.strictObject({ tripId: id, dateId: planningSnapshotSchema.shape.todayId, planId: id, fromStopId: id, toStopId: id, fromContentToken: token, toContentToken: token });
+export const mapFailureSchema = z.enum(['rate_limited', 'quota_exhausted', 'auth_unavailable', 'provider_unavailable']);
 const point = z.strictObject({ longitude: z.number().min(-180).max(180), latitude: z.number().min(-90).max(90), crs: z.enum(['GCJ02', 'WGS84']) });
 export const mapQuerySchema = z.strictObject({ provider: z.enum(['amap', 'fixture']), mode: z.enum(['walking', 'driving', 'transit']), from: point, to: point });
 export const mapFactSchema = z.strictObject({
-  id: z.string().min(1).max(160), query: mapQuerySchema,
+  id: z.string().min(1).max(160), query: mapQuerySchema, binding: routeBindingSchema.optional(),
   source: z.string().min(1).max(500), observedAt: z.iso.datetime({ offset: true }), expiresAt: z.iso.datetime({ offset: true }),
   status: z.enum(['estimate', 'unavailable']), distanceMeters: z.number().nonnegative().optional(), durationSeconds: z.number().nonnegative().optional(),
-  uncertainty: z.string().min(1).max(2000), failureCode: z.enum(['rate_limited', 'quota_exhausted', 'auth_unavailable', 'provider_unavailable']).optional(),
+  uncertainty: z.string().min(1).max(2000), failureCode: mapFailureSchema.optional(),
 }).refine((x) => Date.parse(x.expiresAt) > Date.parse(x.observedAt), 'Fact expiry must follow observation')
   .refine((x) => x.status !== 'estimate' || x.distanceMeters !== undefined && x.durationSeconds !== undefined, 'An estimate needs distance and duration')
   .refine((x) => x.status !== 'unavailable' || x.failureCode !== undefined, 'Unavailable facts need a bounded failure code')

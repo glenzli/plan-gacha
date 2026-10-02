@@ -1,0 +1,244 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "a068dfb639e75faddbd14d91bf148e1141ae8c97",
+  "previewCoreVersion": 4,
+  "providerQuery": {
+    "httpStatus": 200,
+    "infocode": "10000",
+    "observedAt": "2026-10-02T12:13:01.780049+00:00",
+    "estimate": {
+      "distanceMeters": 207,
+      "durationSeconds": 166
+    },
+    "diagnostics": {
+      "attemptedCalls": 1,
+      "maxCalls": 1,
+      "retries": 0,
+      "strictTLS": true,
+      "hostnameVerification": true,
+      "caBundle": "certifi-standard",
+      "category": "success"
+    },
+    "publicSource": "https://lbs.amap.com/api/webservice/guide/api/direction",
+    "accountRemainingQuota": "unknown"
+  },
+  "fact": {
+    "id": "route-f3a8d88af99f3bb60cf2ce6f470ec7d5e645db81",
+    "query": {
+      "provider": "amap",
+      "mode": "walking",
+      "from": {
+        "longitude": 116.434307,
+        "latitude": 39.90909,
+        "crs": "GCJ02"
+      },
+      "to": {
+        "longitude": 116.434446,
+        "latitude": 39.90816,
+        "crs": "GCJ02"
+      }
+    },
+    "binding": {
+      "tripId": "synthetic-official-public-walking",
+      "dateId": "2026-10-02",
+      "planId": "public-leg",
+      "fromStopId": "public-origin",
+      "toStopId": "public-destination",
+      "fromContentToken": "sha256:9decef50204db2d631e854e2f3d3ac2c442b85311231e8032365b9c91c9a9bfc",
+      "toContentToken": "sha256:dacc334c63aa84c761261acb5690030529c9dbac5ad4abcaa7779d98f2ada2d5"
+    },
+    "source": "amap:v3/direction/walking",
+    "observedAt": "2026-10-02T12:13:01.780Z",
+    "expiresAt": "2026-10-02T12:16:01.780Z",
+    "status": "estimate",
+    "distanceMeters": 207,
+    "durationSeconds": 166,
+    "uncertainty": "Route duration is an estimate, not a guarantee; opening hours and booking availability are separate facts."
+  },
+  "importSaved": false,
+  "stage": {
+    "ok": true,
+    "schemaVersion": 1,
+    "commitId": "public-route",
+    "committedRevision": 1,
+    "currentRevision": 1,
+    "replayed": false,
+    "saved": false,
+    "durability": "candidate_only",
+    "baseRevision": 0,
+    "baseStateHash": "sha256:dad679bb9b08b6a3e9b4afea2da4b3715c885ead17a03752c4565eaaf47fa144",
+    "candidateStateHash": "sha256:c95ea15ff79d65f62711384c254071692e775f0f212d29a696531cdba98677bc",
+    "candidate": "/Users/g4i/Documents/Codex/2026-10-02/task/walking-public.candidate.json"
+  },
+  "localReceipt": {
+    "ok": true,
+    "schemaVersion": 1,
+    "commitId": "public-route",
+    "committedRevision": 1,
+    "currentRevision": 1,
+    "replayed": false,
+    "saved": true,
+    "durability": "local_filesystem",
+    "externalCheckpointVerified": false,
+    "stateHash": "sha256:c95ea15ff79d65f62711384c254071692e775f0f212d29a696531cdba98677bc"
+  },
+  "originalSnapshotPreserved": true,
+  "captureAnalysis": {
+    "schemaVersion": 1,
+    "kind": "walking_routes",
+    "dateId": "2026-10-02",
+    "planId": "public-leg",
+    "asOf": "2026-10-02T12:13:01.780Z",
+    "legs": [
+      {
+        "fromStopId": "public-origin",
+        "toStopId": "public-destination",
+        "factId": "route-f3a8d88af99f3bb60cf2ce6f470ec7d5e645db81",
+        "status": "fresh_estimate",
+        "reasonCodes": [],
+        "asOf": "2026-10-02T12:13:01.780Z",
+        "observedAt": "2026-10-02T12:13:01.780Z",
+        "expiresAt": "2026-10-02T12:16:01.780Z",
+        "synthetic": false,
+        "canUseForComparison": true,
+        "feasibility": "not_proven",
+        "observedEstimate": {
+          "distanceMeters": 207,
+          "durationSeconds": 166
+        },
+        "comparisonEstimate": {
+          "distanceMeters": 207,
+          "durationSeconds": 166
+        },
+        "uncertainty": "Route duration is an estimate, not a guarantee; opening hours and booking availability are separate facts."
+      }
+    ],
+    "unassociatedFactIds": [],
+    "allLegsHaveUsableEstimates": true,
+    "feasibility": "not_proven",
+    "limitation": "Distance and duration are observations/estimates; reservations, hours and reaching a fixed appointment are not proven."
+  },
+  "addressOnlyAssessment": {
+    "factId": "route-f3a8d88af99f3bb60cf2ce6f470ec7d5e645db81",
+    "status": "mismatch",
+    "reasonCodes": [
+      "endpoint_changed"
+    ],
+    "asOf": "2026-10-02T12:13:01.780Z",
+    "observedAt": "2026-10-02T12:13:01.780Z",
+    "expiresAt": "2026-10-02T12:16:01.780Z",
+    "synthetic": false,
+    "canUseForComparison": false,
+    "feasibility": "not_proven",
+    "observedEstimate": {
+      "distanceMeters": 207,
+      "durationSeconds": 166
+    },
+    "uncertainty": "Route duration is an estimate, not a guarantee; opening hours and booking availability are separate facts."
+  },
+  "changedAnalysis": {
+    "schemaVersion": 1,
+    "kind": "walking_routes",
+    "dateId": "2026-10-02",
+    "planId": "public-leg",
+    "asOf": "2026-10-02T12:13:01.780Z",
+    "legs": [
+      {
+        "fromStopId": "public-origin",
+        "toStopId": "public-destination",
+        "factId": "route-f3a8d88af99f3bb60cf2ce6f470ec7d5e645db81",
+        "status": "mismatch",
+        "reasonCodes": [
+          "endpoint_changed",
+          "query_endpoint_mismatch"
+        ],
+        "asOf": "2026-10-02T12:13:01.780Z",
+        "observedAt": "2026-10-02T12:13:01.780Z",
+        "expiresAt": "2026-10-02T12:16:01.780Z",
+        "synthetic": false,
+        "canUseForComparison": false,
+        "feasibility": "not_proven",
+        "observedEstimate": {
+          "distanceMeters": 207,
+          "durationSeconds": 166
+        },
+        "uncertainty": "Route duration is an estimate, not a guarantee; opening hours and booking availability are separate facts."
+      }
+    ],
+    "unassociatedFactIds": [],
+    "allLegsHaveUsableEstimates": false,
+    "feasibility": "not_proven",
+    "limitation": "Distance and duration are observations/estimates; reservations, hours and reaching a fixed appointment are not proven."
+  },
+  "expiredAssessment": {
+    "factId": "route-f3a8d88af99f3bb60cf2ce6f470ec7d5e645db81",
+    "status": "stale",
+    "reasonCodes": [
+      "expired_observation"
+    ],
+    "asOf": "2026-10-02T12:16:01.780Z",
+    "observedAt": "2026-10-02T12:13:01.780Z",
+    "expiresAt": "2026-10-02T12:16:01.780Z",
+    "synthetic": false,
+    "canUseForComparison": false,
+    "feasibility": "not_proven",
+    "observedEstimate": {
+      "distanceMeters": 207,
+      "durationSeconds": 166
+    },
+    "uncertainty": "Route duration is an estimate, not a guarantee; opening hours and booking availability are separate facts."
+  },
+  "undo": {
+    "receipt": {
+      "ok": true,
+      "schemaVersion": 1,
+      "commitId": "undo-public-address",
+      "committedRevision": 3,
+      "currentRevision": 3,
+      "replayed": false,
+      "saved": true,
+      "durability": "local_filesystem",
+      "externalCheckpointVerified": false,
+      "stateHash": "sha256:846c090233927010bcb064fea662d4aced341f11240695ed557379f8c77186ef"
+    },
+    "contentRestored": true
+  },
+  "validation": {
+    "fullJS": {
+      "files": 31,
+      "passed": 210
+    },
+    "finalRouteTests": {
+      "passed": 16
+    },
+    "portableIndependentProcesses": {
+      "passedChecks": 35
+    },
+    "pythonRedactionFixtures": {
+      "passed": 13,
+      "networkCalls": 0
+    },
+    "crossRuntimeDescriptorAndTamperCheck": true,
+    "typecheck": "passed",
+    "lint": "passed"
+  },
+  "guardrails": {
+    "credentialedRouteRequests": 1,
+    "retries": 0,
+    "extraPOIQueriesThisTask": 0,
+    "strictTLS": true,
+    "hostnameVerification": true,
+    "secretOrKeyURLStored": false,
+    "shadowChanged": false,
+    "realTravellerPositionUsed": false,
+    "parentJourneyWritten": false,
+    "networkDuringImportPreviewStageApplyUndo": false
+  },
+  "limitations": [
+    "No browser JS SDK or route UI integration",
+    "No scheduling feasibility proof or route-based ranking",
+    "Caller-supplied capture provenance, not cryptographic provider authenticity",
+    "Cache TTL is explicit prototype policy; recorded example expires",
+    "Native Library journey CAS remains the parent operator responsibility"
+  ]
+}
