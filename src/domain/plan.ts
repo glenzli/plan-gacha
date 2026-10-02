@@ -6,6 +6,7 @@ import {
   type WeatherLocationLike,
 } from './weather';
 import type { MapPoint } from './coordinates';
+import type { EvidenceSource } from './evidence';
 
 export type Language = 'zh' | 'en' | string;
 
@@ -107,6 +108,8 @@ export interface PlanBooking {
   status: BookingStatus;
   /** Booking date, not evidence that the activity has happened. */
   dateId?: string;
+  stopIds?: string[];
+  stopLinkSource?: EvidenceSource;
   address: string;
   url: string;
   cancelUrl: string;
@@ -934,6 +937,8 @@ function normalizeBookingItem(item: unknown, index: number, fallbackType: Bookin
     title: item.title || item.name || item.label || (type === BookingType.Ticket ? '订票' : '预约'),
     status: normalizeBookingStatus(item.status, item),
     ...((item.dateId || item.date_id) ? { dateId: String(item.dateId || item.date_id) } : {}),
+    ...(Array.isArray(item.stopIds) ? { stopIds: [...item.stopIds] } : {}),
+    ...(item.stopLinkSource ? { stopLinkSource: { ...item.stopLinkSource } } : {}),
     address: item.address || item.addr || location?.address || item.place || location?.label || '',
     url: normalizeExternalLinkUrl(item.url || item.link || item.booking_url || item.bookingUrl || item.reserve_url || item.reserveUrl),
     cancelUrl: normalizeExternalLinkUrl(item.cancel_url || item.cancelUrl || item.refund_url || item.refundUrl || item.manage_url || item.manageUrl),

@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { evidenceSourceSchema } from './evidence';
 import { addDays } from './date';
 import { normalizePlan } from './plan';
 import { normalizeTripLodgings } from './lodging';
@@ -22,7 +23,7 @@ const plan = z.looseObject({
   stops: z.array(z.union([z.string(), z.looseObject({ id: id.optional(), title: z.string().optional(), time: z.string().optional(), location: location.optional(), weatherRelevant: z.boolean().optional() })])).optional(),
   available_dates: z.array(dateId).optional(), closed_dates: z.array(dateId).optional(), conflicts: z.array(id).optional(),
   weather_rules: z.object({ best: z.array(z.string()), ok: z.array(z.string()), blocked: z.array(z.string()) }).optional(),
-  bookings: z.array(z.looseObject({ id: id.optional(), title: z.string(), type: z.string().optional(), status: z.enum(['pending', 'done', 'none']).optional(), dateId: dateId.optional() })).optional(),
+  bookings: z.array(z.looseObject({ id: id.optional(), title: z.string(), type: z.string().optional(), status: z.enum(['pending', 'done', 'none']).optional(), dateId: dateId.optional(), stopIds: z.array(id).min(1).max(50).refine((ids) => new Set(ids).size === ids.length).optional(), stopLinkSource: evidenceSourceSchema.optional() })).optional(),
   lodging: z.object({ mode: z.enum(['inherit', 'options', 'none']), optionIds: z.array(id), preferredId: z.string() }).optional(),
 });
 export const scheduleEntrySchema = z.object({ planId: z.string(), status: z.literal('abandoned').optional(), lodgingId: z.string().optional(), lodgingLocked: z.boolean().optional(), planLocked: z.boolean().optional() });
@@ -80,6 +81,16 @@ export function preparePlanningContext(snapshot: PlanningSnapshot): PlanningCont
   const tripDates = Array.from({ length: snapshot.trip.tripDays }, (_, index) => ({ id: addDays(snapshot.trip.startDateStr, index) }));
   const plans = snapshot.trip.plans.map((value, index) => normalizePlan(value, index, tripDates, () => { throw new PlanningInputError('invalid_schema', 'Plan IDs must be supplied'); }));
   for (const plan of plans) for (const booking of plan.bookings) if (booking.dateId && !dateId.safeParse(booking.dateId).success) throw new PlanningInputError('invalid_schema', 'Booking dates must be real YYYY-MM-DD dates');
+  for (const [index, plan] of plans.entries()) for (const booking of plan.bookings) if (booking.stopIds) {
+    if (new Set(plan.bookings.map((item) => item.id)).size !== plan.bookings.length) throw new PlanningInputError('duplicate_id', 'Linked bookings require unique booking IDs');
+    const rawStops = snapshot.trip.plans[index].stops || [];
+    if (rawStops.some((stop) => typeof stop === 'string' || !stop.id)) throw new PlanningInputError('invalid_reference', 'Linked activities require explicit stable IDs');
+    if (!z.array(id).min(1).max(50).safeParse(booking.stopIds).success || new Set(booking.stopIds).size !== booking.stopIds.length
+      || booking.stopLinkSource && !evidenceSourceSchema.safeParse(booking.stopLinkSource).success) throw new PlanningInputError('invalid_schema', 'Booking activity linkage schema is invalid');
+    const stopIds = new Set(plan.stops.map((stop) => stop.id));
+    if (stopIds.size !== plan.stops.length) throw new PlanningInputError('duplicate_id', 'Linked activities require unique stop IDs');
+    if (booking.stopIds.some((id) => !stopIds.has(id))) throw new PlanningInputError('invalid_reference', 'Booking references an unknown activity');
+  }
   const lodgings = normalizeTripLodgings(snapshot.trip.lodgings);
   for (const items of [plans, lodgings]) if (new Set(items.map((item) => item.id)).size !== items.length) throw new PlanningInputError('duplicate_id', 'Snapshot IDs must be unique within each entity type');
   const ids = new Set(plans.map((item) => item.id));

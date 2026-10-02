@@ -1,16 +1,16 @@
 # Laplace 操作者场景：最小兼容演进选择
 
-本轮已实现已订／锁定日计划保护、覆盖风险、逐项显式变更预览与回归。其余语义需要明确选择；下面均是设计建议，不是已实现能力。旧 snapshot 和 memory 来源保持，既有 CLI/网页离线流程、Library 外层 CAS、Drive 同步不变。
+已实现整日已订／锁定保护，以及“显式关联晚餐预约 → 固定时间编辑下午活动 → 预览／保存／撤销”的最小闭环。原 snapshot／memory／history 格式兼容；Library 外层 CAS、网页离线和 Drive 同步保持原链路。其余能力仍是下面的设计选择。
 
-| 场景 | 当前边界 | 建议的最小兼容方案 | 取舍／需选定的语义 |
+| 场景 | 当前能力与边界 | 下一步的最小兼容选择 | 取舍／尚需选定的语义 |
 |---|---|---|---|
-| 18:30 已订晚餐 | `done` 表示预约流程完成。无独立日期时只能关联当前整日计划，不能据标题推断唯一 stop | 已实现保守日计划保护；可选 `booking.dateId`，逐项 `commitmentChanges` 记录原日期／plan／理由；覆盖缺失仍 warning | 会阻止只想换下午的整日替换；明确授权仅修改行程，不证明已改订或取消订单 |
-| 只换下午、保留晚餐 | `assign` 替换一个日计划；目前没有局部 stop 编辑 operation | 下一步增加显式 `edit_stops`／局部 patch：固定 plan 和 date、稳定 stop ID、列出移除／新增／重排；预约通过显式 `booking.stopIds` 关联；未关联时继续整日保护 | 需要选择哪些 stop 可动；不能将“孩子累”自动解释为可删晚餐。影响路腿、预约的变更须独立预览；本轮不自动迁移关联 |
-| 孩子累、少走路 | free-text preference 可读且有来源，但当前确定性评分不消费它 | 先让操作者提出结构化软偏好（如 `walking_effort:lower`）并确认；只对有适用、可信证据的候选提供单独评分项／证据和未知提示 | 软偏好不是硬距离上限；不猜 500 米，不从景点名猜步行量。有无证据须可比较，缺证据不能当零步行 |
-| 路线事实过期 | mapFact 保存 provider、坐标系、模式、观察／失效时间和估计，但没有 stop/date 路腿关联，rank 不消费 | 增加只读分析的显式 `asOf` 时间及确定性 freshness 报告；失效或缺少行程关联的事实不能参与推荐评分。随后关联 from/to stop ID、date、mode 和端点摘要 | 旧观测不自动覆盖为“当前路线”。坐标系、起终点、模式、行程日期须一致；先提示未知，再由获准 transport 补查 |
-| 天气新鲜度 | dailyByDate 有预报内容，fetchedAt 可缺省，没有可靠 source/expiry 策略 | 兼容添加来源／观察／失效 metadata 和显式 `asOf`；缺 metadata 为 unknown，过期为 stale；风险与评分逐项披露证据状态 | 需选择 provider 的合理 TTL；不能用 snapshot.todayId 替代当前精确时间，也不能把模型生成值当官方实时天气 |
-| 锁晚餐与锁整日 | memory.confirmed 保护 plan/date；新 `planLocked` 也是整日锁，`lodgingLocked` 只锁酒店 | 未来 stop-level commitment 与 plan-level lock 分开；保留全日默认语义，新关联经用户确认 | 不能把一个 confirmed decision 自动降成只锁晚餐；需要明确解锁／改范围依据 |
+| 18:30 已订晚餐 | `done` 表示预约流程完成，整日替换默认保护；`booking.dateId` 和逐项 `commitmentChanges` 已实现 | 已实现 `booking.stopIds` + `stopLinkSource`，由显式 `link_booking_activities` 关联稳定活动 ID | 不从标题／时间推断关联；不能改已确认关联，不能据此声称已改订／取消订单／实际完成 |
+| 只换下午、保留晚餐 | 已实现 `edit_activity`：固定日期／plan／stop ID，仅标题、备注、文本地点、天气相关性；保留 ID、时刻、顺序、预约与酒店 | 先验证此窄操作。新增／删除／重排／时间变化仍不接受，未来另定 operations 和影响预览 | 无稳定 ID 的旧活动拒绝自动迁移；未关联完成预约继续整日保护；已有整日 confirmed／planLocked 不会降级为只锁晚餐 |
+| 改地点后路线 | 清除改动活动与下一个活动的旧入站 transfer；营业时间／精确坐标不沿用。预览列出改动与重查提示；memory mapFacts 保留但不作为关联路线证据 | 路腿应显式关联 date、from/to stop ID、mode、坐标系和端点内容身份，并记录观察／失效时间与来源 | ID 相同但地点改动仍使路线失效。未关联／端点或模式不一致为 unknown；不把“估计 20 分钟”解释成到达保证，不自动调用 provider |
+| 孩子累、少走路 | 来源明确的 free-text preference 保留，确定性评分尚不消费 | 先确认结构化软偏好 `walking_effort:lower`；仅在路腿证据适用时给独立评分项、证据和未知说明 | 这是软偏好，不猜 500 米硬上限。若用户明确上限，须定义距离／连续路腿／总量与证据覆盖；缺证据不能算零步行 |
+| 路线与天气新鲜度 | mapFact 已有观察／失效时间；天气可能缺 fetchedAt。当前推荐未保证实时证据 | 只读分析显式接收 `asOf`，返回 fresh／stale／unknown／unavailable 及理由；缺 metadata 为 unknown，过期不得贡献确定推荐分 | 不拿 todayId 替代精确时刻。路线／天气 TTL、未来出行适用窗口和 provider 语义尚待选择；不默设通用有效期，不把模型生成值当官方天气 |
+| 编辑与数据共享 | 新局部操作接在 CLI/library engine，同一 revision/token、原子保存、审计和撤销已复用；网页归一化／导出保留关联 metadata | MCP／网页活动操作是下一层薄适配，须使用同一纯编辑核心和对应确认流程 | 当前四个无状态 MCP 工具仍处理整日分配；它们不自动获取浏览器数据，不能宣称免复制或已经接通局部网页保存 |
 
-建议下一步选“局部 stop patch + 显式预约 stop 关联”，先跑固定 fixture 的下午替换，再加入只读 freshness 报告。结构化少走路评分在路腿证据可关联后接入，避免用缺失数据制造确定性。
+固定 fixture 验证保留上午、14:00 原时刻、18:30 晚餐与锁定酒店，未伪造 progress 或丢失未完成问题。地点改动涉及晚餐的相邻路线时，只清除派生路线供重查，不改变预约内容。当前不是分钟级交通／预约约束求解器，也不证明新下午活动赶得上晚餐。
 
-snapshotToken 是内容身份，journey revision 是本地领域版本，Library version 是外层存储 CAS；这三者没有合并。无状态 MCP 不自动读取浏览器数据。父操作者的已验证 CLI + 同一 Library 文件 CAS 是当前跨轮状态链路；Mac 本轮没有修改该合成 Library journey。
+snapshotToken 是内容身份，journey revision 是领域版本，Library version 是外层存储 CAS，schemaVersion 是格式。父操作者已验证 CLI + 同一 Library 文件 CAS；Mac 本轮未修改父操作者的合成或真实 Library journey，未推送／部署，也未调用 AMap。

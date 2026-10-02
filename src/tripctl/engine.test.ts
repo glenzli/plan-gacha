@@ -121,3 +121,71 @@ describe('booked dinner operator regression', () => {
     expect(await preview(confirmed, allowed, 1)).toMatchObject({ canApply: false, reasonCodes: ['confirmed_plan_displaced'] });
   });
 });
+
+describe('fixed-time activity operator regression', () => {
+  const link = { type: 'link_booking_activities', dateId: assign.dateId, planId: 'museum', bookingId: 'dinner-booking', stopIds: ['dinner-stop'], source } as const;
+  const edit = { type: 'edit_activity', dateId: assign.dateId, planId: 'museum', stopId: 'afternoon-stop', patch: { title: 'Synthetic indoor afternoon', location: { label: 'Synthetic indoor venue', address: 'Fixture only', query: 'fixture-indoor' }, weatherRelevant: false }, source } as const;
+  // Arrays remain mutable input data; operation parsing supplies the canonical shape.
+  const bookingLink = { ...link, stopIds: [...link.stopIds] };
+  it('uses the existing atomic preview, revision/token binding, idempotency and undo without losing memory', async () => {
+    let state = initialize(bookedFixture);
+    state = (await change(state, { type: 'issue', record: { id: 'opening', text: 'Check new opening hours', source } }, 'opening')).state;
+    state = (await change(state, { type: 'preference', record: { id: 'pace', text: 'Less walking, soft preference only', source } }, 'pace')).state;
+    const before = structuredClone(state);
+    const blocked = await preview(state, edit, state.revision);
+    expect(blocked).toMatchObject({ canApply: false, reasonCodes: ['booking_activity_link_required'], nextContent: before.content });
+    await expect(apply(state, mutationFromPreview(blocked, metadata('unlinked-edit')))).rejects.toMatchObject({ code: 'constraint_violation' });
+    expect(state).toEqual(before);
+    const binding = await change(state, bookingLink, 'link-dinner'); state = binding.state;
+    const proposal = await preview(state, edit, state.revision); const request = mutationFromPreview(proposal, metadata('edit-afternoon'));
+    expect(proposal.canApply).toBe(true);
+    await expect(apply(state, { ...request, previewToken: `sha256:${'0'.repeat(64)}` })).rejects.toMatchObject({ code: 'stale_preview' });
+    const applied = await apply(state, request); state = applied.state;
+    expect(state.content.snapshot.trip.plans[0].stops![1]).toMatchObject({ id: 'afternoon-stop', time: '14:00', ...edit.patch });
+    expect(state.content.snapshot.trip.plans[0].stops![0]).toEqual(before.content.snapshot.trip.plans[0].stops![0]);
+    expect(state.content.snapshot.trip.plans[0].stops![2]).toEqual(before.content.snapshot.trip.plans[0].stops![2]);
+    expect(state.content.snapshot.trip.schedule).toEqual(before.content.snapshot.trip.schedule);
+    expect(state.content.memory).toEqual(before.content.memory);
+    expect(state.history.at(-1)).toMatchObject({ operation: edit, actor: 'synthetic-operator', reason: 'Explicit synthetic test instruction', at: source.observedAt });
+    expect((await apply(state, request)).receipt.replayed).toBe(true);
+    await expect(apply(state, { ...request, idempotencyKey: 'race-edit' })).rejects.toMatchObject({ code: 'revision_conflict' });
+    const dinner = await preview(state, { ...edit, stopId: 'dinner-stop' }, state.revision);
+    expect(dinner.canApply).toBe(false); expect(dinner.reasonCodes).toContain('booked_activity_locked');
+    await expect(apply(state, mutationFromPreview(dinner, metadata('unsafe-linked-dinner')))).rejects.toMatchObject({ code: 'constraint_violation' });
+    state = (await change(state, { type: 'undo', commitId: 'edit-afternoon' }, 'undo-afternoon')).state;
+    expect(state.content).toEqual(binding.state.content); expect(state.revision).toBe(5);
+    const oldUndo = await change(state, { type: 'undo', commitId: 'undo-afternoon' }, 'redo-afternoon');
+    expect(oldUndo.state.content).toEqual(applied.state.content); expect(parseState(oldUndo.state).history).toHaveLength(6);
+  });
+  it('retains confirmed whole-plan and completed-progress protection after linking the dinner', async () => {
+    let state = (await change(initialize(bookedFixture), bookingLink, 'link')).state;
+    state = (await change(state, { type: 'decision', record: { id: 'whole-day', planId: 'museum', dateId: assign.dateId, disposition: 'confirmed', reason: 'Keep the whole day', source } }, 'confirm')).state;
+    expect(await preview(state, edit, state.revision)).toMatchObject({ canApply: false, reasonCodes: ['confirmed_plan_change'], nextContent: state.content });
+    state = (await change(state, { type: 'decision', record: { id: 'release-whole-day', planId: 'museum', dateId: assign.dateId, disposition: 'withdrawn', reason: 'User explicitly releases whole-day confirmation', source } }, 'release')).state;
+    expect((await preview(state, edit, state.revision)).canApply).toBe(true);
+    state = (await change(state, { type: 'progress', record: { id: 'completed', planId: 'museum', dateId: assign.dateId, status: 'done', reason: 'Explicit actual completion', source } }, 'completed')).state;
+    expect(await preview(state, edit, state.revision)).toMatchObject({ canApply: false, reasonCodes: ['completed_plan_change'] });
+  });
+  it('requires existing explicit weather acceptance, and accepts old history unchanged', async () => {
+    const old = (await change(initialize(bookedFixture), { type: 'issue', record: { id: 'legacy', text: 'Existing issue', source } }, 'legacy-event')).state;
+    expect(parseState(JSON.parse(JSON.stringify(old)))).toEqual(old);
+    const snapshot = structuredClone(bookedFixture); snapshot.weatherData.fixture.dailyByDate['2026-10-11'].weatherCode = 95;
+    const linked = (await change(initialize(snapshot), bookingLink, 'link-storm')).state;
+    const stormEdit = { ...edit, patch: { note: 'Only an activity note changes' } };
+    const proposal = await preview(linked, stormEdit, linked.revision);
+    expect(proposal).toMatchObject({ canApply: true, weatherOverride: true });
+    const request = mutationFromPreview(proposal, metadata('storm-edit'));
+    await expect(apply(linked, request)).rejects.toMatchObject({ code: 'weather_acceptance_required' });
+    expect((await apply(linked, { ...request, acceptWeatherRisk: true })).state.revision).toBe(2);
+  });
+});
+
+it('retains route observations as unassociated evidence when an activity location changes', async () => {
+  const fact = mapFactSchema.parse({ id: 'old-route', query: { provider: 'fixture', mode: 'walking', from: { longitude: 116.4, latitude: 39.9, crs: 'GCJ02' }, to: { longitude: 116.41, latitude: 39.91, crs: 'GCJ02' } }, source: 'synthetic:old-route', observedAt: source.observedAt, expiresAt: '2026-10-02T12:05:00Z', status: 'estimate', distanceMeters: 1000, durationSeconds: 900, uncertainty: 'Fixture estimate only' });
+  let state = (await change(initialize(bookedFixture), { type: 'map_fact', fact }, 'old-route')).state;
+  state = (await change(state, { type: 'link_booking_activities', dateId: assign.dateId, planId: 'museum', bookingId: 'dinner-booking', stopIds: ['dinner-stop'], source }, 'link-route-dinner')).state;
+  const proposal = await preview(state, { type: 'edit_activity', dateId: assign.dateId, planId: 'museum', stopId: 'afternoon-stop', source, patch: { location: { label: 'New fixture venue', address: 'Fixture only' } } }, state.revision);
+  expect(proposal.detail).toMatchObject({ unassociatedMapFactIds: ['old-route'] });
+  expect(proposal.nextContent.memory.mapFacts).toEqual([fact]);
+  expect((await apply(state, mutationFromPreview(proposal, metadata('edit-route-location')))).state.content.memory.mapFacts).toEqual([fact]);
+});

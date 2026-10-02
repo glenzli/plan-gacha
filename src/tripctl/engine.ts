@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { previewActivityChange, ActivityEditError } from '../domain/activityEditing';
+import { evaluateWeather } from '../domain/planWeather';
 import { callPlanningTool, getSnapshotToken, preparePlanningContext, planningSnapshotSchema, type PlanningToolResponse, type PlanningToolName } from '../domain/planningTools';
 import { contentSchema, mutationSchema, operationSchema, tripStateSchema, TripError, type TripState, type TripContent, type TripOperation, type TripMutation } from './schema';
 export function canonical(value: unknown): string {
@@ -85,6 +87,20 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
       && state.content.snapshot.trip.schedule[d.dateId]?.planId === d.planId) blocks.push('confirmed_plan_displaced');
     for (const p of new Map(next.memory.progress.map((p) => [`${p.planId}:${p.dateId}`, p])).values()) if (p.status === 'done' && next.snapshot.trip.schedule[p.dateId]?.planId !== p.planId
       && state.content.snapshot.trip.schedule[p.dateId]?.planId === p.planId) blocks.push('completed_plan_displaced');
+  } else if (operation.type === 'edit_activity' || operation.type === 'link_booking_activities') {
+    try {
+      const result = previewActivityChange(next.snapshot, operation);
+      blocks.push(...result.blocks); next.snapshot = result.nextSnapshot;
+      detail = { ...result.detail, unassociatedMapFactIds: operation.type === 'edit_activity' && operation.patch.location ? next.memory.mapFacts.map((fact) => fact.id) : [] };
+      if (operation.type === 'edit_activity') {
+        for (const decision of new Map(next.memory.decisions.map((item) => [`${item.planId}:${item.dateId || '*'}`, item])).values())
+          if (decision.planId === operation.planId && (!decision.dateId || decision.dateId === operation.dateId) && decision.disposition === 'confirmed') blocks.push('confirmed_plan_change');
+        for (const progress of new Map(next.memory.progress.map((item) => [`${item.planId}:${item.dateId}`, item])).values())
+          if (progress.planId === operation.planId && progress.dateId === operation.dateId && progress.status === 'done') blocks.push('completed_plan_change');
+        const context = preparePlanningContext(next.snapshot);
+        weatherOverride = evaluateWeather(context.plans.find((plan) => plan.id === operation.planId)!, operation.dateId, context.weatherData).level === 'blocked';
+      }
+    } catch (error) { if (error instanceof ActivityEditError) throw new TripError(error.code, error.message); throw error; }
   } else if (operation.type === 'fact') insert(next.memory.facts, operation.record);
   else if (operation.type === 'preference') { requireHuman(operation.record.source); insert(next.memory.preferences, operation.record); }
   else if (operation.type === 'decision') {
@@ -110,7 +126,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
   return { schemaVersion: 1 as const, revision: state.revision, operation, canApply, reasonCodes: [...new Set(blocks)], weatherOverride, detail,
-    previewToken: hash({ coreVersion: 2, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
+    previewToken: hash({ coreVersion: 3, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
 }
 export async function apply(stateInput: unknown, mutationInput: unknown) {
   const state = parseState(stateInput); const parsed = mutationSchema.safeParse(mutationInput);

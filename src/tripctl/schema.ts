@@ -1,9 +1,11 @@
 import * as z from 'zod/v4';
 import { planningSnapshotSchema, assignmentOperationSchema } from '../domain/planningTools';
 import { mapFactSchema } from './mapFacts';
+import { evidenceSourceSchema } from '../domain/evidence';
+import { activityOperationSchemas } from '../domain/activityEditing';
 export const identifier = z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9_.:-]+$/);
 export const timestamp = z.iso.datetime({ offset: true });
-export const sourceSchema = z.strictObject({ kind: z.enum(['user', 'provider', 'synthetic']), reference: z.string().min(1).max(1000), observedAt: timestamp });
+export const sourceSchema = evidenceSourceSchema;
 const note = z.strictObject({ id: identifier, text: z.string().min(1).max(4000), source: sourceSchema });
 const decision = z.strictObject({ id: identifier, planId: identifier, dateId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), disposition: z.enum(['confirmed', 'excluded', 'withdrawn']), reason: z.string().min(1).max(4000), source: sourceSchema });
 const progress = z.strictObject({ id: identifier, planId: identifier, dateId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), status: z.enum(['todo', 'done', 'skipped']), reason: z.string().min(1).max(4000), source: sourceSchema });
@@ -19,6 +21,7 @@ export const memorySchema = z.strictObject({
 export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema });
 export const operationSchema = z.discriminatedUnion('type', [
   assignmentOperationSchema,
+  ...activityOperationSchemas,
   z.strictObject({ type: z.literal('fact'), record: note.extend({ certainty: z.enum(['reported', 'verified', 'uncertain']) }) }),
   z.strictObject({ type: z.literal('preference'), record: note }),
   z.strictObject({ type: z.literal('decision'), record: decision }),

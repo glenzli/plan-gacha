@@ -39,7 +39,7 @@ Validated on this Mac: native create and guarded replacement succeeded; a stale 
 
 One explicit journey JSON stores a planning snapshot plus separate facts (reported/verified/uncertain), preferences, candidates (snapshot plans), confirmed/excluded/withdrawn decisions, actual progress, issues, and timestamped map facts. Each memory record requires explicit provenance. Provider observations cannot establish user preferences/decisions/progress. Decisions may be appended to supersede the same plan/date scope (use `withdrawn` to explicitly release a prior confirmation/exclusion); a dated confirmation must match the saved schedule. Exclusions cannot silently contradict the current schedule.
 
-Operations: `assign`; `fact`/`preference` with a `record:{id,text,source}` (`fact` also has `certainty`); `decision` with `record:{id,planId,dateId?,disposition,reason,source}`; `progress` with `record:{id,planId,dateId,status,reason,source}`; `issue` with `record:{id,text,source,relatedPlanId?}`; `resolve_issue` with `id,resolution,source`; `map_fact`; `set_context` with explicit `todayId`; `undo` with latest `commitId`. `source:{kind:"user"|"provider"|"synthetic",reference,observedAt}` identifies evidence supplied by the caller, not independently authenticated evidence. Actor is audit attribution supplied by the authorized operator, not a login system.
+Operations: `assign`; `link_booking_activities` / `edit_activity` (see the fixed-time editing contract below); `fact`/`preference` with a `record:{id,text,source}` (`fact` also has `certainty`); `decision` with `record:{id,planId,dateId?,disposition,reason,source}`; `progress` with `record:{id,planId,dateId,status,reason,source}`; `issue` with `record:{id,text,source,relatedPlanId?}`; `resolve_issue` with `id,resolution,source`; `map_fact`; `set_context` with explicit `todayId`; `undo` with latest `commitId`. `source:{kind:"user"|"provider"|"synthetic",reference,observedAt}` identifies evidence supplied by the caller, not independently authenticated evidence. Actor is audit attribution supplied by the authorized operator, not a login system.
 
 Existing date, closure, occupancy/conflict, visited and weather rules remain shared with web/MCP. Confirmed exclusions and completed/displaced decisions add operator memory constraints. Preferences and free-text facts remain evidence to reason with; they are not all machine-enforced constraints. No minute-level transportation solver, purchases, messages, real trip migration or automatic Drive writes are provided.
 
@@ -75,4 +75,43 @@ A caller with an actual explicit instruction can preview an exception naming eac
 
 A missing acknowledgment still blocks its arrangement. Wrong, duplicate or unaffected IDs/dates fail `invalid_reference`; blank reasons fail `invalid_schema`. This exception does not bypass date/closure/visited rules, memory exclusions, confirmed decisions or actual-progress constraints. It preserves booking records/status, returns explicit accepted impacts and any coverage warning, and uses normal preview/CAS/audit/undo. It does not contact a booking provider. Old CLI preview tokens must be regenerated under guard revision 2; idempotent receipts from already committed history remain readable.
 
-The ordinary web assignment controller, clear-day and abandon-day actions use the same guard. It rechecks a pending confirmation against current arrangements. The optional proposal panel shows affected commitments and requires its existing traveller save confirmation even for an explicit exception. Direct catalog/JSON editing and imports remain broader editing surfaces: this guard is not a complete protected-stop editor. The present schema has no authenticated user intent or stop-level reservation linkage. See `planning-evolution.md` for the next compatible choices; do not silently infer a walking limit or an afternoon-only edit from free text.
+The ordinary web assignment controller, clear-day and abandon-day actions use the same guard. It rechecks a pending confirmation against current arrangements. The optional proposal panel shows affected commitments and requires its existing traveller save confirmation even for an explicit exception. Direct catalog/JSON editing and imports remain broader editing surfaces: this guard is not a complete protected-stop editor. The schema has no independently authenticated user intent; optional explicit stop-level reservation linkage is described below. See `planning-evolution.md` for the next compatible choices; do not silently infer a walking limit or an afternoon-only edit from free text.
+
+
+## Fixed-time activity edits (preview core revision 3)
+
+The operator CLI/library now supports a narrow local edit. First explicitly associate the existing reservation with stable activities. A user/synthetic source supplies the association; titles and times never infer it. This adds metadata and keeps the booking status/order details intact:
+
+```json
+{
+  "type": "link_booking_activities",
+  "dateId": "2026-10-11",
+  "planId": "museum",
+  "bookingId": "dinner-booking",
+  "stopIds": ["dinner-stop"],
+  "source": {"kind":"synthetic","reference":"synthetic:explicit-association","observedAt":"2026-10-02T12:00:00Z"}
+}
+```
+
+Then preview and apply one unprotected afternoon activity using the normal mutation/revision/token contract:
+
+```json
+{
+  "type": "edit_activity",
+  "dateId": "2026-10-11",
+  "planId": "museum",
+  "stopId": "afternoon-stop",
+  "patch": {
+    "title": "Synthetic indoor afternoon",
+    "location": {"label":"Synthetic indoor venue","address":"Fixture only","query":"fixture-indoor"},
+    "weatherRelevant": false
+  },
+  "source": {"kind":"synthetic","reference":"synthetic:explicit-afternoon-edit","observedAt":"2026-10-02T12:00:00Z"}
+}
+```
+
+Only `title`, `note`, `weatherRelevant` and an explicit text `location:{label,address,query?}` are accepted. The same date/plan must be actively assigned. All stops need explicit unique IDs; legacy positional/string stops are refused instead of auto-migrated. Other schedule references to this plan, even abandoned dates, block the edit to protect their shared catalog content. A separately dated reservation cannot be rebound to another date. Existing confirmed booking links cannot silently change activities. A done booking with absent/unconfirmed links conservatively blocks all edits; confirmed linked activities stay locked. Whole-plan locks/decisions, completed progress, archived journeys and past dates continue to block editing. Provider observations cannot establish edit intent. Linking is explicitly supplied metadata, not evidence of cancellation, rescheduling or a completed visit.
+
+Time, ID, order, insertion/deletion and precise coordinate edits are rejected. A location change drops the activity's old precise location/opening hours and both adjacent incoming transfer records, including legacy aliases. The preview lists every affected activity and `invalidatedTransferStopIds`; a booked dinner's incoming route may be cleared for recheck while its identity/time/reservation stay intact. It emits `activity_location_unverified`, `adjacent_routes_require_recheck`, `opening_hours_require_recheck`. Existing unassociated map facts remain stored and are listed as `unassociatedMapFactIds`; they never establish a valid route to the new location. No provider lookup or temporal/route feasibility proof is performed. Re-preview under core revision 3; already committed idempotent receipts and old state/history remain readable.
+
+Run the portable `verify.mjs` for the repeatable synthetic loop: unlinked edit blocked → explicit dinner link → afternoon preview → unsaved candidate staging → save → protected dinner check → undo to the linked original afternoon. It verifies zero writes on refusal and preserves the unresolved issue, morning, 18:30 dinner and locked hotel. The stateless MCP's four assignment tools and the web proposal panel have not gained these activity operations; current use is the CLI/library engine. Web normalization/AI export preserves the new optional linkage metadata. Native Library CAS still belongs to the parent operator; this package does not automatically acquire the browser snapshot or save a remote journey.

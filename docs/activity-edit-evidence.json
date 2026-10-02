@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "baseCommit": "37cf032086479fd97680e5802267eadad6caffef",
+  "previewCoreVersion": 3,
+  "runtime": "v24.13.0",
+  "syntheticOnly": true,
+  "providerCalls": 0,
+  "externalJourneyWrites": 0,
+  "operations": {
+    "link": {
+      "type": "link_booking_activities",
+      "dateId": "2026-10-11",
+      "planId": "museum",
+      "bookingId": "dinner-booking",
+      "stopIds": [
+        "dinner-stop"
+      ],
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:explicit-afternoon-edit",
+        "observedAt": "2026-10-02T12:00:00Z"
+      }
+    },
+    "edit": {
+      "type": "edit_activity",
+      "dateId": "2026-10-11",
+      "planId": "museum",
+      "stopId": "afternoon-stop",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:explicit-afternoon-edit",
+        "observedAt": "2026-10-02T12:00:00Z"
+      },
+      "patch": {
+        "title": "Synthetic indoor afternoon",
+        "location": {
+          "label": "Synthetic indoor venue",
+          "address": "Fixture only",
+          "query": "fixture-indoor"
+        },
+        "weatherRelevant": false
+      }
+    }
+  },
+  "unlinked": {
+    "canApply": false,
+    "reasonCodes": [
+      "booking_activity_link_required"
+    ],
+    "refusedApply": {
+      "code": "constraint_violation",
+      "stateUnchanged": true
+    }
+  },
+  "association": {
+    "canApply": true,
+    "detail": {
+      "kind": "link_booking_activities",
+      "dateId": "2026-10-11",
+      "planId": "museum",
+      "changes": [
+        {
+          "entity": "booking",
+          "id": "dinner-booking",
+          "before": {
+            "id": "dinner-booking",
+            "title": "Synthetic reserved dinner 18:30",
+            "type": "restaurant_reservation",
+            "status": "done"
+          },
+          "after": {
+            "id": "dinner-booking",
+            "title": "Synthetic reserved dinner 18:30",
+            "type": "restaurant_reservation",
+            "status": "done",
+            "dateId": "2026-10-11",
+            "stopIds": [
+              "dinner-stop"
+            ],
+            "stopLinkSource": {
+              "kind": "synthetic",
+              "reference": "synthetic:explicit-afternoon-edit",
+              "observedAt": "2026-10-02T12:00:00Z"
+            }
+          }
+        }
+      ],
+      "invalidatedTransferStopIds": [],
+      "noteCodes": [],
+      "unassociatedMapFactIds": []
+    }
+  },
+  "afternoon": {
+    "canApply": true,
+    "detail": {
+      "kind": "edit_activity",
+      "dateId": "2026-10-11",
+      "planId": "museum",
+      "changes": [
+        {
+          "entity": "activity",
+          "id": "afternoon-stop",
+          "before": {
+            "id": "afternoon-stop",
+            "title": "Synthetic afternoon",
+            "time": "14:00"
+          },
+          "after": {
+            "id": "afternoon-stop",
+            "title": "Synthetic indoor afternoon",
+            "time": "14:00",
+            "weatherRelevant": false,
+            "location": {
+              "label": "Synthetic indoor venue",
+              "address": "Fixture only",
+              "query": "fixture-indoor"
+            }
+          }
+        }
+      ],
+      "invalidatedTransferStopIds": [],
+      "noteCodes": [
+        "activity_location_unverified",
+        "adjacent_routes_require_recheck",
+        "opening_hours_require_recheck"
+      ],
+      "unassociatedMapFactIds": []
+    },
+    "afterActivity": {
+      "id": "afternoon-stop",
+      "title": "Synthetic indoor afternoon",
+      "time": "14:00",
+      "location": {
+        "label": "Synthetic indoor venue",
+        "query": "fixture-indoor",
+        "address": "Fixture only"
+      },
+      "weatherRelevant": false
+    }
+  },
+  "dinner": {
+    "canApply": false,
+    "reasonCodes": [
+      "booked_activity_locked"
+    ]
+  },
+  "preserved": {
+    "morning": true,
+    "dinner": true,
+    "booking": true,
+    "scheduleAndLockedHotel": true,
+    "unresolvedIssue": true,
+    "actualProgressUnchanged": true
+  },
+  "undo": {
+    "revision": 4,
+    "historyLength": 4,
+    "contentRestored": true
+  },
+  "validation": {
+    "focusedTests": {
+      "files": 2,
+      "passed": 24
+    },
+    "fullRegressionBeforeFinalAliasCheck": {
+      "files": 30,
+      "passed": 193
+    },
+    "portableIndependentProcesses": {
+      "passedNamedChecks": 27
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "webBuild": "passed, no browser smoke this iteration",
+    "mcp": "See activity-mcp-evidence.json for real SDK discovery/calls with linked snapshot; four stateless assignment tools only"
+  },
+  "limitations": [
+    "No time/order/insertion/deletion/coordinate edits",
+    "No minute-level transport feasibility or provider facts fetched",
+    "No new activity operations in stateless MCP or web save adapter",
+    "Browser snapshot handoff and parent Library CAS remain explicit"
+  ]
+}
