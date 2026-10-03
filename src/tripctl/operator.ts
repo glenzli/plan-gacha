@@ -46,6 +46,6 @@ export async function readOperatorContext(stateInput: unknown, input: unknown) {
     evaluation: result.data, candidates: { total: candidates.length, returned: applications.length, truncated: candidates.length > applications.length, items: applications },
     capabilities: getOperatorSchema().operations, limits: { commits: 200, maximumStoreBytes: 16 * 1024 * 1024 },
     omitted: ['full audit snapshots (history/read)', 'baseline activities and nonselected current days (read)', 'resolved issues (read)'],
-    limitations: ['not_a_transport_solver', 'rank_is_not_application_permission', 'snapshot_weather_has_no_verified_freshness', 'source_is_caller_supplied', 'no_automatic_branch_or_order_execution', 'no_browser_state_access', 'no_implicit_network_or_persistence'],
+    limitations: ['not_a_transport_solver', 'rank_is_not_application_permission', 'snapshot_weather_has_no_verified_freshness', 'source_is_caller_supplied', 'decision_completion_is_not_order_or_refund_verification', 'no_automatic_branch_or_order_execution', 'no_browser_state_access', 'no_implicit_network_or_persistence'],
   };
 }

@@ -40,6 +40,8 @@ export const itineraryActualSchema = z.strictObject({
 });
 const option = z.strictObject({ id, condition: text, proposal: text, dateIds: z.array(date).min(1).max(30), uncertainties: z.array(text).max(20), source });
 const decisionPoint = z.strictObject({ id, text, optionIds: z.array(id).max(20), deadline: stamp.optional(), source });
+export const decisionLifecycleSchema = z.strictObject({ status: z.enum(['open', 'completed', 'withdrawn']), confirmation: z.literal('explicit'), reason: text, source });
+const storedDecisionPoint = decisionPoint.extend({ lifecycle: decisionLifecycleSchema.optional() });
 const optionDecision = z.strictObject({ id, decisionPointId: id, optionId: id, reason: text, source });
 const observation = z.strictObject({
   id, kind: z.enum(['route', 'weather', 'place']), dateId: date, activityId: id, activityToken: z.string().regex(/^sha256:[0-9a-f]{64}$/),
@@ -59,7 +61,7 @@ export const itinerarySchema = z.strictObject({
   baseline: z.strictObject({ source, days: z.array(itineraryDaySchema).min(1).max(30) }),
   current: z.array(itineraryDaySchema).min(1).max(30), registeredActivityIds: z.array(id).max(1000),
   actual: z.array(itineraryActualSchema).max(500), constraints: z.array(itineraryConstraintSchema).max(100), commitments: z.array(commitment).max(100),
-  options: z.array(option).max(30), decisionPoints: z.array(decisionPoint).max(50), optionDecisions: z.array(optionDecision).max(100), evidence: z.array(observation).max(200),
+  options: z.array(option).max(30), decisionPoints: z.array(storedDecisionPoint).max(50), optionDecisions: z.array(optionDecision).max(100), evidence: z.array(observation).max(200),
 });
 const patch = activityBase.omit({ id: true, source: true }).partial().refine((v) => Object.keys(v).length > 0);
 const change = z.discriminatedUnion('action', [
@@ -76,6 +78,7 @@ export const itineraryOperationSchemas = [
   z.strictObject({ type: z.literal('record_actual'), record: itineraryActualSchema }),
   z.strictObject({ type: z.literal('itinerary_evidence'), record: observation }),
   z.strictObject({ type: z.literal('choose_option'), record: optionDecision }),
+  z.strictObject({ type: z.literal('set_decision_status'), decisionPointId: id, ...decisionLifecycleSchema.shape }),
   z.strictObject({ type: z.literal('itinerary_constraint'), record: itineraryConstraintSchema }),
   z.strictObject({ type: z.literal('itinerary_commitment'), record: commitment }),
   z.strictObject({ type: z.literal('itinerary_option'), record: option }),

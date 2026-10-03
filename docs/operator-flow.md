@@ -1,4 +1,4 @@
-# Operator flow and packaging (guard revision 6)
+# Operator flow and packaging (guard revision 7)
 
 The useful entrypoint is an offline Node CLI/library with a small operator skill. A parent assistant can interpret chat or voice, load the authoritative journey, invoke the core, explain the diff and save an authorized change. This needs no new server or model-specific wrapper. The original **four** stateless MCP tools remain real SDK-tested snapshot interfaces; rich itinerary/date operations currently use `tripctl`, not a stateful MCP server. No WebMCP/browser API support is claimed.
 
@@ -46,11 +46,40 @@ For the same plan and overlapping dates, incoming `source.observedAt` must be st
 
 Preview lists before/after constraints, affected scheduled dates and the shared evaluation. Recording bad news is permitted even when it creates a visible conflict with the current schedule. It does not clear that schedule, mark progress, cancel an order or alter baseline/current/actual. Resolving the conflict is a separate explicit operation.
 
+## Decision lifecycle
+
+`set_decision_status` records an explicitly confirmed **administrative matter** as `completed`, `withdrawn` (no longer needed), or `open` (reopened). It updates an optional `decisionPoints[].lifecycle` record, retaining source, observation time and reason. The existing preview, expected revision, idempotency receipt, guarded storage and latest-commit undo apply unchanged. No new store, transport or reminder service is introduced.
+
+```json
+{
+  "type": "set_decision_status",
+  "decisionPointId": "hotel-deadline",
+  "status": "completed",
+  "confirmation": "explicit",
+  "reason": "The user confirms this matter is handled; order and refund remain unverified by the tool",
+  "source": {
+    "kind": "user",
+    "reference": "the current explicit user message",
+    "observedAt": "2031-06-04T20:00:00Z"
+  }
+}
+```
+
+Use an actual message reference and timestamp, not this fixture's values. An uncertain report stays a fact/issue; missing/uncertain confirmation and unknown statuses are refused. Provider observations alone cannot close or reopen the user's decision. `confirmation:"explicit"` is a caller assertion, not natural-language understanding or authentication; the operator must not set it for “maybe” or an assumption.
+
+Completion/withdrawal returns `requiresAction:false` and `deadlineStatus:"inactive"`. It disappears from `advisoryEvents`, and the human report moves it out of pending work. Conditional options referenced only by closed decisions move to `inactiveOptions`; options shared with an active decision or not linked to a decision remain available. Context consumers should use these typed fields, not scan historical text for reminders. Underlying daily plan ranking is unchanged: finishing an administrative matter does not imply excluding a plan, cancelling a reservation or completing an activity.
+
+Reopening requires a strictly newer explicit report. It restores applicable deadline advisories and conditional options, and earlier choices no longer count as a current selection. `previousChoice` preserves them as history. A new `choose_option` is refused while the decision is closed; reopen first and then supply newer evidence. Choosing still only records a decision and does not execute a branch.
+
+Lifecycle evidence must be strictly newer than decision creation, the current lifecycle and recorded choices. The engine also checks retained history after undo, rejecting old/equal-time replay with `stale_decision_evidence`. Exact committed mutation retries remain idempotent: the receipt identifies the original commit, while current state must still be reread. Undo restores content in a new revision without erasing the evidence barrier. Existing legacy choices remain readable without retroactive migration.
+
+`completed` is not a verified refund, cancelled order or booking-state update. Results explicitly retain `cancellationPerformed:false` and `refundVerified:false`. Snapshot reservations, baseline/current/actual, commitments, checklist and unrelated decisions remain unchanged. Existing parent notifications must be managed separately; the core only changes the advisory data they should consult.
+
 ## Reproducible synthetic demonstration
 
-Build with `node scripts/build-tripctl.mjs /absolute/output`, then run `node /absolute/output/verify.mjs`. The packaged `operator-scenario.json` contains an anonymous day-four closure, forest tour cancelled on day four/reopened on day five, a cancelled day-six backup, a tentative cross-city option and a lodging decision deadline. The verifier uses independent real CLI processes for schema discovery, stdin, preview, candidate staging, local CAS/replay and compact context. It verifies that a structurally eligible alternative can still require `edit_itinerary`, deadlines stay advisory, stale date evidence is refused, and reads/refusals do not write.
+Build with `node scripts/build-tripctl.mjs /absolute/output`, then run `node /absolute/output/verify.mjs`. The packaged `operator-scenario.json` contains an anonymous day-four closure, forest tour cancelled on day four/reopened on day five, a cancelled day-six backup, a tentative cross-city option and a lodging decision deadline. The verifier uses independent real CLI processes for schema discovery, stdin, preview, candidate staging, local CAS/replay and compact context. It verifies that a structurally eligible alternative can still require `edit_itinerary`, deadlines stay advisory, stale date evidence is refused, and reads/refusals do not write. It also verifies decision completion, inactive deadlines/options, unknown/stale refusals, reopening, withdrawal and undo across real processes.
 
-No migration is required for v5 journeys: optional field absence and existing history are preserved. Preview guard version 6 invalidates pending v5 previews; generate a new preview. Already committed v5 request receipts still replay. Tests use synthetic histories; private production journey compatibility must be checked by its authorized parent before writing.
+No migration is required for v5/v6 journeys: optional field absence and existing history are preserved. Preview guard version 7 invalidates pending v5/v6 previews; generate a new preview. Already committed v5/v6 request receipts still replay. Optional lifecycle fields are absent until an explicit status change; historical snapshots are not rewritten. After saving a new lifecycle operation, use v7 or newer to read/write that journey; this is forward compatibility for old data, not a guarantee that old runtimes understand new fields. Tests use synthetic histories; private production journey compatibility must be checked by its authorized parent before writing.
 
 ## Remaining work and evidence limits
 

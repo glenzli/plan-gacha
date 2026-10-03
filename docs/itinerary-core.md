@@ -44,3 +44,9 @@ Analysis returns open decision advisory events with exact deadline or unknown an
 ## Handoff limits
 
 The engine/CLI can be called directly from AI; its input/output schemas are exported by the same library. The browser still owns confirmation of its own snapshot/local state. A stateless MCP call does not magically access browser data, and the richer journey itinerary is not yet a browser editor or new MCP protocol surface. Snapshot handoff requires an explicit export/materialization; the current portable CLI delivers a verified save/reopen/CAS/undo operator loop. Parent Library version is outer CAS, journey revision is inner CAS, schemaVersion is format. The tool never writes the parent's Library file itself.
+
+## Decision matter lifecycle (guard revision 7)
+
+Use `set_decision_status` with `decisionPointId`, `status:"completed"|"withdrawn"|"open"`, `confirmation:"explicit"`, `reason` and `source`. See [operator-flow.md](operator-flow.md) (portable `OPERATOR-FLOW.md`) for the full contract. This is distinct from choosing an option, actual activity progress or an order/refund action. Unknown evidence is retained as an uncertain fact/issue; provider evidence alone cannot establish completion.
+
+The optional persisted `decisionPoints[].lifecycle` does not alter v5/v6 content or history on read. Analysis exposes `requiresAction`, inactive deadlines and active/inactive conditional options. Completion/withdrawal suppresses advisories, reopening restores them and invalidates older choices. Source times must advance; engine history retains the barrier after undo. Existing revision/token/idempotency and local/external CAS remain the only save path. Do not equate an old idempotent receipt with the current lifecycle state; read it again.

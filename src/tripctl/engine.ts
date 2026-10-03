@@ -1,5 +1,5 @@
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
-export const TRIPCTL_CORE_VERSION = 6;
+export const TRIPCTL_CORE_VERSION = 7;
 import { canonical, hash } from './identity';
 export { canonical, hash } from './identity';
 import { validateItinerary, previewItineraryOperation } from './itinerary';
@@ -75,6 +75,17 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   const operation = parsed.data; const next = structuredClone(state.content); let detail: unknown = null; const blocks: string[] = []; let weatherOverride = false;
   if (state.content.snapshot.trip.archived) blocks.push('archived_trip');
   if (itineraryOperationSchema.safeParse(operation).success) {
+    if (operation.type === 'set_decision_status' || operation.type === 'choose_option') {
+      const id = operation.type === 'set_decision_status' ? operation.decisionPointId : operation.record.decisionPointId;
+      const observedAt = operation.type === 'set_decision_status' ? operation.source.observedAt : operation.record.source.observedAt;
+      // Undo restores content, but does not make already superseded evidence fresh again.
+      const managed = operation.type === 'set_decision_status' || state.history.some((e) => e.operation.type === 'set_decision_status' && e.operation.decisionPointId === id);
+      if (managed) for (const event of state.history) {
+        const prior = event.operation;
+        if (prior.type === 'set_decision_status' && prior.decisionPointId === id && Date.parse(observedAt) <= Date.parse(prior.source.observedAt)
+          || prior.type === 'choose_option' && prior.record.decisionPointId === id && Date.parse(observedAt) <= Date.parse(prior.record.source.observedAt)) blocks.push('stale_decision_evidence');
+      }
+    }
     try {
       const result = previewItineraryOperation(next.snapshot, next.itinerary, operation);
       blocks.push(...result.blocks); detail = result.detail; weatherOverride = result.weatherOverride;
