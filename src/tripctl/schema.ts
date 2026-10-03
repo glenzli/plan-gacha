@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { setPlanDatesSchema } from '../domain/planDates';
 import { planningSnapshotSchema, assignmentOperationSchema } from '../domain/planningTools';
 import { mapFactSchema } from './mapFacts';
 import { evidenceSourceSchema } from '../domain/evidence';
@@ -22,6 +23,7 @@ export const memorySchema = z.strictObject({
 export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema, itinerary: itinerarySchema.optional() });
 export const operationSchema = z.discriminatedUnion('type', [
   assignmentOperationSchema,
+  setPlanDatesSchema,
   ...activityOperationSchemas,
   ...itineraryOperationSchemas,
   z.strictObject({ type: z.literal('fact'), record: note.extend({ certainty: z.enum(['reported', 'verified', 'uncertain']) }) }),

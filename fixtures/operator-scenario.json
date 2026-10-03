@@ -1,0 +1,178 @@
+{
+  "snapshot": {
+    "schemaVersion": 1,
+    "todayId": "2031-06-04",
+    "trip": {
+      "id": "operator-synthetic",
+      "name": "Anonymous branching journey",
+      "startDateStr": "2031-06-04",
+      "tripDays": 3,
+      "plans": [
+        {
+          "id": "peak",
+          "name": "Main summit",
+          "priority": "must"
+        },
+        {
+          "id": "forest",
+          "name": "Forest tour",
+          "priority": "preferred",
+          "closed_dates": [
+            "2031-06-05"
+          ]
+        },
+        {
+          "id": "backup",
+          "name": "Backup tour",
+          "priority": "backup"
+        },
+        {
+          "id": "crosscity",
+          "name": "Tentative cross-city",
+          "priority": "optional"
+        }
+      ],
+      "schedule": {},
+      "lodgings": [],
+      "checklistText": "[ ] Confirm uncertain ticket",
+      "checklistState": {},
+      "archived": false
+    },
+    "weatherData": {}
+  },
+  "importOperation": {
+    "type": "import_itinerary",
+    "timeZone": "Asia/Shanghai",
+    "days": [
+      {
+        "dateId": "2031-06-04",
+        "planId": "day4",
+        "title": "Original day four",
+        "activities": [
+          {
+            "id": "visit",
+            "kind": "visit",
+            "title": "Original walk",
+            "timing": {
+              "start": "09:00",
+              "end": "10:00"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:operator-scenario",
+              "observedAt": "2031-06-03T12:00:00Z"
+            }
+          }
+        ]
+      }
+    ],
+    "constraints": [],
+    "commitments": [],
+    "options": [
+      {
+        "id": "crosscity-option",
+        "condition": "Only if the user chooses and transport is checked",
+        "proposal": "Tentative cross-city alternative",
+        "dateIds": [
+          "2031-06-04"
+        ],
+        "uncertainties": [
+          "Transport availability",
+          "Cancellation fees"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:operator-scenario",
+          "observedAt": "2031-06-03T12:00:00Z"
+        }
+      }
+    ],
+    "decisionPoints": [
+      {
+        "id": "hotel-deadline",
+        "text": "Decide whether to keep the alternate lodging; fees unknown",
+        "optionIds": [
+          "crosscity-option"
+        ],
+        "deadline": "2031-06-04T18:00:00Z",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:operator-scenario",
+          "observedAt": "2031-06-03T12:00:00Z"
+        }
+      }
+    ],
+    "source": {
+      "kind": "synthetic",
+      "reference": "synthetic:operator-scenario",
+      "observedAt": "2031-06-03T12:00:00Z"
+    }
+  },
+  "operations": [
+    {
+      "type": "set_plan_dates",
+      "planId": "peak",
+      "reason": "Synthetic reported status, no order cancellation",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:operator-scenario",
+        "observedAt": "2031-06-03T12:00:00Z"
+      },
+      "closeDates": [
+        "2031-06-04"
+      ]
+    },
+    {
+      "type": "set_plan_dates",
+      "planId": "forest",
+      "reason": "Synthetic reported status, no order cancellation",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:operator-scenario",
+        "observedAt": "2031-06-03T12:00:00Z"
+      },
+      "closeDates": [
+        "2031-06-04"
+      ]
+    },
+    {
+      "type": "set_plan_dates",
+      "planId": "backup",
+      "reason": "Synthetic reported status, no order cancellation",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:operator-scenario",
+        "observedAt": "2031-06-03T12:00:00Z"
+      },
+      "closeDates": [
+        "2031-06-06"
+      ]
+    },
+    {
+      "type": "set_plan_dates",
+      "planId": "forest",
+      "reason": "Synthetic reported status, no order cancellation",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:operator-scenario",
+        "observedAt": "2031-06-03T12:00:00Z"
+      },
+      "reopenDates": [
+        "2031-06-05"
+      ]
+    },
+    {
+      "type": "issue",
+      "record": {
+        "id": "tentative",
+        "text": "Cross-city option remains unconfirmed",
+        "relatedPlanId": "crosscity",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:operator-scenario",
+          "observedAt": "2031-06-03T12:00:00Z"
+        }
+      }
+    }
+  ]
+}

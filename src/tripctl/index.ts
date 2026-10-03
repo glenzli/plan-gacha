@@ -8,3 +8,6 @@ export * from './routeEvidence';
 export * from './itinerarySchema';
 export * from './itinerary';
 export * from './itineraryReport';
+
+export * from '../domain/planDates';
+export * from './operator';

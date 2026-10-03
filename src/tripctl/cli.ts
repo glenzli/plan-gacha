@@ -6,16 +6,20 @@ import { createStore, loadState, commitStore, stageStore } from './store';
 import { renderItineraryReport } from './itineraryReport';
 import { analyseItinerary, itineraryActivityToken } from './itinerary';
 import { ItineraryError } from './itinerarySchema';
+import { getOperatorSchema, readOperatorContext } from './operator';
 import { TripError } from './schema';
 import { prepareWalkingQuery, importWalkingObservation, inspectWalkingRoutes, RouteEvidenceError } from './routeEvidence';
-const json = async (path: string | undefined) => { if (!path) throw new TripError('missing_argument', 'A JSON input path is required'); return JSON.parse(await readFile(path, 'utf8')); };
+const json = async (path: string | undefined) => { if (!path) throw new TripError('missing_argument', 'A JSON input path is required'); if (path === '-') { let text = ''; for await (const chunk of process.stdin) { text += chunk; if (Buffer.byteLength(text) > 16 * 1024 * 1024) throw new TripError('input_too_large', 'JSON stdin exceeds 16 MiB'); } return JSON.parse(text); } return JSON.parse(await readFile(path, 'utf8')); };
 async function main() {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { store: { type: 'string' }, input: { type: 'string' }, output: { type: 'string' }, revision: { type: 'string' }, date: { type: 'string' }, request: { type: 'string' }, help: { type: 'boolean' } } });
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { store: { type: 'string' }, input: { type: 'string' }, output: { type: 'string' }, revision: { type: 'string' }, date: { type: 'string' }, request: { type: 'string' }, help: { type: 'boolean' }, operation: { type: 'string' }, 'as-of': { type: 'string' }, limit: { type: 'string' } } });
   const command = positionals[0]; const path = values.store;
-  if (values.help || !command) return { ok: true, commands: ['init', 'read', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'], usage: 'tripctl <command> --store journey.json [--input request.json] [--revision N] [--output candidate.json] [--date YYYY-MM-DD]', policy: 'Read current state first. Preview every mutation. In ephemeral environments use stage and acknowledge durable CAS backup before claiming success. No network calls or credential handling.' };
+  if (values.help || !command) return { ...getOperatorSchema(), usage: 'tripctl <command> --store journey.json [--input request.json|-] [--revision N] [--output candidate.json]; schema [--operation TYPE]; context --store journey.json --as-of ISO [--date YYYY-MM-DD] [--limit N]' };
+  if (values.input === '-' && values.request === '-') throw new TripError('ambiguous_stdin', 'Only one JSON argument may consume stdin');
+  if (command === 'schema') return getOperatorSchema(values.operation);
   if (!path) throw new TripError('missing_argument', '--store is required');
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
   const state = await loadState(path);
+  if (command === 'context') return readOperatorContext(state, { asOf: values['as-of'], ...(values.date ? { dateId: values.date } : {}), ...(values.limit !== undefined ? { candidateLimit: Number(values.limit) } : {}) });
   if (command === 'read') return { ok: true, operatorPolicy: ['Read current state before each planning turn', 'Keep uncertainty and explicit sources', 'Preview before apply', 'Only acknowledge durable persistence after its receipt', 'Never treat estimates as guarantees'], revision: state.revision, stateHash: hash(state), ...state.content, lastChange: state.history.at(-1) ? { id: state.history.at(-1)!.id, reason: state.history.at(-1)!.reason, at: state.history.at(-1)!.at } : null };
   if (command === 'verify') return { ok: true, revision: parseState(state).revision, stateHash: hash(state), historyCount: state.history.length, externalCheckpointVerified: false };
   if (command === 'history') return { ok: true, revision: state.revision, events: state.history.map(({ before: _before, after: _after, ...event }) => ({ ...event, beforeHash: hash(_before), afterHash: hash(_after) })) };

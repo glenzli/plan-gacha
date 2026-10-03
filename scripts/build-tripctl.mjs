@@ -9,6 +9,8 @@ await build({ entryPoints: ['src/tripctl/cli.ts'], bundle: true, platform: 'node
 await build({ entryPoints: ['src/tripctl/index.ts'], bundle: true, platform: 'node', target: 'node22', format: 'esm', minify: true, outfile: `${output}/tripctl-lib.mjs`, legalComments: 'eof' });
 await copyFile('fixtures/planning-tools.snapshot.json', `${output}/synthetic.snapshot.json`);
 await copyFile('fixtures/booked-day.snapshot.json', `${output}/booked-day.snapshot.json`);
+await copyFile('fixtures/operator-scenario.json', `${output}/operator-scenario.json`);
+await copyFile('docs/operator-flow.md', `${output}/OPERATOR-FLOW.md`);
 await copyFile('fixtures/anonymous-itinerary.json', `${output}/anonymous-itinerary.json`);
 await copyFile('skills/plan-gacha-operator/SKILL.md', `${output}/OPERATOR-SKILL.md`);
 await copyFile('docs/itinerary-core.md', `${output}/ITINERARY.md`);
@@ -23,7 +25,7 @@ if (!proposed.canApply) throw new Error('Anonymous demo import failed');
 const demo = core.renderItineraryReport(proposed.nextContent.itinerary, { asOf: anonymous.operation.source.observedAt });
 await writeFile(`${output}/DEMO.html`, demo.html);
 await writeFile(`${output}/DEMO.md`, demo.markdown);
-const files = ['tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
+const files = ['operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));

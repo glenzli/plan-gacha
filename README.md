@@ -14,7 +14,13 @@
 
 行程扭蛋是一个旅行日程工具。出发前可以准备正式、备用、雨天或跨城计划；旅行中再根据日期、天气、预约和实际执行情况调整每天的安排。
 
-当前版本是纯前端应用，不包含账号和后端服务。它可以独立使用，也可以由部署环境提供可选的远端 JSON 存储适配器。
+网页是可独立使用的前端应用；仓库同时提供共用规划核心、离线操作员 CLI/library 和四个无状态 MCP 工具。没有内置账号或远端写入服务，部署环境可提供可选的远端 JSON 存储适配器。
+
+### AI 操作员入口
+
+聊天中的 AI 可通过 `tripctl` 读取权威行程、检查约束、排序、生成变更预览，再由既有存储流程保存。新增 `schema`、结构化 stdin 和 `context` 入口；按日关闭/重开会影响现有规则，旧证据不能覆盖较新的日期状态。原计划、当前安排与实际执行分别保存。候选排序不等于可直接应用，截止时间也不会自动创建提醒或取消订单。
+
+具体分工、可重复合成演示和未解决边界见 [操作员流程](docs/operator-flow.md)、[CLI 文档](docs/tripctl.md) 和 [操作员 skill](skills/plan-gacha-operator/SKILL.md)。父层助手可以代用户处理 JSON，但浏览器数据仍需明确交接；工具不会自动读取网页 localStorage，也未新增地图权限、天气服务权限或有状态 MCP。
 
 ### 当前能力
 
@@ -85,7 +91,9 @@ npm run build
 
 Plan Gacha is a travel itinerary tool. You can prepare primary, backup, rainy-day, or cross-city plans before departure, then adjust each day according to dates, weather, reservations, and what actually happened.
 
-The current version is a frontend-only application with no account system or backend service. It can run on its own, while a deployment host may provide an optional remote JSON storage adapter.
+The browser is a standalone frontend. This repository also provides its shared planning core, an offline operator CLI/library and four stateless MCP tools. There is no built-in account system or remote write service; a deployment host may provide an optional JSON storage adapter.
+
+An assistant can discover schemas, pass JSON over stdin, inspect compact context and preview dated closures/reopenings before guarded persistence. Baseline/current/actual remain separate; candidate ranking does not establish application permission or real-world feasibility. See [operator flow](docs/operator-flow.md) for the reproducible synthetic demo and tool/skill/data/storage/notification boundaries. Browser data still needs an explicit handoff; this adds no map permissions, stateful MCP or automatic reminder service.
 
 ### Available in the current build
 

@@ -1,3 +1,5 @@
+import { previewPlanDates, PlanDatesError } from '../domain/planDates';
+export const TRIPCTL_CORE_VERSION = 6;
 import { canonical, hash } from './identity';
 export { canonical, hash } from './identity';
 import { validateItinerary, previewItineraryOperation } from './itinerary';
@@ -83,6 +85,18 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
       }
       if (!blocks.length) { next.itinerary = result.nextItinerary; next.snapshot = result.nextSnapshot; }
     } catch (error) { if (error instanceof ItineraryError) throw new TripError(error.code, error.message); throw error; }
+  } else if (operation.type === 'set_plan_dates') {
+    // Evidence is caller supplied. History prevents older/equal-time contradictory reports
+    // from superseding accepted restrictions; it cannot authenticate provider observations.
+    const touched = new Set([...(operation.closeDates || []), ...(operation.reopenDates || [])]);
+    for (const event of state.history) {
+      const prior = event.operation;
+      if (prior.type === 'set_plan_dates' && prior.planId === operation.planId
+        && (operation.availableDates || prior.availableDates || [...(prior.closeDates || []), ...(prior.reopenDates || [])].some((date) => touched.has(date)))
+        && Date.parse(operation.source.observedAt) <= Date.parse(prior.source.observedAt)) blocks.push('stale_date_evidence');
+    }
+    try { const result = await previewPlanDates(next.snapshot, operation); next.snapshot = result.nextSnapshot; detail = result.detail; }
+    catch (error) { if (error instanceof PlanDatesError) throw new TripError(error.code, error.message); throw error; }
   } else if (operation.type === 'assign') {
     blocks.push(...rememberedBlocks(next, operation));
     const result = await callPlanningTool('preview_changes', { snapshot: next.snapshot, operation, expectedSnapshotToken: await getSnapshotToken(next.snapshot) });
@@ -144,7 +158,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
   return { schemaVersion: 1 as const, revision: state.revision, operation, canApply, reasonCodes: [...new Set(blocks)], weatherOverride, detail,
-    previewToken: hash({ coreVersion: 5, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
+    previewToken: hash({ coreVersion: TRIPCTL_CORE_VERSION, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
 }
 export async function apply(stateInput: unknown, mutationInput: unknown) {
   const state = parseState(stateInput); const parsed = mutationSchema.safeParse(mutationInput);
