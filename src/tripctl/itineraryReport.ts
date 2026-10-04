@@ -1,10 +1,11 @@
+import type { OptionPlanningContext } from './optionPlanning';
 import { analyseItinerary } from './itinerary';
 import type { Itinerary } from './itinerarySchema';
 const escape = (s: string) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 const plain = (s: string) => escape(s.replace(/\r?\n/g, ' ')).replace(/\|/g, '\\|');
 /** Read-only, self-contained output. No script, write control, remote resource or implicit clock. */
-export function renderItineraryReport(i: Itinerary, input: unknown) {
-  const report = analyseItinerary(i, input);
+export function renderItineraryReport(i: Itinerary, input: unknown, scope?: OptionPlanningContext) {
+  const report = analyseItinerary(i, input, scope);
   const lines = ['# 行程预览', '', `时区：${i.timeZone} · 证据检查时间：${report.asOf}`, '', '**可行性尚未证实。以下安排、估计和实际报告分别展示；没有执行预约或退订。**', '', '## 需要核对', ''];
   for (const c of report.clockConstraints) lines.push(`- ${plain(c.text)}：${c.status}${c.clock ? `（${c.kind === 'end_before' ? '严格早于' : c.kind === 'start_at' ? '固定开始' : '不晚于'} ${c.clock}）` : ''}`);
   for (const r of report.requirements.filter((r) => !r.canUseForComparison || r.estimateFit === 'estimate_exceeds_slot' || ['adverse', 'blocked'].includes(r.risk || ''))) lines.push(`- ${r.dateId} ${r.activityId} / ${r.kind}：${r.status}；${r.reasonCodes.join(', ') || r.estimateFit}`);
@@ -20,6 +21,14 @@ export function renderItineraryReport(i: Itinerary, input: unknown) {
   lines.push('', '## 条件方案与待决事项', '');
   for (const o of report.options) lines.push(`- 条件：${plain(o.condition)}。方案：${plain(o.proposal)}。待核对：${o.uncertainties.map(plain).join('、') || '未提供'}。`);
   for (const d of report.decisions.filter((d) => d.status !== 'completed' && d.status !== 'withdrawn')) lines.push(`- ${plain(d.text)}：${d.deadline ? `截止 ${d.deadline}` : '截止时间未知'}；${d.status}。${d.choice ? `记录选择 ${d.choice.optionId}，尚未改排或退订。` : ''}`);
+  if (report.unassessedOptions.length) {
+    lines.push('', '## 尚未评估的方案（不是当前可行推荐）', '');
+    for (const o of report.unassessedOptions) lines.push(`- ${plain(o.proposal)}；${o.eligibility.reasonCodes.join(', ')}。需关联计划/日期并检查当前约束。`);
+  }
+  if (report.inactiveOptions.length) {
+    lines.push('', '## 非活跃方案（保留历史）', '');
+    for (const o of report.inactiveOptions) lines.push(`- ${plain(o.proposal)}；${o.eligibility.reasonCodes.join(', ')}。`);
+  }
   const closed = report.decisions.filter((d) => d.status === 'completed' || d.status === 'withdrawn');
   if (closed.length) {
     lines.push('', '## 已完成或撤回的事项（不再提示）', '');

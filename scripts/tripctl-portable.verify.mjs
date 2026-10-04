@@ -222,7 +222,7 @@ try {
   const adoptOp = structuredClone(itineraryFixture.operation); adoptOp.days = beforeUndo.itinerary.current; adoptOp.adoptExistingPlanIds = ['day-a', 'day-b'];
   const adopt = run('preview', '--store', adoptStore, '--input', await save('adopt-operation', adoptOp), '--revision', '0'); assert.equal(adopt.canApply, true); assert.deepEqual(adopt.nextContent.snapshot, beforeUndo.snapshot);
   // Real packaged processes: structured discovery/stdin/context share engine and storage semantics.
-  const discovered = run('schema'); assert.equal(discovered.coreVersion, 7); assert.ok(discovered.operations.includes('set_plan_dates'));
+  const discovered = run('schema'); assert.equal(discovered.coreVersion, 8); assert.ok(discovered.operations.includes('set_plan_dates'));
   assert.equal(run('schema', '--operation', 'set_plan_dates').operation.properties.type.const, 'set_plan_dates');
   assert.equal(failure('schema', '--operation', 'cancel_order').error.code, 'unknown_operation');
   const stdinRun = (data, ...args) => JSON.parse(execFileSync(process.execPath, [cli, ...args, '--input', '-'], { input: JSON.stringify(data), encoding: 'utf8', cwd: scratch }));
@@ -272,12 +272,43 @@ try {
   const reopenPreview = stdinRun(reopen, 'preview', '--store', operatorStore, '--revision', String(operatorRevision));
   stdinRun(request(reopenPreview, 'reopen-decision'), 'apply', '--store', operatorStore); operatorRevision++;
   const reopenedView = run('context', '--store', operatorStore, '--as-of', '2031-06-05T08:00:00Z').itinerary.analysis;
-  assert.equal(reopenedView.advisoryEvents.length, 1); assert.equal(reopenedView.options.length, 1); assert.equal(reopenedView.decisions[0].status, 'open');
+  assert.equal(reopenedView.advisoryEvents.length, 1); assert.equal(reopenedView.unassessedOptions.length, 1); assert.equal(reopenedView.decisions[0].status, 'open');
   const undoLifecycle = stdinRun({ type: 'undo', commitId: 'reopen-decision' }, 'preview', '--store', operatorStore, '--revision', String(operatorRevision));
   stdinRun(request(undoLifecycle, 'undo-reopen'), 'apply', '--store', operatorStore); operatorRevision++;
   assert.equal(run('context', '--store', operatorStore, '--as-of', '2031-06-05T08:00:00Z').itinerary.analysis.decisions[0].status, 'completed');
   const withdrawn = stdinRun({ ...reopen, status: 'withdrawn', source: { ...reopen.source, observedAt: '2031-06-05T09:00:00Z' } }, 'preview', '--store', operatorStore, '--revision', String(operatorRevision));
   stdinRun(request(withdrawn, 'withdraw-decision'), 'apply', '--store', operatorStore);
   assert.equal(run('context', '--store', operatorStore, '--as-of', '2031-06-05T09:00:00Z').itinerary.analysis.decisions[0].status, 'withdrawn');
-  console.log(JSON.stringify({ ok: true, runtime: process.version, independentProcesses: true, installedDependencies: false, checks: ['decision-lifecycle-schema', 'decision-completion-stage-CAS', 'decision-completion-replay', 'decision-inactive-deadline-options', 'decision-order-refund-unchanged', 'decision-stale-unknown-no-write', 'decision-reopen', 'decision-undo-withdraw', 'operator-schema-discovery', 'structured-stdin', 'anonymous-closure-reopening', 'operator-stage-CAS-replay', 'rank-vs-application', 'operator-deadlines-tentative', 'operator-no-write-errors', 'stale-date-evidence', 'manifest', 'init-no-overwrite', 'preview-no-write', 'restart-persistence', 'idempotent-replay', 'stage-not-saved', 'concurrent-CAS', 'locked-lodging', 'retained-issue', 'stale-revision', 'constraints', 'monotonic-undo', 'checkpoint-recovery', 'retained-lock', 'booked-dinner-blocked', 'blocked-apply-no-write', 'explicit-commitment-review', 'booking-not-progress', 'booked-dinner-undo', 'activity-link-required', 'explicit-booking-activity-link', 'fixed-time-afternoon-edit', 'activity-stage-not-saved', 'activity-stale-preview', 'activity-error-schema', 'protected-dinner', 'activity-undo', 'route-bound-query', 'route-fixture-import-no-write', 'route-stage-CAS', 'route-estimate-not-feasibility', 'route-address-change-mismatch', 'route-stale-exclusion', 'route-provider-failure-unknown', 'route-undo', 'itinerary-import-no-write', 'strict-deadline-visible', 'itinerary-not-feasible-without-evidence', 'human-preview-readonly', 'time-edit-stage-CAS', 'time-edit-restart-replay', 'immutable-baseline', 'itinerary-stale-revision', 'actual-exclusive-unknown-time', 'actual-edit-protection', 'itinerary-monotonic-undo', 'known-unknown-decision-deadlines', 'no-cancellation', 'unfinished-checklist-retained', 'legacy-plan-adoption-no-rewrite'] }));
+  const optionStore = `${scratch}/options.json`; stdinRun(scenario.snapshot, 'init', '--store', optionStore);
+  let optionRevision = 0;
+  const optionChange = (operation, key) => {
+    const p = stdinRun(operation, 'preview', '--store', optionStore, '--revision', String(optionRevision)); assert.equal(p.canApply, true);
+    stdinRun(request(p, key), 'apply', '--store', optionStore); optionRevision++; return p;
+  };
+  optionChange(scenario.importOperation, 'import');
+  const optionsBefore = run('read', '--store', optionStore);
+  assert.equal(run('check', '--store', optionStore).optionAnalysis.unassessedOptions.length, 1);
+  const boundSource = { kind: 'synthetic', reference: 'synthetic:option-binding', observedAt: '2031-06-04T12:00:00Z' };
+  const bind = { type: 'set_option_requirements', optionId: 'crosscity-option', plans: [{ planId: 'crosscity', dateId: '2031-06-04' }], reason: 'Explicit anonymous dated requirement', source: boundSource };
+  assert.equal(run('schema', '--operation', 'set_option_requirements').operation.properties.type.const, 'set_option_requirements');
+  optionChange(bind, 'bind'); assert.equal(run('check', '--store', optionStore).optionAnalysis.options.length, 1);
+  optionChange({ type: 'decision', record: { id: 'exclude-old', planId: 'crosscity', dateId: '2031-06-04', disposition: 'excluded', reason: 'This date only', source: boundSource } }, 'exclude');
+  const laterOption = { type: 'itinerary_option', record: { id: 'later-option', condition: 'If opening/transport checked', proposal: 'Same destination on another date', dateIds: ['2031-06-05'], uncertainties: ['Opening unverified'], source: boundSource, requirements: { plans: [{ planId: 'crosscity', dateId: '2031-06-05' }], reason: 'New date, old exclusion retained', source: boundSource } } };
+  optionChange(laterOption, 'new-date');
+  const optionCheck = run('check', '--store', optionStore).optionAnalysis;
+  const optionContext = run('context', '--store', optionStore, '--as-of', boundSource.observedAt, '--date', '2031-06-05').itinerary.analysis;
+  const optionItinerary = stdinRun({ asOf: boundSource.observedAt }, 'itinerary', '--store', optionStore).result;
+  assert.deepEqual(optionCheck.options, optionContext.options); assert.deepEqual(optionCheck.inactiveOptions, optionItinerary.inactiveOptions);
+  assert.deepEqual(optionCheck.options.map((o) => o.id), ['later-option']); assert.ok(optionCheck.inactiveOptions[0].eligibility.reasonCodes.includes('confirmed_exclusion'));
+  assert.equal(optionCheck.options[0].eligibility.checks[0].openingStatus, 'not_verified');
+  assert.equal(run('rank', '--store', optionStore, '--date', '2031-06-04').result.data.candidates.find((c) => c.planId === 'crosscity').canAssign, false);
+  assert.equal(run('rank', '--store', optionStore, '--date', '2031-06-05').result.data.candidates.find((c) => c.planId === 'crosscity').canAssign, true);
+  const optionBytes = await readFile(optionStore, 'utf8');
+  const unavailableChoice = stdinRun({ type: 'choose_option', record: { id: 'blocked-choice', decisionPointId: 'hotel-deadline', optionId: 'crosscity-option', reason: 'Synthetic refusal check', source: boundSource } }, 'preview', '--store', optionStore, '--revision', String(optionRevision));
+  assert.ok(unavailableChoice.reasonCodes.includes('option_unavailable')); assert.equal(unavailableChoice.canApply, false);
+  assert.equal(failure('apply', '--store', optionStore, '--input', await save('unavailable-choice', request(unavailableChoice, 'blocked-choice'))).error.code, 'constraint_violation');
+  assert.equal(await readFile(optionStore, 'utf8'), optionBytes);
+  const currentOptions = run('read', '--store', optionStore); assert.equal(currentOptions.itinerary.options[0].proposal, optionsBefore.itinerary.options[0].proposal); assert.deepEqual(currentOptions.snapshot, optionsBefore.snapshot);
+  assert.deepEqual(currentOptions.itinerary.baseline, optionsBefore.itinerary.baseline); assert.equal(currentOptions.memory.decisions[0].dateId, '2031-06-04');
+  console.log(JSON.stringify({ ok: true, runtime: process.version, independentProcesses: true, installedDependencies: false, checks: ['option-schema-binding', 'legacy-options-unassessed', 'dated-exclusion-new-date-retained', 'check-context-itinerary-option-parity', 'blocked-option-choice-no-write', 'option-original-prose-and-baseline-retained', 'option-opening-not-proven', 'decision-lifecycle-schema', 'decision-completion-stage-CAS', 'decision-completion-replay', 'decision-inactive-deadline-options', 'decision-order-refund-unchanged', 'decision-stale-unknown-no-write', 'decision-reopen', 'decision-undo-withdraw', 'operator-schema-discovery', 'structured-stdin', 'anonymous-closure-reopening', 'operator-stage-CAS-replay', 'rank-vs-application', 'operator-deadlines-tentative', 'operator-no-write-errors', 'stale-date-evidence', 'manifest', 'init-no-overwrite', 'preview-no-write', 'restart-persistence', 'idempotent-replay', 'stage-not-saved', 'concurrent-CAS', 'locked-lodging', 'retained-issue', 'stale-revision', 'constraints', 'monotonic-undo', 'checkpoint-recovery', 'retained-lock', 'booked-dinner-blocked', 'blocked-apply-no-write', 'explicit-commitment-review', 'booking-not-progress', 'booked-dinner-undo', 'activity-link-required', 'explicit-booking-activity-link', 'fixed-time-afternoon-edit', 'activity-stage-not-saved', 'activity-stale-preview', 'activity-error-schema', 'protected-dinner', 'activity-undo', 'route-bound-query', 'route-fixture-import-no-write', 'route-stage-CAS', 'route-estimate-not-feasibility', 'route-address-change-mismatch', 'route-stale-exclusion', 'route-provider-failure-unknown', 'route-undo', 'itinerary-import-no-write', 'strict-deadline-visible', 'itinerary-not-feasible-without-evidence', 'human-preview-readonly', 'time-edit-stage-CAS', 'time-edit-restart-replay', 'immutable-baseline', 'itinerary-stale-revision', 'actual-exclusive-unknown-time', 'actual-edit-protection', 'itinerary-monotonic-undo', 'known-unknown-decision-deadlines', 'no-cancellation', 'unfinished-checklist-retained', 'legacy-plan-adoption-no-rewrite'] }));
 } finally { await rm(scratch, { recursive: true, force: true }); }

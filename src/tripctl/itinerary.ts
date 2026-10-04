@@ -1,3 +1,5 @@
+import { assessItineraryOptions, type OptionPlanningContext } from './optionPlanning';
+import type { PlanningMemory } from './planMemory';
 import { hash, canonical } from './identity';
 import { itinerarySchema, itineraryOperationSchema, itineraryActivitySchema, ItineraryError, type Itinerary, type ItineraryActivity, type ItineraryDay, type ItineraryOperation } from './itinerarySchema';
 import { preparePlanningContext, planningSnapshotSchema, type PlanningSnapshot } from '../domain/planningTools';
@@ -81,7 +83,16 @@ export function validateItinerary(input: unknown, snapshot: PlanningSnapshot): I
   for (const r of i.evidence) {
     if (!registered.has(r.activityId) || !dates.has(r.dateId)) fail('invalid_reference', 'Evidence references an unknown activity/date');
   }
-  for (const o of i.options) { human(o.source); if (o.dateIds.some((d) => !dates.has(d))) fail('unknown_date', 'Option date is outside the journey'); }
+  for (const o of i.options) {
+    human(o.source); if (o.dateIds.some((d) => !dates.has(d))) fail('unknown_date', 'Option date is outside the journey');
+    if (o.requirements) {
+      human(o.requirements.source);
+      for (const r of o.requirements.plans) {
+        if (!snapshot.trip.plans.some((p) => p.id === r.planId)) fail('unknown_id', 'Option requires an unknown plan');
+        if (!o.dateIds.includes(r.dateId)) fail('invalid_reference', 'Required plan dates must belong to this option');
+      }
+    }
+  }
   for (const p of i.decisionPoints) { human(p.source); unique(p.optionIds); if (p.optionIds.some((id) => !i.options.some((o) => o.id === id))) fail('unknown_id', 'Decision references an unknown option'); }
   for (const p of i.decisionPoints) if (p.lifecycle) {
     human(p.lifecycle.source);
@@ -128,7 +139,7 @@ function overlaps(i: Itinerary) {
     } return results;
   });
 }
-export function analyseItinerary(i: Itinerary, input: unknown) {
+export function analyseItinerary(i: Itinerary, input: unknown, scope?: OptionPlanningContext) {
   const parsed = zAnalysis.safeParse(input); if (!parsed.success) fail('invalid_analysis', 'Analysis requires an explicit ISO asOf and optional imported date');
   const { asOf, dateId } = parsed.data!; if (dateId) day(i, dateId);
   const days = i.current.filter((d) => !dateId || d.dateId === dateId);
@@ -157,28 +168,25 @@ export function analyseItinerary(i: Itinerary, input: unknown) {
     const earliest = r.bounds?.after ? mins(r.bounds.after) : undefined;
     return { ...r, exactTimeKnown: Boolean(r.at), departureDelayLowerBoundMinutes: r.kind === 'started' && earliest !== undefined && planned?.timing.start ? Math.max(0, earliest - mins(planned.timing.start)) : null, lowerBoundExclusive: Boolean(r.bounds?.after) };
   });
+  const optionAnalysis = assessItineraryOptions(i, scope);
   const decisions = i.decisionPoints.map((p) => {
     const closed = p.lifecycle && p.lifecycle.status !== 'open';
     // A reopening starts a new decision round; earlier choices remain audit data.
     const previousChoice = i.optionDecisions.filter((c) => c.decisionPointId === p.id).at(-1);
     const choice = closed ? undefined : i.optionDecisions.filter((c) => c.decisionPointId === p.id && (!p.lifecycle || Date.parse(c.source.observedAt) > Date.parse(p.lifecycle.source.observedAt))).at(-1);
-    const status = closed ? p.lifecycle!.status : choice ? 'decision_recorded' : 'open';
-    return { ...p, deadlineStatus: closed ? 'inactive' : p.deadline ? Date.parse(p.deadline) <= Date.parse(asOf) ? 'due' : 'upcoming' : 'unknown', status,
-      requiresAction: status === 'open', choice: choice || null, previousChoice: previousChoice || null, scheduleApplied: false, cancellationPerformed: false, refundVerified: false };
+    const invalidChoice = choice && optionAnalysis.inactiveOptions.some((o) => o.id === choice.optionId);
+    const status = closed ? p.lifecycle!.status : invalidChoice ? 'choice_invalidated' : choice ? 'decision_recorded' : 'open';
+    return { ...p, currentOptionIds: optionAnalysis.options.filter((o) => p.optionIds.includes(o.id)).map((o) => o.id), unassessedOptionIds: optionAnalysis.unassessedOptions.filter((o) => p.optionIds.includes(o.id)).map((o) => o.id), inactiveOptionIds: optionAnalysis.inactiveOptions.filter((o) => p.optionIds.includes(o.id)).map((o) => o.id), deadlineStatus: closed ? 'inactive' : p.deadline ? Date.parse(p.deadline) <= Date.parse(asOf) ? 'due' : 'upcoming' : 'unknown', status,
+      requiresAction: status === 'open' || status === 'choice_invalidated', choice: invalidChoice ? null : choice || null, choiceEligibility: choice ? [...optionAnalysis.options, ...optionAnalysis.unassessedOptions, ...optionAnalysis.inactiveOptions].find((o) => o.id === choice.optionId)?.eligibility || null : null, previousChoice: previousChoice || null, scheduleApplied: false, cancellationPerformed: false, refundVerified: false };
   });
-  const options = i.options.map((option) => {
-    const linked = decisions.filter((d) => d.optionIds.includes(option.id));
-    const active = linked.filter((d) => d.status !== 'completed' && d.status !== 'withdrawn');
-    return { ...option, decisionPointIds: linked.map((d) => d.id), activeDecisionPointIds: active.map((d) => d.id), active: !linked.length || active.length > 0 };
-  });
-  return { schemaVersion: 1, timeZone: i.timeZone, asOf, feasibility: 'not_proven', clockConstraints: constraints, numericConstraints, overlaps: overlaps(i).filter((r) => !dateId || r.dateId === dateId), requirements, evidence: assessments, actual, options: options.filter((o) => o.active), inactiveOptions: options.filter((o) => !o.active), decisions,
+  return { schemaVersion: 1, timeZone: i.timeZone, asOf, feasibility: 'not_proven', clockConstraints: constraints, numericConstraints, overlaps: overlaps(i).filter((r) => !dateId || r.dateId === dateId), requirements, evidence: assessments, actual, ...optionAnalysis, decisions,
     advisoryEvents: decisions.filter((p) => p.requiresAction).map((p) => ({ code: 'decision_needed', decisionPointId: p.id, deadline: p.deadline ?? null, deadlineStatus: p.deadlineStatus, text: p.text, automaticAction: false })),
     preferences: i.constraints.filter((c) => c.kind === 'preference'), limitations: ['Caller-supplied estimates and evidence are not authenticated guarantees', 'No automatic traffic/weather polling, branch activation, booking or cancellation', 'Actual reports never imply unreported arrival, completion or check-in'] };
 }
 import * as z from 'zod/v4';
 const zAnalysis = z.strictObject({ asOf: z.iso.datetime({ offset: true }), dateId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
 function append<T extends { id: string }>(items: T[], record: T) { if (items.some((r) => r.id === record.id)) fail('duplicate_id', 'Record ID already exists'); items.push(record); }
-export function previewItineraryOperation(snapshot: PlanningSnapshot, previous: Itinerary | undefined, input: unknown) {
+export function previewItineraryOperation(snapshot: PlanningSnapshot, previous: Itinerary | undefined, input: unknown, memory?: PlanningMemory) {
   const parsed = itineraryOperationSchema.safeParse(input); if (!parsed.success) return fail('invalid_operation', 'Itinerary operation schema is invalid');
   const op = parsed.data; const blocks: string[] = []; let next: Itinerary; const changedDays: string[] = [];
   if (op.type === 'import_itinerary') {
@@ -231,6 +239,11 @@ export function previewItineraryOperation(snapshot: PlanningSnapshot, previous: 
       const before = clockConstraints(previous);
       for (const c of clockConstraints(next).filter((c) => c.strength === 'hard')) { const old = before.find((x) => x.id === c.id)!; if (c.status === 'unknown' && old.status !== 'unknown' || c.status === 'violated' && (old.status !== 'violated' || c.excessMinutes! > old.excessMinutes!)) blocks.push('hard_time_constraint_worsened'); }
       const oldOverlaps = overlaps(previous); if (overlaps(next).some((r) => !oldOverlaps.some((old) => old.activityId === r.activityId && old.previousActivityId === r.previousActivityId && old.overlapMinutes >= r.overlapMinutes))) blocks.push('timeline_overlap');
+    } else if (op.type === 'set_option_requirements') {
+      human(op.source); const option = next.options.find((o) => o.id === op.optionId);
+      if (!option) return fail('unknown_id', 'Unknown option ID');
+      if (Date.parse(op.source.observedAt) <= Date.parse(option.requirements?.source.observedAt || option.source.observedAt)) blocks.push('stale_option_evidence');
+      if (!blocks.length) option.requirements = { plans: op.plans, reason: op.reason, source: op.source };
     } else if (op.type === 'record_actual') { human(op.record.source); if (op.record.activityId && find(next, op.record.activityId).day.dateId !== op.record.dateId) fail('actual_date_mismatch', 'Actual report must reference the activity on its current dated plan'); append(next.actual, op.record); }
     else if (op.type === 'choose_option' || op.type === 'set_decision_status') {
       const decisionPointId = op.type === 'choose_option' ? op.record.decisionPointId : op.decisionPointId;
@@ -245,6 +258,7 @@ export function previewItineraryOperation(snapshot: PlanningSnapshot, previous: 
       if (op.type === 'choose_option') {
         if (point.lifecycle && point.lifecycle.status !== 'open') blocks.push('decision_closed');
         if (!point.optionIds.includes(op.record.optionId)) return fail('invalid_reference', 'Choice must belong to its decision point');
+        if (assessItineraryOptions(next, { snapshot, memory }).inactiveOptions.some((o) => o.id === op.record.optionId)) blocks.push('option_unavailable');
         if (!blocks.length) append(next.optionDecisions, op.record);
       } else if (!blocks.length) point.lifecycle = { status: op.status, confirmation: op.confirmation, reason: op.reason, source: op.source };
     }
@@ -277,7 +291,7 @@ export function previewItineraryOperation(snapshot: PlanningSnapshot, previous: 
   const projected = projectItinerary(snapshot, next, previous, false);
   if (!blocks.length) validateItinerary(next, projected);
   const observedAt = 'source' in op ? op.source.observedAt : op.record.source.observedAt;
-  const analysis = analyseItinerary(next, { asOf: observedAt });
+  const analysis = analyseItinerary(next, { asOf: observedAt }, { snapshot: blocks.length ? snapshot : projected, memory });
   return { nextItinerary: next, nextSnapshot: projected, blocks: [...new Set(blocks)], changedDays: changed, detail: { kind: op.type, ...(op.type === 'set_decision_status' ? { decisionChange: { decisionPointId: op.decisionPointId, before: previous?.decisionPoints.find((p) => p.id === op.decisionPointId)?.lifecycle || null, after: next.decisionPoints.find((p) => p.id === op.decisionPointId)?.lifecycle || null, cancellationPerformed: false, refundVerified: false } } : {}), changedDays: changed, changes: changed.map((date) => ({ dateId: date, before: previous?.current.find((d) => d.dateId === date) || null, after: next.current.find((d) => d.dateId === date) || null })), analysis }, weatherOverride: op.type === 'edit_itinerary' && analysis.requirements.some((r) => changed.includes(r.dateId) && r.kind === 'weather' && r.risk === 'blocked') };
 }
 export type { ItineraryOperation, ItineraryDay };

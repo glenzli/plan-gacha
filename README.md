@@ -18,7 +18,7 @@
 
 ### AI 操作员入口
 
-聊天中的 AI 可通过 `tripctl` 读取权威行程、检查约束、排序、生成变更预览，再由既有存储流程保存。新增 `schema`、结构化 stdin 和 `context` 入口；按日关闭/重开会影响现有规则，旧证据不能覆盖较新的日期状态。原计划、当前安排与实际执行分别保存。决策事项可明确完成、撤回或重开；完成后停止待办/截止提示，重开会恢复，旧证据不能覆盖较新状态。事项完成不等于订单退款已核实。候选排序不等于可直接应用，截止时间也不会自动创建提醒或取消订单。
+聊天中的 AI 可通过 `tripctl` 读取权威行程、检查约束、排序、生成变更预览，再由既有存储流程保存。新增 `schema`、结构化 stdin 和 `context` 入口；按日关闭/重开会影响现有规则，旧证据不能覆盖较新的日期状态。原计划、当前安排与实际执行分别保存。决策事项可明确完成、撤回或重开；完成后停止待办/截止提示，重开会恢复，旧证据不能覆盖较新状态。事项完成不等于订单退款已核实。条件方案现按明确的计划/日期关联共用排除与完成规则：受阻方案保留在历史，无法关联的旧文字单列待评估；旧日期排除不会禁用同地点的新日期，持票也不代表景区开放。候选排序不等于可直接应用，截止时间也不会自动创建提醒或取消订单。
 
 具体分工、可重复合成演示和未解决边界见 [操作员流程](docs/operator-flow.md)、[CLI 文档](docs/tripctl.md) 和 [操作员 skill](skills/plan-gacha-operator/SKILL.md)。父层助手可以代用户处理 JSON，但浏览器数据仍需明确交接；工具不会自动读取网页 localStorage，也未新增地图权限、天气服务权限或有状态 MCP。
 
@@ -93,7 +93,7 @@ Plan Gacha is a travel itinerary tool. You can prepare primary, backup, rainy-da
 
 The browser is a standalone frontend. This repository also provides its shared planning core, an offline operator CLI/library and four stateless MCP tools. There is no built-in account system or remote write service; a deployment host may provide an optional JSON storage adapter.
 
-An assistant can discover schemas, pass JSON over stdin, inspect compact context and preview dated closures/reopenings before guarded persistence. Decision matters have explicit completion, withdrawal and reopening: closed matters stop prompting, reopening restores applicable deadlines, and older evidence is refused. Matter completion never certifies an order cancellation or refund. Baseline/current/actual remain separate; candidate ranking does not establish application permission or real-world feasibility. See [operator flow](docs/operator-flow.md) for the reproducible synthetic demo and tool/skill/data/storage/notification boundaries. Browser data still needs an explicit handoff; this adds no map permissions, stateful MCP or automatic reminder service.
+An assistant can discover schemas, pass JSON over stdin, inspect compact context and preview dated closures/reopenings before guarded persistence. Decision matters have explicit completion, withdrawal and reopening: closed matters stop prompting, reopening restores applicable deadlines, and older evidence is refused. Matter completion never certifies an order cancellation or refund. Conditional options now share dated plan and completion constraints through explicit bindings: blocked branches stay in history, unbound legacy prose stays unassessed, and excluding one date does not ban later dates at the same place. A held ticket does not prove opening. Baseline/current/actual remain separate; candidate ranking does not establish application permission or real-world feasibility. See [operator flow](docs/operator-flow.md) for the reproducible synthetic demo and tool/skill/data/storage/notification boundaries. Browser data still needs an explicit handoff; this adds no map permissions, stateful MCP or automatic reminder service.
 
 ### Available in the current build
 

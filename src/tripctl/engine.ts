@@ -1,5 +1,6 @@
+import { rememberedBlocks } from './planMemory';
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
-export const TRIPCTL_CORE_VERSION = 7;
+export const TRIPCTL_CORE_VERSION = 8;
 import { canonical, hash } from './identity';
 export { canonical, hash } from './identity';
 import { validateItinerary, previewItineraryOperation } from './itinerary';
@@ -8,7 +9,7 @@ import { assessWalkingFact } from './routeEvidence';
 import { previewActivityChange, ActivityEditError } from '../domain/activityEditing';
 import { evaluateWeather } from '../domain/planWeather';
 import { callPlanningTool, getSnapshotToken, preparePlanningContext, planningSnapshotSchema, type PlanningToolResponse, type PlanningToolName } from '../domain/planningTools';
-import { contentSchema, mutationSchema, operationSchema, tripStateSchema, TripError, type TripState, type TripContent, type TripOperation, type TripMutation } from './schema';
+import { contentSchema, mutationSchema, operationSchema, tripStateSchema, TripError, type TripState, type TripContent, type TripMutation } from './schema';
 export function parseState(input: unknown): TripState {
   const parsed = tripStateSchema.safeParse(input);
   if (!parsed.success) throw new TripError('invalid_state', 'Journey state schema is invalid');
@@ -45,25 +46,17 @@ function insert<T extends { id: string }>(list: T[], item: T) {
   if (list.some((x) => x.id === item.id)) throw new TripError('duplicate_id', 'Record ID already exists; append an explicit superseding decision instead');
   list.push(item);
 }
-function rememberedBlocks(content: TripContent, operation: Extract<TripOperation, { type: 'assign' }>) {
-  const blocks: string[] = [];
-  // Newer explicit decisions supersede older decisions for the same plan/date scope.
-  const decisions = new Map<string, TripContent['memory']['decisions'][number]>();
-  for (const d of content.memory.decisions) decisions.set(`${d.planId}:${d.dateId || '*'}`, d);
-  for (const d of decisions.values()) {
-    if (d.disposition === 'excluded' && d.planId === operation.planId && (!d.dateId || d.dateId === operation.dateId)) blocks.push('confirmed_exclusion');
-  }
-  const progress = new Map<string, TripContent['memory']['progress'][number]>();
-  for (const p of content.memory.progress) progress.set(`${p.planId}:${p.dateId}`, p);
-  if ([...progress.values()].some((p) => p.planId === operation.planId && p.status === 'done' && p.dateId !== operation.dateId)) blocks.push('already_done');
-  return blocks;
-}
 export async function inspect(stateInput: unknown, name: PlanningToolName, dateId?: string): Promise<PlanningToolResponse> {
   const state = parseState(stateInput);
   const result = await callPlanningTool(name, { snapshot: state.content.snapshot, ...(dateId ? { dateId } : {}) });
   if (result.ok && result.data.kind === 'ranking') for (const candidate of result.data.candidates) {
-    const blocks = rememberedBlocks(state.content, { type: 'assign', planId: candidate.planId, dateId: result.data.dateId });
+    const blocks = rememberedBlocks(state.content, { planId: candidate.planId, dateId: result.data.dateId });
     if (blocks.length) { candidate.canAssign = false; candidate.noteCodes.push(...blocks); }
+  }
+  if (result.ok && result.data.kind === 'evaluation') for (const item of result.data.scheduledIssues) {
+    const blocks = rememberedBlocks(state.content, item);
+    item.issues.push(...blocks.filter((code) => !item.issues.includes(code)));
+    if (blocks.length) result.data.risks.push({ code: 'scheduled_rule_violation', planId: item.planId, dateId: item.dateId, level: 'warning', title: 'Saved arrangement conflicts with remembered constraints', reasons: blocks });
   }
   if (result.ok && result.data.kind === 'ranking') result.data.candidates.sort((a, b) => Number(b.isCurrent) - Number(a.isCurrent) || Number(b.canAssign) - Number(a.canAssign) || b.score - a.score);
   return result;
@@ -75,6 +68,10 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   const operation = parsed.data; const next = structuredClone(state.content); let detail: unknown = null; const blocks: string[] = []; let weatherOverride = false;
   if (state.content.snapshot.trip.archived) blocks.push('archived_trip');
   if (itineraryOperationSchema.safeParse(operation).success) {
+    if (operation.type === 'set_option_requirements') for (const event of state.history) {
+      const old = event.operation;
+      if (old.type === 'set_option_requirements' && old.optionId === operation.optionId && Date.parse(operation.source.observedAt) <= Date.parse(old.source.observedAt)) blocks.push('stale_option_evidence');
+    }
     if (operation.type === 'set_decision_status' || operation.type === 'choose_option') {
       const id = operation.type === 'set_decision_status' ? operation.decisionPointId : operation.record.decisionPointId;
       const observedAt = operation.type === 'set_decision_status' ? operation.source.observedAt : operation.record.source.observedAt;
@@ -87,7 +84,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
       }
     }
     try {
-      const result = previewItineraryOperation(next.snapshot, next.itinerary, operation);
+      const result = previewItineraryOperation(next.snapshot, next.itinerary, operation, next.memory);
       blocks.push(...result.blocks); detail = result.detail; weatherOverride = result.weatherOverride;
       for (const date of result.changedDays) {
         const planId = state.content.snapshot.trip.schedule[date]?.planId;

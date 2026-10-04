@@ -11,3 +11,5 @@ export * from './itineraryReport';
 
 export * from '../domain/planDates';
 export * from './operator';
+
+export * from './optionPlanning';

@@ -1,4 +1,4 @@
-# Operator flow and packaging (guard revision 7)
+# Operator flow and packaging (guard revision 8)
 
 The useful entrypoint is an offline Node CLI/library with a small operator skill. A parent assistant can interpret chat or voice, load the authoritative journey, invoke the core, explain the diff and save an authorized change. This needs no new server or model-specific wrapper. The original **four** stateless MCP tools remain real SDK-tested snapshot interfaces; rich itinerary/date operations currently use `tripctl`, not a stateful MCP server. No WebMCP/browser API support is claimed.
 
@@ -75,11 +75,41 @@ Lifecycle evidence must be strictly newer than decision creation, the current li
 
 `completed` is not a verified refund, cancelled order or booking-state update. Results explicitly retain `cancellationPerformed:false` and `refundVerified:false`. Snapshot reservations, baseline/current/actual, commitments, checklist and unrelated decisions remain unchanged. Existing parent notifications must be managed separately; the core only changes the advisory data they should consult.
 
+## Effective conditional options and date exclusions
+
+The v7 reproduction showed a mismatch: a dated plan exclusion blocked `rank`, while prose for the same branch remained `active` in itinerary/context and could still be recorded as a choice. This was an active display, not proof of feasibility or an automatic branch executor. Options had no plan-ID association, so the core could not safely join their prose to plan constraints.
+
+Use `set_option_requirements` to associate an existing option with explicit whole-day plan/date requirements. It preserves the original condition, proposal, source, dates and uncertainties. For a new option, `itinerary_option.record.requirements` accepts the same `{plans,reason,source}` object. Every listed requirement is necessary; alternatives use separate options. Requirements allow one distinct plan per date, matching the current whole-day planner. Dates must belong to the option and plan IDs must exist.
+
+```json
+{
+  "type": "set_option_requirements",
+  "optionId": "crosscity-option",
+  "plans": [{"planId":"crosscity","dateId":"2031-06-04"}],
+  "reason": "Associate the original explicit dated proposal with its existing plan",
+  "source": {"kind":"user","reference":"original user instruction","observedAt":"2031-06-04T12:00:00Z"}
+}
+```
+
+The operator resolves stable IDs from the actual saved data and explicit intent; it does not guess from similar place names or ask the user to manufacture JSON. If the relationship is genuinely ambiguous, ask a short substantive choice. Bindings require provenance and a newer evidence time; old/equal-time rebinding is refused even after undo. Never invent a newer timestamp to evade that refusal.
+
+`check.optionAnalysis`, `itinerary`, `context`, previews and the read-only report now use the same option assessment. It reuses the shared candidate/date/conflict/booking rules and operator memory exclusions/completion rules. `check` also reports remembered constraints on inconsistent saved assignments. The result has three distinct collections:
+
+- `options`: completely bound options with no known blocking constraint. Eligibility is still `not_proven` physical feasibility and never grants an automatic itinerary write.
+- `unassessedOptions`: legacy prose, missing planning context or incomplete date coverage. They are not current feasible recommendations. No data migration or guessed association occurs on read.
+- `inactiveOptions`: known dated exclusions, closed/unavailable/whitelist violations, conflicting required plans, completed/withdrawn decisions, remembered completion, archived trips or past branch dates. Original prose remains readable with reason codes.
+
+Each decision includes current/unassessed/inactive option IDs. If a formerly selected option becomes inactive, its choice becomes historical (`previousChoice`), the decision becomes `choice_invalidated`, and its review advisory returns. Another known-blocked choice is refused. An explicit choice of an unassessed option may still record conditional intent, with `choiceEligibility` exposing uncertainty; it is not a feasibility claim or branch execution.
+
+A date-only exclusion remains date-only. Keep it when adding another date's candidate for the same plan/place; use a separate option with its own dates and requirements. Do not clear the old restriction or turn it into a permanent place ban. A `bookings.status:"done"` ticket neither overrides closure nor establishes opening: checks explicitly report `openingStatus:"not_verified"`. The assistant should handle authorized lookup, memory and constraint work itself, and present only unresolved user choices rather than making the user repeatedly reconcile old branches.
+
+Library callers should use `analyseItinerary(itinerary,input,{snapshot,memory})` and the analogous report argument; passing only an itinerary cannot evaluate external snapshot/memory restrictions and therefore leaves otherwise unblocked options unassessed. `todayId` remains an explicit snapshot field; use the normal `set_context` operation as the date advances. The CLI and operator context supply the full state automatically.
+
 ## Reproducible synthetic demonstration
 
 Build with `node scripts/build-tripctl.mjs /absolute/output`, then run `node /absolute/output/verify.mjs`. The packaged `operator-scenario.json` contains an anonymous day-four closure, forest tour cancelled on day four/reopened on day five, a cancelled day-six backup, a tentative cross-city option and a lodging decision deadline. The verifier uses independent real CLI processes for schema discovery, stdin, preview, candidate staging, local CAS/replay and compact context. It verifies that a structurally eligible alternative can still require `edit_itinerary`, deadlines stay advisory, stale date evidence is refused, and reads/refusals do not write. It also verifies decision completion, inactive deadlines/options, unknown/stale refusals, reopening, withdrawal and undo across real processes.
 
-No migration is required for v5/v6 journeys: optional field absence and existing history are preserved. Preview guard version 7 invalidates pending v5/v6 previews; generate a new preview. Already committed v5/v6 request receipts still replay. Optional lifecycle fields are absent until an explicit status change; historical snapshots are not rewritten. After saving a new lifecycle operation, use v7 or newer to read/write that journey; this is forward compatibility for old data, not a guarantee that old runtimes understand new fields. Tests use synthetic histories; private production journey compatibility must be checked by its authorized parent before writing.
+No migration is required for v5/v6/v7 journeys: optional field absence and existing history are preserved. Preview guard version 8 invalidates pending v5/v6/v7 previews; generate a new preview. Already committed v5/v6/v7 request receipts still replay. Optional lifecycle fields are absent until an explicit status change; historical snapshots are not rewritten. After saving a new lifecycle operation, use the new runtime or newer to read/write that journey; this is forward compatibility for old data, not a guarantee that old runtimes understand new fields. Tests use synthetic histories; private production journey compatibility must be checked by its authorized parent before writing.
 
 ## Remaining work and evidence limits
 

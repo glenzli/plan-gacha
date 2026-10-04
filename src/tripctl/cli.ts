@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { assessItineraryOptions } from './optionPlanning';
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { apply, initialize, inspect, preview, parseState, hash } from './engine';
@@ -23,12 +24,12 @@ async function main() {
   if (command === 'read') return { ok: true, operatorPolicy: ['Read current state before each planning turn', 'Keep uncertainty and explicit sources', 'Preview before apply', 'Only acknowledge durable persistence after its receipt', 'Never treat estimates as guarantees'], revision: state.revision, stateHash: hash(state), ...state.content, lastChange: state.history.at(-1) ? { id: state.history.at(-1)!.id, reason: state.history.at(-1)!.reason, at: state.history.at(-1)!.at } : null };
   if (command === 'verify') return { ok: true, revision: parseState(state).revision, stateHash: hash(state), historyCount: state.history.length, externalCheckpointVerified: false };
   if (command === 'history') return { ok: true, revision: state.revision, events: state.history.map(({ before: _before, after: _after, ...event }) => ({ ...event, beforeHash: hash(_before), afterHash: hash(_after) })) };
-  if (command === 'check' || command === 'rank') return { revision: state.revision, result: await inspect(state, command === 'check' ? 'evaluate_plan' : 'rank_candidates', values.date) };
+  if (command === 'check' || command === 'rank') return { revision: state.revision, result: await inspect(state, command === 'check' ? 'evaluate_plan' : 'rank_candidates', values.date), ...(command === 'check' && state.content.itinerary ? { optionAnalysis: assessItineraryOptions(state.content.itinerary, state.content) } : {}) };
   if (command === 'route-query') return { ok: true, revision: state.revision, saved: false, descriptor: prepareWalkingQuery(state.content.snapshot, await json(values.input)) };
   if (command === 'route-import') return { ok: true, revision: state.revision, saved: false, operation: { type: 'map_fact', fact: await importWalkingObservation(await json(values.request), await json(values.input)) } };
   if (command === 'routes') return { ok: true, revision: state.revision, saved: false, result: inspectWalkingRoutes(state.content.snapshot, state.content.memory.mapFacts, await json(values.input)) };
-  if (command === 'itinerary') { if (!state.content.itinerary) throw new TripError('itinerary_missing', 'Import an itinerary first'); return { ok: true, revision: state.revision, saved: false, result: analyseItinerary(state.content.itinerary, await json(values.input)) }; }
-  if (command === 'itinerary-report') { if (!state.content.itinerary) throw new TripError('itinerary_missing', 'Import an itinerary first'); return { ok: true, revision: state.revision, ...renderItineraryReport(state.content.itinerary, await json(values.input)) }; }
+  if (command === 'itinerary') { if (!state.content.itinerary) throw new TripError('itinerary_missing', 'Import an itinerary first'); return { ok: true, revision: state.revision, saved: false, result: analyseItinerary(state.content.itinerary, await json(values.input), state.content) }; }
+  if (command === 'itinerary-report') { if (!state.content.itinerary) throw new TripError('itinerary_missing', 'Import an itinerary first'); return { ok: true, revision: state.revision, ...renderItineraryReport(state.content.itinerary, await json(values.input), state.content) }; }
   if (command === 'itinerary-token') { if (!state.content.itinerary) throw new TripError('itinerary_missing', 'Import an itinerary first'); const input = await json(values.input); return { ok: true, revision: state.revision, saved: false, activityToken: itineraryActivityToken(state.content.itinerary, input.activityId) }; }
   if (command === 'preview') { const revision = Number(values.revision); if (values.revision === undefined || !Number.isSafeInteger(revision) || revision < 0) throw new TripError('missing_revision', '--revision must be an explicit nonnegative integer'); return { ok: true, ...await preview(state, await json(values.input), revision) }; }
   if (command === 'apply') return { ok: true, ...await commitStore(path, await json(values.input)) };

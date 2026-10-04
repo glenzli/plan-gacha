@@ -38,7 +38,9 @@ export const itineraryActualSchema = z.strictObject({
   if (['started', 'finished', 'skipped'].includes(r.kind) && !r.activityId) ctx.addIssue({ code: 'custom', message: 'Activity status requires a stable ID' });
   if (r.bounds?.after && r.bounds.before && r.bounds.after >= r.bounds.before) ctx.addIssue({ code: 'custom', message: 'Bounds must be ordered within one local day' });
 });
-const option = z.strictObject({ id, condition: text, proposal: text, dateIds: z.array(date).min(1).max(30), uncertainties: z.array(text).max(20), source });
+const requiredPlans = z.array(z.strictObject({ planId: id, dateId: date })).min(1).max(30).refine((items) => new Set(items.map((x) => x.dateId)).size === items.length && new Set(items.map((x) => x.planId)).size === items.length, 'Use one distinct whole-day plan per date; alternatives need separate options');
+const optionRequirements = z.strictObject({ plans: requiredPlans, reason: text, source });
+const option = z.strictObject({ requirements: optionRequirements.optional(), id, condition: text, proposal: text, dateIds: z.array(date).min(1).max(30), uncertainties: z.array(text).max(20), source });
 const decisionPoint = z.strictObject({ id, text, optionIds: z.array(id).max(20), deadline: stamp.optional(), source });
 export const decisionLifecycleSchema = z.strictObject({ status: z.enum(['open', 'completed', 'withdrawn']), confirmation: z.literal('explicit'), reason: text, source });
 const storedDecisionPoint = decisionPoint.extend({ lifecycle: decisionLifecycleSchema.optional() });
@@ -82,6 +84,7 @@ export const itineraryOperationSchemas = [
   z.strictObject({ type: z.literal('itinerary_constraint'), record: itineraryConstraintSchema }),
   z.strictObject({ type: z.literal('itinerary_commitment'), record: commitment }),
   z.strictObject({ type: z.literal('itinerary_option'), record: option }),
+  z.strictObject({ type: z.literal('set_option_requirements'), optionId: id, ...optionRequirements.shape }),
   z.strictObject({ type: z.literal('itinerary_decision_point'), record: decisionPoint }),
 ] as const;
 export const itineraryOperationSchema = z.discriminatedUnion('type', itineraryOperationSchemas);

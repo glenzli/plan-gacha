@@ -52,7 +52,7 @@ describe('typed decision lifecycle', () => {
     expect(report(state).options).toEqual([]); expect(report(state).decisions[0].previousChoice?.id).toBe('choice-9');
     expect((await preview(state, choose(11), state.revision)).reasonCodes).toContain('decision_closed');
     state = await change(state, status('open', 11), 'reopen');
-    expect(report(state).decisions[0]).toMatchObject({ status: 'open', requiresAction: true, choice: null, previousChoice: { id: 'choice-9' }, deadlineStatus: 'due' }); expect(report(state).options).toHaveLength(1);
+    expect(report(state).decisions[0]).toMatchObject({ status: 'open', requiresAction: true, choice: null, previousChoice: { id: 'choice-9' }, deadlineStatus: 'due' }); expect(report(state).unassessedOptions).toHaveLength(1);
     expect(report(state).advisoryEvents).toHaveLength(1);
     expect((await preview(state, choose(11), state.revision)).reasonCodes).toContain('stale_decision_evidence');
     state = await change(state, choose(12), 'fresh-choice'); expect(report(state).decisions[0]).toMatchObject({ status: 'decision_recorded', choice: { id: 'choice-12' } });
@@ -72,13 +72,13 @@ describe('typed decision lifecycle', () => {
     await expect(preview(closed, status('open', 11), original.revision)).rejects.toMatchObject({ code: 'revision_conflict' });
     expect(report(await change(undone, status('completed', 11), 'new-report')).advisoryEvents).toEqual([]);
   });
-  it('keeps shared and unlinked alternatives active when only one decision closes', async () => {
+  it('keeps shared and unlinked legacy alternatives unassessed when only one decision closes', async () => {
     let state = await initial();
     state = await change(state, { type: 'itinerary_decision_point', record: { id: 'other', text: 'Independent open matter', optionIds: ['crosscity-option'], source: creationSource } }, 'other');
     state = await change(state, { type: 'itinerary_option', record: { id: 'unlinked', condition: 'Unlinked alternative', proposal: 'Separate plan', dateIds: ['2031-06-05'], uncertainties: [], source: creationSource } }, 'unlinked');
     state = await change(state, status('completed'), 'complete');
-    expect(report(state).options.map((o) => o.id)).toEqual(['crosscity-option', 'unlinked']);
-    expect(report(state).options[0].activeDecisionPointIds).toEqual(['other']); expect(report(state).advisoryEvents.map((a) => a.decisionPointId)).toEqual(['other']);
+    expect(report(state).unassessedOptions.map((o) => o.id)).toEqual(['crosscity-option', 'unlinked']);
+    expect(report(state).unassessedOptions[0].activeDecisionPointIds).toEqual(['other']); expect(report(state).advisoryEvents.map((a) => a.decisionPointId)).toEqual(['other']);
   });
   it.each([5, 6])('opens legacy v%s state/history unchanged and replays its receipt without migration', async (version) => {
     const empty = initialize(fixture.snapshot); const operation = fixture.importOperation;

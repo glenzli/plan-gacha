@@ -35,7 +35,7 @@ export async function readOperatorContext(stateInput: unknown, input: unknown) {
       requiredOperation: proposal.reasonCodes.includes('itinerary_operation_required') ? 'edit_itinerary' : 'assign' }, readiness: 'not_verified' });
   }
   const itinerary = state.content.itinerary;
-  const analysis = itinerary ? analyseItinerary(itinerary, { asOf, ...(dateId && itinerary.current.some((day) => day.dateId === dateId) ? { dateId } : {}) }) : null;
+  const analysis = itinerary ? analyseItinerary(itinerary, { asOf, ...(dateId && itinerary.current.some((day) => day.dateId === dateId) ? { dateId } : {}) }, state.content) : null;
   return { ok: true, schemaVersion: 1, coreVersion: TRIPCTL_CORE_VERSION, revision: state.revision, stateHash: hash(state), saved: false, asOf,
     trip: { id: state.content.snapshot.trip.id, todayId: context.todayId, dates: context.tripDates.map((date) => date.id), selectedDate: dateId || null },
     schedule: state.content.snapshot.trip.schedule, lodgings: state.content.snapshot.trip.lodgings,
