@@ -22,6 +22,10 @@
 
 具体分工、可重复合成演示和未解决边界见 [操作员流程](docs/operator-flow.md)、[CLI 文档](docs/tripctl.md) 和 [操作员 skill](skills/plan-gacha-operator/SKILL.md)。父层助手可以代用户处理 JSON，但浏览器数据仍需明确交接；工具不会自动读取网页 localStorage，也未新增地图权限、天气服务权限或有状态 MCP。
 
+### 经验复盘与攻略草稿
+
+助手可以把亲历观察、调整理由、实际结果和用户评价关联到已有 facts/history，在以后规划时按主题或关键词检索明确提供的旧行程。外部攻略与亲历分开，天气、节日排队、预约等会提示重新核查，不自动变成永久偏好。攻略草稿只采用单独撰写的经验摘要，默认省略原始订单、联系方式和私密住宿信息，仍需用户审阅；导出不会公开分享。见 [复盘闭环与边界](docs/experience-review.md)。
+
 ### 当前能力
 
 - **行程与日程**：管理多个旅行、住宿、每日安排和候选计划；移动端与桌面端使用不同的日程布局。
@@ -94,6 +98,8 @@ Plan Gacha is a travel itinerary tool. You can prepare primary, backup, rainy-da
 The browser is a standalone frontend. This repository also provides its shared planning core, an offline operator CLI/library and four stateless MCP tools. There is no built-in account system or remote write service; a deployment host may provide an optional JSON storage adapter.
 
 An assistant can discover schemas, pass JSON over stdin, inspect compact context and preview dated closures/reopenings before guarded persistence. Decision matters have explicit completion, withdrawal and reopening: closed matters stop prompting, reopening restores applicable deadlines, and older evidence is refused. Matter completion never certifies an order cancellation or refund. Conditional options now share dated plan and completion constraints through explicit bindings: blocked branches stay in history, unbound legacy prose stays unassessed, and excluding one date does not ban later dates at the same place. A held ticket does not prove opening. Baseline/current/actual remain separate; candidate ranking does not establish application permission or real-world feasibility. See [operator flow](docs/operator-flow.md) for the reproducible synthetic demo and tool/skill/data/storage/notification boundaries. Browser data still needs an explicit handoff; this adds no map permissions, stateful MCP or automatic reminder service.
+
+The optional [experience-review loop](docs/experience-review.md) links observations, adjustment history and reported outcomes in existing facts. Read-only search uses explicitly supplied journeys; external guides remain distinct from firsthand reports and temporary conditions require rechecking. Dedicated guide lessons can be exported for user review with private fields omitted by default. Export does not publish or share.
 
 ### Available in the current build
 

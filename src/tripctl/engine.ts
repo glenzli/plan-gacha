@@ -10,6 +10,27 @@ import { previewActivityChange, ActivityEditError } from '../domain/activityEdit
 import { evaluateWeather } from '../domain/planWeather';
 import { callPlanningTool, getSnapshotToken, preparePlanningContext, planningSnapshotSchema, type PlanningToolResponse, type PlanningToolName } from '../domain/planningTools';
 import { contentSchema, mutationSchema, operationSchema, tripStateSchema, TripError, type TripState, type TripContent, type TripMutation } from './schema';
+function validateExperiences(state: Pick<TripState, 'content' | 'history'>) {
+  // Experience references describe history; they must not freeze later itinerary edits.
+  const activityPairs = new Set<string>();
+  if (state.content.memory.facts.some((f) => f.experience?.activityId)) for (const content of [state.content, ...state.history.flatMap((h) => [h.before, h.after])]) {
+    for (const day of [...(content.itinerary?.baseline.days || []), ...(content.itinerary?.current || [])]) for (const activity of day.activities) activityPairs.add(JSON.stringify([day.planId, activity.id]));
+  }
+  for (const fact of state.content.memory.facts) {
+    const e = fact.experience; if (!e) continue;
+    if (e.kind === 'firsthand' && fact.source.kind === 'provider') throw new TripError('invalid_experience_source', 'Provider guidance is not firsthand user experience');
+    if (e.planId && !state.content.snapshot.trip.plans.some((p) => p.id === e.planId)) throw new TripError('unknown_id', 'Experience references an unknown plan');
+    if (e.activityId && !activityPairs.has(JSON.stringify([e.planId, e.activityId]))) throw new TripError('unknown_id', 'Experience activity must belong to its named plan');
+    if (e.changeCommitIds.some((id) => !state.history.some((event) => event.id === id))) throw new TripError('unknown_id', 'Experience references an unknown prior change');
+    if (e.supersedesFactId) {
+      const old = state.content.memory.facts.find((f) => f.id === e.supersedesFactId);
+      if (!old?.experience) throw new TripError('unknown_id', 'Superseded record must be an existing experience fact');
+      if (old.experience.kind !== e.kind || old.experience.eventDateId !== e.eventDateId || old.experience.planId !== e.planId) throw new TripError('experience_mismatch', 'A correction must refer to the same kind, event date and plan');
+      if (Date.parse(fact.source.observedAt) <= Date.parse(old.source.observedAt)) throw new TripError('stale_experience', 'Experience corrections require newer source evidence');
+      if (state.content.memory.facts.some((f) => f.id !== fact.id && f.experience?.supersedesFactId === e.supersedesFactId)) throw new TripError('experience_conflict', 'Correct the latest experience rather than branching over an existing correction');
+    }
+  }
+}
 export function parseState(input: unknown): TripState {
   const parsed = tripStateSchema.safeParse(input);
   if (!parsed.success) throw new TripError('invalid_state', 'Journey state schema is invalid');
@@ -28,6 +49,7 @@ export function parseState(input: unknown): TripState {
     || state.history.some((event, i) => i > 0 && canonical(event.before) !== canonical(state.history[i - 1].after))
     || state.history.length > 0 && canonical(state.content) !== canonical(state.history.at(-1)!.after)) throw new TripError('invalid_history', 'History, revision and current state must agree');
   if (state.content.itinerary) validateItinerary(state.content.itinerary, state.content.snapshot);
+  validateExperiences(state);
   return state;
 }
 export function initialize(snapshot: unknown): TripState {
@@ -136,7 +158,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
         weatherOverride = evaluateWeather(context.plans.find((plan) => plan.id === operation.planId)!, operation.dateId, context.weatherData).level === 'blocked';
       }
     } catch (error) { if (error instanceof ActivityEditError) throw new TripError(error.code, error.message); throw error; }
-  } else if (operation.type === 'fact') insert(next.memory.facts, operation.record);
+  } else if (operation.type === 'fact') { insert(next.memory.facts, operation.record); validateExperiences({ content: next, history: state.history }); }
   else if (operation.type === 'preference') { requireHuman(operation.record.source); insert(next.memory.preferences, operation.record); }
   else if (operation.type === 'decision') {
     requireHuman(operation.record.source); assertPlan(next, operation.record.planId, operation.record.dateId);

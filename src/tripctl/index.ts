@@ -13,3 +13,6 @@ export * from '../domain/planDates';
 export * from './operator';
 
 export * from './optionPlanning';
+
+export * from './experienceSchema';
+export * from './experiences';

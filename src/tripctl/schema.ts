@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { experienceMetadataSchema } from './experienceSchema';
 import { setPlanDatesSchema } from '../domain/planDates';
 import { planningSnapshotSchema, assignmentOperationSchema } from '../domain/planningTools';
 import { mapFactSchema } from './mapFacts';
@@ -9,11 +10,12 @@ export const identifier = z.string().trim().min(1).max(160).regex(/^[a-zA-Z0-9_.
 export const timestamp = z.iso.datetime({ offset: true });
 export const sourceSchema = evidenceSourceSchema;
 const note = z.strictObject({ id: identifier, text: z.string().min(1).max(4000), source: sourceSchema });
+const fact = note.extend({ certainty: z.enum(['reported', 'verified', 'uncertain']), experience: experienceMetadataSchema.optional() });
 const decision = z.strictObject({ id: identifier, planId: identifier, dateId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), disposition: z.enum(['confirmed', 'excluded', 'withdrawn']), reason: z.string().min(1).max(4000), source: sourceSchema });
 const progress = z.strictObject({ id: identifier, planId: identifier, dateId: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), status: z.enum(['todo', 'done', 'skipped']), reason: z.string().min(1).max(4000), source: sourceSchema });
 const issue = z.strictObject({ id: identifier, text: z.string().min(1).max(4000), source: sourceSchema, relatedPlanId: identifier.optional(), status: z.enum(['open', 'resolved']), resolution: z.string().max(4000), resolutionSource: sourceSchema.optional() });
 export const memorySchema = z.strictObject({
-  facts: z.array(note.extend({ certainty: z.enum(['reported', 'verified', 'uncertain']) })).max(500),
+  facts: z.array(fact).max(500),
   preferences: z.array(note).max(500),
   decisions: z.array(decision).max(500),
   progress: z.array(progress).max(500),
@@ -26,7 +28,7 @@ export const operationSchema = z.discriminatedUnion('type', [
   setPlanDatesSchema,
   ...activityOperationSchemas,
   ...itineraryOperationSchemas,
-  z.strictObject({ type: z.literal('fact'), record: note.extend({ certainty: z.enum(['reported', 'verified', 'uncertain']) }) }),
+  z.strictObject({ type: z.literal('fact'), record: fact }),
   z.strictObject({ type: z.literal('preference'), record: note }),
   z.strictObject({ type: z.literal('decision'), record: decision }),
   z.strictObject({ type: z.literal('progress'), record: progress }),

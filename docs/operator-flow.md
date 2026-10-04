@@ -111,6 +111,10 @@ Build with `node scripts/build-tripctl.mjs /absolute/output`, then run `node /ab
 
 No migration is required for v5/v6/v7 journeys: optional field absence and existing history are preserved. Preview guard version 8 invalidates pending v5/v6/v7 previews; generate a new preview. Already committed v5/v6/v7 request receipts still replay. Optional lifecycle fields are absent until an explicit status change; historical snapshots are not rewritten. After saving a new lifecycle operation, use the new runtime or newer to read/write that journey; this is forward compatibility for old data, not a guarantee that old runtimes understand new fields. Tests use synthetic histories; private production journey compatibility must be checked by its authorized parent before writing.
 
+## Source-linked experience review
+
+The same existing fact/history store can hold optional experience metadata. `experiences` and `experience-search` retrieve private reviews from explicit journey states; `guide-draft` returns a conservative user-reviewable Markdown draft without saving or sharing. See [experience-review.md](experience-review.md) (portable `EXPERIENCE.md`) for original-plan/observation/change/outcome linkage, source categories, correction history, reuse conditions and privacy limits. Do not infer actual results from a plan or a ticket, convert external advice into firsthand experience, or turn temporary conditions into permanent preferences.
+
 ## Remaining work and evidence limits
 
 No new map/weather permissions or live API connection is established by this version. Existing route/evidence APIs accept authorized observations; provider access on each host, credential handling, POI identity and freshness remain external requirements. Cached snapshot weather has no verified freshness contract. Route estimates and matching clocks never prove end-to-end feasibility. Itinerary times currently support Asia/Shanghai only.

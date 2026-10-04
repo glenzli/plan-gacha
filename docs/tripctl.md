@@ -4,6 +4,8 @@ Node >=22.13 runs the portable `tripctl.mjs` without npm installation, network a
 
 See [operator-flow.md](operator-flow.md) (portable `OPERATOR-FLOW.md`) for the current layer boundaries, discoverable schemas, structured stdin, compact context and dated closure/reopening contract. Guard revision 8 preserves journey format 1; re-preview pending older requests.
 
+Experience capture reuses the existing `fact` operation with optional metadata. Read-only `experiences`, `experience-search` and `guide-draft` are documented in [experience-review.md](experience-review.md) (portable `EXPERIENCE.md`). These commands do not save, share or scan other files.
+
 ## Operator workflow
 
 Every turn: read the current authoritative journey, its revision, decisions/exclusions, actual progress, unresolved issues and reasons. Use `check`/`rank` as needed. Preview an explicit operation, inspect effects, then save it. Claim a change is saved only after the applicable durable store acknowledges success.

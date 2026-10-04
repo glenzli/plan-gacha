@@ -1,0 +1,147 @@
+{
+  "adjust": {
+    "type": "edit_itinerary",
+    "changes": [
+      {
+        "action": "update",
+        "activityId": "visit",
+        "patch": {
+          "timing": {
+            "start": "10:00",
+            "end": "11:00"
+          }
+        }
+      }
+    ],
+    "source": {
+      "kind": "synthetic",
+      "reference": "synthetic:experience-message",
+      "observedAt": "2031-06-04T12:00:00Z"
+    }
+  },
+  "actual": {
+    "type": "record_actual",
+    "record": {
+      "id": "walk-finished",
+      "dateId": "2031-06-04",
+      "activityId": "visit",
+      "kind": "finished",
+      "at": "2031-06-04T11:00:00+08:00",
+      "text": "Synthetic user explicitly reports finishing the walk",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:experience-message",
+        "observedAt": "2031-06-04T12:00:00Z"
+      }
+    }
+  },
+  "facts": [
+    {
+      "type": "fact",
+      "record": {
+        "id": "queue-observation",
+        "text": "Synthetic queue delayed the initial visit; result not yet known. Private reference ORDER-EXAMPLE, person test@example.invalid, Synthetic Private Lodge.",
+        "certainty": "reported",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:experience-message",
+          "observedAt": "2031-06-04T12:00:00Z"
+        },
+        "experience": {
+          "kind": "firsthand",
+          "eventDateId": "2031-06-04",
+          "topics": [
+            "crowds",
+            "timing"
+          ],
+          "conditions": [
+            "A holiday arrival with a long queue"
+          ],
+          "unknowns": [
+            "Other seasons have not been observed"
+          ],
+          "reviewBeforeReuse": [
+            "crowds"
+          ],
+          "planId": "day4",
+          "activityId": "visit",
+          "changeCommitIds": [
+            "adjust"
+          ]
+        }
+      }
+    },
+    {
+      "type": "fact",
+      "record": {
+        "id": "queue-review",
+        "text": "Synthetic user reports the adjusted visit worked.",
+        "certainty": "reported",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:experience-message",
+          "observedAt": "2031-06-04T20:00:00Z"
+        },
+        "experience": {
+          "kind": "firsthand",
+          "eventDateId": "2031-06-04",
+          "topics": [
+            "crowds",
+            "timing"
+          ],
+          "conditions": [
+            "A holiday arrival with a long queue"
+          ],
+          "unknowns": [
+            "Other seasons have not been observed"
+          ],
+          "reviewBeforeReuse": [
+            "crowds"
+          ],
+          "planId": "day4",
+          "activityId": "visit",
+          "changeCommitIds": [
+            "adjust"
+          ],
+          "supersedesFactId": "queue-observation",
+          "outcome": "Completed the walk after the revised start",
+          "userEvaluation": "The slower pace was comfortable in this situation",
+          "draftLesson": "Allow extra time around holiday arrival queues; confirm current conditions before reusing this plan."
+        }
+      }
+    },
+    {
+      "type": "fact",
+      "record": {
+        "id": "external-advice",
+        "text": "An external guide claims a timed ticket is required; current rules unknown.",
+        "certainty": "uncertain",
+        "source": {
+          "kind": "provider",
+          "reference": "https://example.invalid/guide",
+          "observedAt": "2030-01-01T12:00:00Z"
+        },
+        "experience": {
+          "kind": "external_guide",
+          "eventDateId": null,
+          "topics": [
+            "booking",
+            "opening"
+          ],
+          "conditions": [
+            "A prior published guide"
+          ],
+          "unknowns": [
+            "Current opening and reservation rules"
+          ],
+          "reviewBeforeReuse": [
+            "booking",
+            "opening"
+          ],
+          "changeCommitIds": [],
+          "draftLesson": "Recheck official opening and reservation rules before booking."
+        }
+      }
+    }
+  ]
+}
