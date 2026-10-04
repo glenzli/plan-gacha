@@ -9,6 +9,8 @@ await build({ entryPoints: ['src/tripctl/cli.ts'], bundle: true, platform: 'node
 await build({ entryPoints: ['src/tripctl/index.ts'], bundle: true, platform: 'node', target: 'node22', format: 'esm', minify: true, outfile: `${output}/tripctl-lib.mjs`, legalComments: 'eof' });
 await copyFile('fixtures/planning-tools.snapshot.json', `${output}/synthetic.snapshot.json`);
 await copyFile('fixtures/booked-day.snapshot.json', `${output}/booked-day.snapshot.json`);
+await copyFile('fixtures/history-import-scenario.json', `${output}/history-import-scenario.json`);
+await copyFile('docs/history-import.md', `${output}/HISTORY-IMPORT.md`);
 await copyFile('fixtures/experience-scenario.json', `${output}/experience-scenario.json`);
 await copyFile('docs/experience-review.md', `${output}/EXPERIENCE.md`);
 await copyFile('fixtures/operator-scenario.json', `${output}/operator-scenario.json`);
@@ -36,7 +38,7 @@ for (const [id, operation] of [['import', operator.importOperation], ['adjust', 
 }
 const draft = core.createGuideDraft(reviewState, { asOf: '2032-06-04T12:00:00Z', experienceIds: ['queue-review', 'external-advice'] });
 await writeFile(`${output}/EXPERIENCE-DEMO.md`, `# 合成经验演示\n\n${draft.markdown}`);
-const files = ['experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
+const files = ['history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));

@@ -2,7 +2,7 @@
 
 Node >=22.13 runs the portable `tripctl.mjs` without npm installation, network access, API keys or a web server. An optional Mac-only Python walking transport is separate from this offline engine. `tripctl-lib.mjs` also exports the pure engine, schemas, file store and map adapter for direct imports. `node verify.mjs` verifies the delivered hashes and runs synthetic multi-process persistence, constraint, concurrency and recovery checks. Source builds use `npm run tripctl:build`; source CLI uses `npm run tripctl -- ...`.
 
-See [operator-flow.md](operator-flow.md) (portable `OPERATOR-FLOW.md`) for the current layer boundaries, discoverable schemas, structured stdin, compact context and dated closure/reopening contract. Guard revision 8 preserves journey format 1; re-preview pending older requests.
+See [operator-flow.md](operator-flow.md) (portable `OPERATOR-FLOW.md`) for the current layer boundaries, discoverable schemas, structured stdin, compact context and dated closure/reopening contract. Guard revision 9 preserves journey format 1; re-preview pending older requests.
 
 Experience capture reuses the existing `fact` operation with optional metadata. Read-only `experiences`, `experience-search` and `guide-draft` are documented in [experience-review.md](experience-review.md) (portable `EXPERIENCE.md`). These commands do not save, share or scan other files.
 
@@ -140,3 +140,7 @@ The bounded live smoke succeeded on 2026-10-02 using the official documentation'
 ## Structured itinerary extension (guard revision 5)
 
 Optional `content.itinerary` now separates immutable baseline, current dated activities and reported actual events with stable IDs. It supports add/delete/reorder/move/time edits, explicit constraints/commitments, Shanghai local-time checks, typed route/weather/place evidence, conditional options and decision deadlines. Run `itinerary --input analysis.json` for read-only checks or `itinerary-token` for observation binding; all mutations still use ordinary `preview` then `apply` or `stage`/parent CAS. See bundled [ITINERARY.md](ITINERARY.md) / source [itinerary-core.md](itinerary-core.md) and `anonymous-itinerary.json`. Re-preview pending writes under core revision 5. Old files and committed receipts remain readable. This adds declared clock/estimate comparisons; it remains short of a general minute-level transportation solver.
+
+## Archived historical feedback (guard revision 9)
+
+`init` preserves original four feedback fields, aliases and timezone fields. Explicit `import_history` indexes private user reports into existing facts without unarchiving or changing plans; `undo_history_import` only rolls back the latest such import. Reimports deduplicate source/field/key identity; changed content under the same identity fails. See [history-import.md](history-import.md) (portable `HISTORY-IMPORT.md`) for the complete source, timezone and recovery contract. `Asia/Tokyo` times stay legacy/unconverted; typed itinerary remains Shanghai-only. The guide always reports `anonymized:false`; request-only `lessonDrafts` can provide general text without writing an archived journey.

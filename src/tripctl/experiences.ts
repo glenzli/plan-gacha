@@ -32,7 +32,7 @@ export function searchExperiences(stateInputs: unknown[], input: unknown) {
   if (new Set(states.map((s) => s.content.snapshot.trip.id)).size !== states.length) throw new TripError('duplicate_journey', 'Supply one current version per journey ID');
   const terms = (query.query || '').normalize('NFKC').toLowerCase().trim().split(/\s+/).filter(Boolean);
   const candidates = states.flatMap((state) => rows(state, query.asOf)).filter((r) => (query.includeSuperseded || !r.superseded) && (!query.kind || r.kind === query.kind) && (!query.topics?.length || query.topics.some((t) => r.topics.includes(t)))).map((r) => {
-    const searchable = JSON.stringify([r.recap.observation, r.draftLesson, r.conditions, r.unknowns, r.topics, r.recap.originalPlan?.title, r.recap.currentPlan?.title]).normalize('NFKC').toLowerCase();
+    const searchable = JSON.stringify([r.recap.observation, r.draftLesson, r.conditions, r.unknowns, r.topics, r.recap.originalPlan?.title, r.recap.currentPlan?.title, r.historical?.record]).normalize('NFKC').toLowerCase();
     return { ...r, matchedTerms: terms.filter((term) => searchable.includes(term)) };
   }).filter((r) => !terms.length || r.matchedTerms.length).sort((a, b) => b.matchedTerms.length - a.matchedTerms.length || Date.parse(b.source.observedAt) - Date.parse(a.source.observedAt) || `${a.journeyId}:${a.factId}`.localeCompare(`${b.journeyId}:${b.factId}`));
   const limit = query.limit || 10;
@@ -46,19 +46,22 @@ export function createGuideDraft(stateInput: unknown, input: unknown) {
   const state = parseState(stateInput); const q = parsed.data; const all = rows(state, q.asOf);
   const selected = q.experienceIds.map((id) => { const row = all.find((r) => r.factId === id); if (!row) throw new TripError('unknown_id', 'Guide references an unknown experience'); return row; });
   if (selected.some((r) => r.superseded)) throw new TripError('superseded_experience', 'Choose the latest experience correction for a guide');
+  const drafts = q.lessonDrafts || [];
+  if (new Set(drafts.map((d) => d.experienceId)).size !== drafts.length || drafts.some((d) => !q.experienceIds.includes(d.experienceId))) throw new TripError('invalid_guide_request', 'Draft lessons must uniquely reference selected experiences');
   const lodgingLabels = [...new Set([state.content, ...state.history.flatMap((h) => [h.before, h.after])].flatMap((content) => [
-    ...content.snapshot.trip.lodgings.flatMap((l) => [l.name, typeof l.location === 'string' ? l.location : l.location?.label || '', typeof l.location === 'object' ? l.location.address || '' : '']),
+    ...content.snapshot.trip.lodgings.flatMap((l) => [l.name, typeof l.location === 'string' ? l.location : l.location?.label || '', typeof l.location === 'object' ? l.location.address || '' : '', typeof l.location === 'object' ? l.location.query || '' : '']),
     ...[...(content.itinerary?.baseline.days || []), ...(content.itinerary?.current || [])].flatMap((d) => d.activities.filter((a) => a.kind === 'lodging').flatMap((a) => [a.title, a.location?.label || ''])),
   ]).filter((s) => s.length > 1))];
   let omittedLessons = 0;
   const cards = selected.map((r, n) => {
-    const lesson = r.draftLesson;
-    const sensitive = lesson && (/@|https?:|\b\d[\d +()-]{5,}\d\b|(?:订单|预订号|联系人|房间号|order|confirmation|contact|room)\s*[:：#]/i.test(lesson) || lodgingLabels.some((label) => lesson.toLowerCase().includes(label.toLowerCase())));
+    const supplied = drafts.find((d) => d.experienceId === r.factId); const lesson = supplied?.lesson ?? r.draftLesson;
+    const numberWarning = [...(lesson || '').matchAll(/\b\d[\d +().-]{5,}\d\b/g)].some(([match]) => !/^\d{4}-\d{2}-\d{2}$/.test(match.trim()) && match.replace(/\D/g, '').length >= 7);
+    const sensitive = lesson && (numberWarning || /@|https?:|(?:订单|预订号|联系人|房间号|order|confirmation|contact|room)\s*[:：#]/i.test(lesson) || lodgingLabels.some((label) => lesson.toLowerCase().includes(label.toLowerCase())));
     if (!lesson || sensitive || r.reuseStatus === 'future_observation') omittedLessons++;
-    return { number: n + 1, origin: r.kind, eventDateId: r.eventDateId, sourceDate: r.source.observedAt.slice(0, 10), certainty: r.certainty, topics: r.topics,
+    return { number: n + 1, lessonOrigin: supplied ? 'request_draft' : r.draftLesson ? 'saved_draft' : 'none', origin: r.kind, eventDateId: r.eventDateId, sourceDate: r.source.observedAt.slice(0, 10), sourceDateBasis: r.historical?.observedAtBasis ?? 'source_observation_time', certainty: r.certainty, topics: r.topics,
       lesson: lesson && !sensitive && r.reuseStatus !== 'future_observation' ? lesson : null, reviewBeforeReuse: r.reviewBeforeReuse, unknownCount: r.unknowns.length, conditionsMustBeReviewed: true };
   });
   const lines = ['# 旅行经验攻略草稿', '', '供用户审阅；导出不代表公开分享。经验不构成开放、预约或交通保证，也不自动成为永久偏好。', '原始观察、联系人、订单、住宿、计划明细及来源引用默认省略；仅展示单独撰写的经验草稿。仍需检查草稿中的自由文本。', ''];
-  for (const c of cards) lines.push(`## 经验 ${c.number}`, '', `来源类别：${c.origin === 'firsthand' ? '用户亲历报告' : '外部攻略'}；事件日期：${c.eventDateId || '未知'}；记录日期：${c.sourceDate}；确定性：${c.certainty}`, `主题：${c.topics.join('、')}`, c.lesson ? plain(c.lesson) : '此条尚无可纳入的经验草稿，或含需核对内容；请在私有复盘中审阅后补写。', `适用条件需复核；${c.unknownCount} 项未知。再次使用前核查：${c.reviewBeforeReuse.join('、') || '与本次旅行的条件是否相符'}。`, '');
-  return { ok: true, saved: false, published: false, needsUserReview: true, privacyMode: 'dedicated_lesson_allowlist', omittedLessons, cards, markdown: lines.join('\n'), limitations: ['Free-text lessons still require user privacy and accuracy review', 'No implicit sharing, network request or external write occurred'] };
+  for (const c of cards) lines.push(`## 经验 ${c.number}`, '', `来源类别：${c.origin === 'firsthand' ? '用户亲历报告' : '外部攻略'}；事件日期：${c.eventDateId || '未知'}；记录/导入日期：${c.sourceDate}；确定性：${c.certainty}`, `主题：${c.topics.join('、')}`, c.lesson ? plain(c.lesson) : '此条尚无可纳入的经验草稿，或含需核对内容；请在私有复盘中审阅后补写。', `适用条件需复核；${c.unknownCount} 项未知。再次使用前核查：${c.reviewBeforeReuse.join('、') || '与本次旅行的条件是否相符'}。`, '');
+  return { ok: true, saved: false, published: false, needsUserReview: true, anonymized: false, privacyMode: 'dedicated_lesson_allowlist', omittedLessons, cards, markdown: lines.join('\n'), limitations: ['Not anonymized: names, places and sensitive inferences in dedicated free text may remain; pattern checks can miss or over-withhold text', 'Free-text lessons still require user privacy and accuracy review', 'No implicit sharing, network request or external write occurred'] };
 }

@@ -52,7 +52,9 @@ export function projectItinerary(snapshot: PlanningSnapshot, i: Itinerary, previ
 }
 export function validateItinerary(input: unknown, snapshot: PlanningSnapshot): Itinerary {
   const parsed = itinerarySchema.safeParse(input); if (!parsed.success) return fail('invalid_itinerary', 'Itinerary schema is invalid');
-  const i = parsed.data; const dates = new Set(preparePlanningContext(snapshot).tripDates.map((d) => d.id));
+  const i = parsed.data;
+  if ([snapshot.trip.timeZone, snapshot.trip.timezone, snapshot.trip.time_zone].some((zone) => zone !== undefined && zone !== i.timeZone)) fail('unsupported_time_zone_conversion', 'Preserve legacy local times; typed itinerary cannot convert the source time zone');
+  const dates = new Set(preparePlanningContext(snapshot).tripDates.map((d) => d.id));
   const registered = new Set(i.registeredActivityIds); unique(i.registeredActivityIds);
   for (const days of [i.baseline.days, i.current]) {
     unique(days.map((d) => d.dateId)); unique(days.map((d) => d.planId)); unique(days.flatMap((d) => d.activities.map((a) => a.id)));
@@ -190,6 +192,7 @@ export function previewItineraryOperation(snapshot: PlanningSnapshot, previous: 
   const parsed = itineraryOperationSchema.safeParse(input); if (!parsed.success) return fail('invalid_operation', 'Itinerary operation schema is invalid');
   const op = parsed.data; const blocks: string[] = []; let next: Itinerary; const changedDays: string[] = [];
   if (op.type === 'import_itinerary') {
+    if ([snapshot.trip.timeZone, snapshot.trip.timezone, snapshot.trip.time_zone].some((zone) => zone !== undefined && zone !== op.timeZone)) fail('unsupported_time_zone_conversion', 'Keep legacy local times unconverted; typed itinerary currently supports Asia/Shanghai only');
     human(op.source); if (previous) fail('baseline_exists', 'Baseline already exists; use explicit edits, never replace it');
     for (const d of op.days) {
       const old = snapshot.trip.plans.find((p) => p.id === d.planId);

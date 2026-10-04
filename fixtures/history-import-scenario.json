@@ -1,0 +1,96 @@
+{
+  "snapshot": {
+    "schemaVersion": 1,
+    "todayId": "2026-10-04",
+    "trip": {
+      "id": "synthetic-japan-history",
+      "name": "Synthetic archived local-time trip",
+      "startDateStr": "2024-07-10",
+      "tripDays": 2,
+      "timeZone": "Asia/Tokyo",
+      "plans": [
+        {
+          "id": "old-day",
+          "name": "Synthetic old walk",
+          "stops": [
+            {
+              "id": "old-stop",
+              "title": "Synthetic stop",
+              "time": "00:30"
+            }
+          ],
+          "bookings": [
+            {
+              "id": "old-ticket",
+              "title": "Synthetic held ticket",
+              "status": "done"
+            }
+          ]
+        }
+      ],
+      "schedule": {
+        "2024-07-10": {
+          "planId": "old-day"
+        }
+      },
+      "lodgings": [],
+      "checklistText": "[ ] Synthetic unfinished follow-up",
+      "checklistState": {},
+      "archived": true
+    },
+    "weatherData": {}
+  },
+  "feedback": {
+    "dayReviews": {
+      "review": {
+        "key": "original-key",
+        "dateId": "2024-07-10",
+        "planId": "old-day",
+        "rating": "unsatisfied",
+        "tags": [
+          "too_rushed",
+          "weather_affected"
+        ],
+        "note": "Synthetic rain made the walk tiring; worth slowing down next time.",
+        "updatedAt": "2024-07-11T00:30:00+09:00",
+        "extraOriginal": {
+          "preserved": true
+        }
+      }
+    },
+    "stopOutcomes": {
+      "stop": {
+        "dateId": "2024-07-10",
+        "planId": "old-day",
+        "stopId": "old-stop",
+        "stopTitle": "Synthetic stop",
+        "status": "abandoned",
+        "updatedAt": "2024-07-10T16:30:00",
+        "reason": "Synthetic queues"
+      }
+    },
+    "placeFeedback": {
+      "place": {
+        "label": "Synthetic Private Place",
+        "address": "Synthetic raw private address",
+        "status": "blacklisted",
+        "updatedAt": "2024-07-10T18:00:00+09:00"
+      }
+    },
+    "archiveSummary": {
+      "currency": "JPY",
+      "expenses": {
+        "food": 8000
+      },
+      "note": "Synthetic overall review",
+      "archivedAt": "2024-07-12T09:00:00+09:00",
+      "updatedAt": "",
+      "privateCanary": "Synthetic Person; 090.1234.5678; ORDER-PRIVATE"
+    }
+  },
+  "source": {
+    "kind": "synthetic",
+    "reference": "synthetic:original-history-version-1",
+    "observedAt": "2026-10-04T06:00:00Z"
+  }
+}

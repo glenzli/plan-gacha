@@ -1,4 +1,4 @@
-# Operator flow and packaging (guard revision 8)
+# Operator flow and packaging (guard revision 9)
 
 The useful entrypoint is an offline Node CLI/library with a small operator skill. A parent assistant can interpret chat or voice, load the authoritative journey, invoke the core, explain the diff and save an authorized change. This needs no new server or model-specific wrapper. The original **four** stateless MCP tools remain real SDK-tested snapshot interfaces; rich itinerary/date operations currently use `tripctl`, not a stateful MCP server. No WebMCP/browser API support is claimed.
 
@@ -120,3 +120,7 @@ The same existing fact/history store can hold optional experience metadata. `exp
 No new map/weather permissions or live API connection is established by this version. Existing route/evidence APIs accept authorized observations; provider access on each host, credential handling, POI identity and freshness remain external requirements. Cached snapshot weather has no verified freshness contract. Route estimates and matching clocks never prove end-to-end feasibility. Itinerary times currently support Asia/Shanghai only.
 
 A stateful MCP facade is useful only when a target assistant cannot execute this CLI or safely orchestrate storage; it must reuse this engine and the single persistence owner. It is deferred. Automated branch execution, browser state reconciliation and a richer human review UI also need explicit contracts. The current report is a read-only artifact, not a second save endpoint.
+
+## Import a past archived journey
+
+Use the explicit [historical feedback contract](history-import.md), portable `HISTORY-IMPORT.md`. Retain the full private original source and current journey version. `import_history` is the sole exception for appending sourced legacy feedback to an archive; it cannot alter plans, bookings, preferences or progress. Never unarchive to bypass a guard. Read/import all four feedback categories with original keys and provenance, inspect counts/unknowns, and preserve source-local Japan dates/times without a typed conversion. Reimport the same source identity to deduplicate; do not invent IDs to force repeated writes. The specific `undo_history_import` rolls back only the latest historical import. Read-only `guide-draft.lessonDrafts` supplies a general review draft without editing the archive. Neither original notes nor request drafts are automatically anonymous or published.

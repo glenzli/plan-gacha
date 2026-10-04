@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { legacyFeedbackFields, legacyTimeZoneSchema } from './legacyFeedback';
 import { evidenceSourceSchema } from './evidence';
 import { addDays } from './date';
 import { normalizePlan } from './plan';
@@ -32,7 +33,7 @@ const stay = z.looseObject({ id, name: z.string(), checkIn: z.union([dateId, z.l
 const forecastDay = z.object(Object.fromEntries(['weatherCode', 'tempMin', 'tempMax', 'apparentMin', 'apparentMax', 'precipitationSum', 'precipitationProbability', 'windMax'].map((key) => [key, z.number().finite().optional()])));
 export const planningSnapshotSchema = z.strictObject({
   schemaVersion: z.literal(1), todayId: dateId,
-  trip: z.object({ id, name: z.string().optional(), startDateStr: dateId, tripDays: z.number().int().min(1).max(30), plans: z.array(plan).max(200), schedule: scheduleSchema, lodgings: z.array(stay).max(100), checklistText: z.string(), checklistState: z.record(z.string(), z.enum(['todo', 'done', 'skipped'])), archived: z.boolean() }),
+  trip: z.object({ ...legacyFeedbackFields, timeZone: legacyTimeZoneSchema.optional(), timezone: legacyTimeZoneSchema.optional(), time_zone: legacyTimeZoneSchema.optional(), id, name: z.string().optional(), startDateStr: dateId, tripDays: z.number().int().min(1).max(30), plans: z.array(plan).max(200), schedule: scheduleSchema, lodgings: z.array(stay).max(100), checklistText: z.string(), checklistState: z.record(z.string(), z.enum(['todo', 'done', 'skipped'])), archived: z.boolean() }),
   weatherData: z.record(z.string(), z.looseObject({ dailyByDate: z.record(dateId, forecastDay.nullish()).optional(), fetchedAt: z.union([z.number().finite(), z.string()]).optional() })),
 });
 export type PlanningSnapshot = z.infer<typeof planningSnapshotSchema>;

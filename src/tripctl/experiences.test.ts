@@ -63,6 +63,18 @@ describe('existing-fact experience review loop', () => {
     const state = await prepared(); const first = fixture.facts[0]; const recorded = await change(state, { ...first, record: { ...first.record, experience: { ...first.record.experience, draftLesson: lesson } } }, 'private-lesson');
     const out = createGuideDraft(recorded, { asOf, experienceIds: ['queue-observation'] }); expect(out.omittedLessons).toBe(1); expect(out.cards[0].lesson).toBeNull(); expect(JSON.stringify(out)).not.toContain(lesson);
   });
+  it('keeps ISO dates but flags common dotted phones and known query-only lodging addresses', async () => {
+    const state = await complete(); const input = { asOf, experienceIds: ['queue-review'] };
+    expect(createGuideDraft(state, { ...input, lessonDrafts: [{ experienceId: 'queue-review', lesson: 'Observed on 2031-06-04; check conditions again.' }] }).cards[0].lesson).toContain('2031-06-04');
+    expect(createGuideDraft(state, { ...input, lessonDrafts: [{ experienceId: 'queue-review', lesson: 'Call 090.1234.5678' }] }).cards[0].lesson).toBeNull();
+    const snapshot = structuredClone(scenario.snapshot); snapshot.trip.lodgings.push({ id: 'query-only', name: '', location: { query: 'Synthetic query-only private address' } } as never);
+    let withQuery = await change(initialize(snapshot), scenario.importOperation, 'import'); withQuery = await change(withQuery, fixture.adjust, 'adjust'); withQuery = await change(withQuery, fixture.facts[0], 'observe');
+    expect(createGuideDraft(withQuery, { asOf, experienceIds: ['queue-observation'], lessonDrafts: [{ experienceId: 'queue-observation', lesson: 'Stay at Synthetic query-only private address' }] }).cards[0].lesson).toBeNull();
+  });
+  it('does not claim arbitrary names in a dedicated lesson are automatically anonymized', async () => {
+    const state = await complete(); const draft = createGuideDraft(state, { asOf, experienceIds: ['queue-review'], lessonDrafts: [{ experienceId: 'queue-review', lesson: 'Synthetic Person suggested a slower pace.' }] });
+    expect(draft.cards[0].lesson).toContain('Synthetic Person'); expect(draft.anonymized).toBe(false); expect(draft.needsUserReview).toBe(true); expect(draft.published).toBe(false);
+  });
   it('retains experience links when a later itinerary edit removes a non-baseline activity', async () => {
     let state = await prepared();
     state = await change(state, { type: 'edit_itinerary', changes: [{ action: 'insert', dateId: '2031-06-04', index: 1, activity: { id: 'lookout', kind: 'visit', title: 'Synthetic later stop', timing: { start: '12:00', end: '13:00' }, source: fixture.adjust.source } }], source: fixture.adjust.source }, 'insert');

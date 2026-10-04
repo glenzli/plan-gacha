@@ -1,6 +1,7 @@
 import { rememberedBlocks } from './planMemory';
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
-export const TRIPCTL_CORE_VERSION = 8;
+export const TRIPCTL_CORE_VERSION = 9;
+import { importHistoricalFacts } from './historyImport';
 import { canonical, hash } from './identity';
 export { canonical, hash } from './identity';
 import { validateItinerary, previewItineraryOperation } from './itinerary';
@@ -88,8 +89,19 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   if (!parsed.success) throw new TripError('invalid_operation', 'Operation schema is invalid');
   if (state.revision !== expectedRevision) throw new TripError('revision_conflict', `Expected revision ${expectedRevision}, current ${state.revision}`);
   const operation = parsed.data; const next = structuredClone(state.content); let detail: unknown = null; const blocks: string[] = []; let weatherOverride = false;
-  if (state.content.snapshot.trip.archived) blocks.push('archived_trip');
-  if (itineraryOperationSchema.safeParse(operation).success) {
+  if (state.content.snapshot.trip.archived && operation.type !== 'import_history' && operation.type !== 'undo_history_import') blocks.push('archived_trip');
+  if (operation.type === 'import_history') {
+    const result = importHistoricalFacts(next, operation); blocks.push(...result.blocks); detail = result.detail;
+    if (!blocks.length) next.memory.facts.push(...result.added);
+  } else if (operation.type === 'undo_history_import') {
+    const last = state.history.at(-1);
+    if (!next.snapshot.trip.archived) blocks.push('history_requires_archived_trip');
+    if (!last || last.id !== operation.commitId || last.operation.type !== 'import_history') throw new TripError('undo_conflict', 'Only the latest historical import can be undone with this operation');
+    const withoutFacts = (c: TripContent) => ({ ...c, memory: { ...c.memory, facts: [] } });
+    if (canonical(withoutFacts(last.before)) !== canonical(withoutFacts(last.after))) throw new TripError('invalid_history_import', 'Historical undo cannot change planning or other memory');
+    next.memory.facts = structuredClone(last.before.memory.facts);
+    detail = { kind: 'historical_feedback_undo', commitId: last.id, archivedStatePreserved: true, ordinaryPlanningChangesAllowed: false };
+  } else if (itineraryOperationSchema.safeParse(operation).success) {
     if (operation.type === 'set_option_requirements') for (const event of state.history) {
       const old = event.operation;
       if (old.type === 'set_option_requirements' && old.optionId === operation.optionId && Date.parse(operation.source.observedAt) <= Date.parse(old.source.observedAt)) blocks.push('stale_option_evidence');
@@ -158,7 +170,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
         weatherOverride = evaluateWeather(context.plans.find((plan) => plan.id === operation.planId)!, operation.dateId, context.weatherData).level === 'blocked';
       }
     } catch (error) { if (error instanceof ActivityEditError) throw new TripError(error.code, error.message); throw error; }
-  } else if (operation.type === 'fact') { insert(next.memory.facts, operation.record); validateExperiences({ content: next, history: state.history }); }
+  } else if (operation.type === 'fact') { if (operation.record.experience?.historical) throw new TripError('history_operation_required', 'Historical source records require import_history'); insert(next.memory.facts, operation.record); validateExperiences({ content: next, history: state.history }); }
   else if (operation.type === 'preference') { requireHuman(operation.record.source); insert(next.memory.preferences, operation.record); }
   else if (operation.type === 'decision') {
     requireHuman(operation.record.source); assertPlan(next, operation.record.planId, operation.record.dateId);

@@ -14,5 +14,6 @@ export * from './operator';
 
 export * from './optionPlanning';
 
+export * from './historyImport';
 export * from './experienceSchema';
 export * from './experiences';

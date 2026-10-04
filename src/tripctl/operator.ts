@@ -38,7 +38,7 @@ export async function readOperatorContext(stateInput: unknown, input: unknown) {
   const itinerary = state.content.itinerary;
   const analysis = itinerary ? analyseItinerary(itinerary, { asOf, ...(dateId && itinerary.current.some((day) => day.dateId === dateId) ? { dateId } : {}) }, state.content) : null;
   return { ok: true, schemaVersion: 1, coreVersion: TRIPCTL_CORE_VERSION, revision: state.revision, stateHash: hash(state), saved: false, asOf,
-    trip: { id: state.content.snapshot.trip.id, todayId: context.todayId, dates: context.tripDates.map((date) => date.id), selectedDate: dateId || null },
+    trip: { id: state.content.snapshot.trip.id, archived: state.content.snapshot.trip.archived, sourceTimeZones: [state.content.snapshot.trip.timeZone, state.content.snapshot.trip.timezone, state.content.snapshot.trip.time_zone].filter((v) => v !== undefined), todayId: context.todayId, dates: context.tripDates.map((date) => date.id), selectedDate: dateId || null },
     schedule: state.content.snapshot.trip.schedule, lodgings: state.content.snapshot.trip.lodgings,
     dateEvidence: state.history.filter((event) => event.operation.type === 'set_plan_dates').map((event) => ({ revision: event.revision, operation: event.operation })), plans: context.plans.map(({ id, name, available_dates, closed_dates, bookings }) => ({ id, name, available_dates, closed_dates, bookings })),
     checklist: { text: state.content.snapshot.trip.checklistText, state: state.content.snapshot.trip.checklistState },

@@ -26,6 +26,8 @@
 
 助手可以把亲历观察、调整理由、实际结果和用户评价关联到已有 facts/history，在以后规划时按主题或关键词检索明确提供的旧行程。外部攻略与亲历分开，天气、节日排队、预约等会提示重新核查，不自动变成永久偏好。攻略草稿只采用单独撰写的经验摘要，默认省略原始订单、联系方式和私密住宿信息，仍需用户审阅；导出不会公开分享。见 [复盘闭环与边界](docs/experience-review.md)。
 
+历史归档可用专用 `import_history` 将旧每日评价、节点结果、地点反馈和总结导入经验索引，原始字段和来源完整保留，归档和计划保护不变，重复导入不重复记录。日本当地日期时刻先保留 `Asia/Tokyo` 原样，不转为上海时间；typed itinerary 仍限上海时区。攻略明确 `anonymized:false`，可提供只读 `lessonDrafts`，仍需用户审阅。见 [历史导入契约](docs/history-import.md)。
+
 ### 当前能力
 
 - **行程与日程**：管理多个旅行、住宿、每日安排和候选计划；移动端与桌面端使用不同的日程布局。
@@ -165,3 +167,7 @@ npm run build
 可移植 `tripctl` 让 AI 读取同一旅程、校验并预览修改、保存版本、记录问题与依据、查看历史和撤销。`npm run tripctl:build` 生成无需安装依赖的 Node 运行包；`npm run tripctl:verify` 用合成行程验证跨进程保存、并发版本冲突、幂等和恢复。参见 [运行及持久备份说明](docs/tripctl.md)。临时云目录只作工作副本，持久源需由父操作员实际完成带版本守卫的备份；成功前不声称改好。
 
 The portable `tripctl` shares the planning core and keeps explicit journey memory, issues, revisions and undo history. Build with `npm run tripctl:build`, then run its dependency-free Node verifier with `npm run tripctl:verify`. See [operator and durable-backup instructions](docs/tripctl.md). A temporary cloud filesystem needs an acknowledged persistent backup before reporting a saved change. The optional stateless [MCP and web handoff](docs/planning-tools.md) remain available.
+
+### Archived feedback import
+
+Explicit `import_history` indexes the four legacy review categories into existing facts while retaining source JSON, timezone and archived planning guards. Reimports deduplicate stable source identities. Japanese dates/times remain Asia/Tokyo legacy values, unconverted; typed itinerary still supports Shanghai only. Request-only guide `lessonDrafts` never publish or save, and `anonymized:false` explicitly requires user review. See [the history import contract](docs/history-import.md).

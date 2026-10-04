@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { historyImportSchema } from './historyImport';
 import { experienceMetadataSchema } from './experienceSchema';
 import { setPlanDatesSchema } from '../domain/planDates';
 import { planningSnapshotSchema, assignmentOperationSchema } from '../domain/planningTools';
@@ -25,6 +26,8 @@ export const memorySchema = z.strictObject({
 export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema, itinerary: itinerarySchema.optional() });
 export const operationSchema = z.discriminatedUnion('type', [
   assignmentOperationSchema,
+  historyImportSchema,
+  z.strictObject({ type: z.literal('undo_history_import'), commitId: identifier }),
   setPlanDatesSchema,
   ...activityOperationSchemas,
   ...itineraryOperationSchemas,
