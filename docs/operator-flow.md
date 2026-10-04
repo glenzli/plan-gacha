@@ -124,3 +124,7 @@ A stateful MCP facade is useful only when a target assistant cannot execute this
 ## Import a past archived journey
 
 Use the explicit [historical feedback contract](history-import.md), portable `HISTORY-IMPORT.md`. Retain the full private original source and current journey version. `import_history` is the sole exception for appending sourced legacy feedback to an archive; it cannot alter plans, bookings, preferences or progress. Never unarchive to bypass a guard. Read/import all four feedback categories with original keys and provenance, inspect counts/unknowns, and preserve source-local Japan dates/times without a typed conversion. Reimport the same source identity to deduplicate; do not invent IDs to force repeated writes. The specific `undo_history_import` rolls back only the latest historical import. Read-only `guide-draft.lessonDrafts` supplies a general review draft without editing the archive. Neither original notes nor request drafts are automatically anonymous or published.
+
+## 联动契约 v10
+
+外部证据保留发布/捕获时刻、精确日期地点、预测/正式来源；使用 evidence-impact，不凭预测改整日闭馆。提醒使用 reminder-reconcile，未知派发不得重试。readonly-view 的 organized 按 trip/day 和稳定引用组织，bind_context 显式补旧数据的日期/活动关联；缺链接也不能隐藏备选。详见 agent-linkage.md（便携包 AGENT-LINKAGE.md）。

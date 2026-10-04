@@ -144,3 +144,7 @@ Optional `content.itinerary` now separates immutable baseline, current dated act
 ## Archived historical feedback (guard revision 9)
 
 `init` preserves original four feedback fields, aliases and timezone fields. Explicit `import_history` indexes private user reports into existing facts without unarchiving or changing plans; `undo_history_import` only rolls back the latest such import. Reimports deduplicate source/field/key identity; changed content under the same identity fails. See [history-import.md](history-import.md) (portable `HISTORY-IMPORT.md`) for the complete source, timezone and recovery contract. `Asia/Tokyo` times stay legacy/unconverted; typed itinerary remains Shanghai-only. The guide always reports `anonymized:false`; request-only `lessonDrafts` can provide general text without writing an archived journey.
+
+## Agent 联动与只读投影（v10）
+
+新增 evidence-impact、reminder-reconcile、observation-token、readonly-view，以及 schema 可发现的 record/apply_observation、提醒事件、bind_context。完整输入、CAS/readback流程和匿名演示见 [AGENT-LINKAGE.md](AGENT-LINKAGE.md)（源码 docs/agent-linkage.md）。提醒只输出契约，无外部派发；只读投影是带来源revision/hash的私有衍生缓存，非实时后端。

@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+import { analyseEvidenceImpact } from './evidenceImpact';
+import { reconcileReminders } from './reminderReconcile';
+import { exportReadonlyView } from './readonlyView';
+import { observationPlanToken } from './observations';
+import { linkageQuerySchema } from './linkageSchema';
 import { assessItineraryOptions } from './optionPlanning';
 import { experienceSearchRequestSchema } from './experienceSchema';
 import { searchExperiences, createGuideDraft } from './experiences';
@@ -23,6 +28,10 @@ async function main() {
   if (!path) throw new TripError('missing_argument', '--store is required');
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
   const state = await loadState(path);
+  if (command === 'evidence-impact') return analyseEvidenceImpact(state, await json(values.input));
+  if (command === 'reminder-reconcile') { const q = linkageQuerySchema.safeParse(await json(values.input)); if (!q.success) throw new TripError('invalid_linkage_query', 'Supply explicit asOf'); return reconcileReminders(state, q.data.asOf); }
+  if (command === 'readonly-view') return exportReadonlyView(state, await json(values.input));
+  if (command === 'observation-token') { const input = await json(values.input); return { ok: true, saved: false, revision: state.revision, planId: input.planId, planToken: observationPlanToken(state.content, input.planId) }; }
   if (command === 'experiences') return searchExperiences([state], await json(values.input));
   if (command === 'guide-draft') return createGuideDraft(state, await json(values.input));
   if (command === 'context') return readOperatorContext(state, { asOf: values['as-of'], ...(values.date ? { dateId: values.date } : {}), ...(values.limit !== undefined ? { candidateLimit: Number(values.limit) } : {}) });

@@ -14,6 +14,11 @@ export * from './operator';
 
 export * from './optionPlanning';
 
+export * from './linkageSchema';
+export * from './observations';
+export * from './evidenceImpact';
+export * from './reminderReconcile';
+export * from './readonlyView';
 export * from './historyImport';
 export * from './experienceSchema';
 export * from './experiences';

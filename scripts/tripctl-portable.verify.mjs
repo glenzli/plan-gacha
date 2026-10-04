@@ -222,7 +222,7 @@ try {
   const adoptOp = structuredClone(itineraryFixture.operation); adoptOp.days = beforeUndo.itinerary.current; adoptOp.adoptExistingPlanIds = ['day-a', 'day-b'];
   const adopt = run('preview', '--store', adoptStore, '--input', await save('adopt-operation', adoptOp), '--revision', '0'); assert.equal(adopt.canApply, true); assert.deepEqual(adopt.nextContent.snapshot, beforeUndo.snapshot);
   // Real packaged processes: structured discovery/stdin/context share engine and storage semantics.
-  const discovered = run('schema'); assert.equal(discovered.coreVersion, 9); assert.ok(discovered.operations.includes('set_plan_dates'));
+  const discovered = run('schema'); assert.equal(discovered.coreVersion, 10); assert.ok(discovered.operations.includes('set_plan_dates'));
   assert.equal(run('schema', '--operation', 'set_plan_dates').operation.properties.type.const, 'set_plan_dates');
   assert.equal(failure('schema', '--operation', 'cancel_order').error.code, 'unknown_operation');
   const stdinRun = (data, ...args) => JSON.parse(execFileSync(process.execPath, [cli, ...args, '--input', '-'], { input: JSON.stringify(data), encoding: 'utf8', cwd: scratch }));
@@ -388,5 +388,57 @@ try {
   const historicalUndo = stdinRun({ type: 'undo_history_import', commitId: 'historical-import' }, 'preview', '--store', historyStore, '--revision', '1');
   assert.equal(historicalUndo.canApply, true); stdinRun(request(historicalUndo, 'undo-historical'), 'apply', '--store', historyStore);
   assert.equal(run('verify', '--store', historyStore).revision, 2); assert.deepEqual(run('read', '--store', historyStore).snapshot, historyBefore.snapshot); assert.equal(stdinRun(historyQuery, 'experiences', '--store', historyStore).total, 0);
-  console.log(JSON.stringify({ ok: true, runtime: process.version, independentProcesses: true, installedDependencies: false, checks: ['history-schema-and-lossless-init', 'history-archived-preview-no-write', 'history-stage-CAS-replay', 'history-four-category-search', 'history-source-local-dates-preserved', 'history-unconverted-local-timestamp', 'history-reimport-deduplicated', 'history-conflict-atomic', 'history-ordinary-write-refused', 'history-guide-explicit-draft-not-anonymized', 'history-latest-only-undo', 'split-utf8-stdin-preserved', 'experience-schema-discovery', 'experience-stage-CAS-replay', 'experience-plan-observation-reason-outcome', 'experience-correction-current-search', 'experience-explicit-journey-search', 'experience-context-recheck-not-preference', 'guide-draft-private-by-default', 'guide-no-write-no-share', 'option-schema-binding', 'legacy-options-unassessed', 'dated-exclusion-new-date-retained', 'check-context-itinerary-option-parity', 'blocked-option-choice-no-write', 'option-original-prose-and-baseline-retained', 'option-opening-not-proven', 'decision-lifecycle-schema', 'decision-completion-stage-CAS', 'decision-completion-replay', 'decision-inactive-deadline-options', 'decision-order-refund-unchanged', 'decision-stale-unknown-no-write', 'decision-reopen', 'decision-undo-withdraw', 'operator-schema-discovery', 'structured-stdin', 'anonymous-closure-reopening', 'operator-stage-CAS-replay', 'rank-vs-application', 'operator-deadlines-tentative', 'operator-no-write-errors', 'stale-date-evidence', 'manifest', 'init-no-overwrite', 'preview-no-write', 'restart-persistence', 'idempotent-replay', 'stage-not-saved', 'concurrent-CAS', 'locked-lodging', 'retained-issue', 'stale-revision', 'constraints', 'monotonic-undo', 'checkpoint-recovery', 'retained-lock', 'booked-dinner-blocked', 'blocked-apply-no-write', 'explicit-commitment-review', 'booking-not-progress', 'booked-dinner-undo', 'activity-link-required', 'explicit-booking-activity-link', 'fixed-time-afternoon-edit', 'activity-stage-not-saved', 'activity-stale-preview', 'activity-error-schema', 'protected-dinner', 'activity-undo', 'route-bound-query', 'route-fixture-import-no-write', 'route-stage-CAS', 'route-estimate-not-feasibility', 'route-address-change-mismatch', 'route-stale-exclusion', 'route-provider-failure-unknown', 'route-undo', 'itinerary-import-no-write', 'strict-deadline-visible', 'itinerary-not-feasible-without-evidence', 'human-preview-readonly', 'time-edit-stage-CAS', 'time-edit-restart-replay', 'immutable-baseline', 'itinerary-stale-revision', 'actual-exclusive-unknown-time', 'actual-edit-protection', 'itinerary-monotonic-undo', 'known-unknown-decision-deadlines', 'no-cancellation', 'unfinished-checklist-retained', 'legacy-plan-adoption-no-rewrite'] }));
+
+  const linkFixture = JSON.parse(await readFile(`${folder}/agent-linkage-scenario.json`, 'utf8'));
+  const linkStore = `${scratch}/linkage.json`;
+  stdinRun(linkFixture.snapshot, 'init', '--store', linkStore);
+  const linkApply = async (operation, id) => {
+    const revision = run('read', '--store', linkStore).revision;
+    const p = stdinRun(operation, 'preview', '--store', linkStore, '--revision', String(revision));
+    assert.equal(p.canApply, true);
+    const m = { ...request(p, id), at: linkFixture.asOf };
+    return { p, m, receipt: stdinRun(m, 'apply', '--store', linkStore) };
+  };
+  await linkApply(linkFixture.importOperation, 'link-import');
+  for (const [n, op] of linkFixture.operations.entries()) await linkApply(op, 'link-op-' + n);
+  for (const draft of linkFixture.observationDrafts) {
+    const token = stdinRun({ planId: draft.scope.planId }, 'observation-token', '--store', linkStore);
+    await linkApply({ type: 'record_observation', record: { ...draft, scope: { ...draft.scope, planToken: token.planToken } } }, draft.id);
+  }
+  const linkBefore = await readFile(linkStore, 'utf8');
+  const impact = stdinRun({ asOf: linkFixture.asOf }, 'evidence-impact', '--store', linkStore);
+  assert.equal(impact.impacts.length, 2); assert.ok(impact.impacts.every((r) => r.proposal === null && r.status === 'prediction_or_uncertain'));
+  const view = stdinRun({ asOf: linkFixture.asOf, generatedAt: linkFixture.generatedAt, source: { libraryFileId: 'synthetic-id', libraryVersion: 7, retrievedAt: linkFixture.asOf } }, 'readonly-view', '--store', linkStore);
+  assert.equal(view.source.stateHash, run('verify', '--store', linkStore).stateHash); assert.equal(view.source.library.libraryVersion, 7);
+  assert.equal(view.freshness.automaticRefresh, false);
+  assert.ok(view.organized.days.find((d) => d.dateId === '2033-10-05').alternativeRefs.includes('option:walking-backup'));
+  assert.ok(view.organized.inactiveAlternativeRefs.includes('option:old-later-north'));
+  assert.equal(view.organized.days[0].primary.basis, 'explicit_actual_change');
+  assert.ok(view.organized.days[0].primary.activityRefs.includes('reported-activity:reported-memorial'));
+  assert.ok(!view.organized.days[0].primary.activityRefs.includes('activity:first-day:lake'));
+  assert.ok(view.organized.days[0].priorPlannedActivityRefs.includes('activity:first-day:lake'));
+  assert.deepEqual(view.organized.catalog.reportedActivities[0].timing, {});
+  assert.equal(await readFile(linkStore, 'utf8'), linkBefore);
+  const linkSource = { kind: 'synthetic', reference: 'synthetic:explicit-reminder', observedAt: linkFixture.asOf };
+  const reminder = { id: 'north-reminder', decisionPointId: 'north-choice', purpose: 'decision_needed', provider: 'synthetic', accountRef: 'synthetic-owner', title: 'North entry decision', prompt: 'Check final notice', timeZone: 'Asia/Shanghai', dueAtOverride: null, source: linkSource };
+  await linkApply({ type: 'set_reminder_intent', expectedVersion: 0, record: reminder }, 'link-intent');
+  const reconcile = () => stdinRun({ asOf: linkFixture.asOf }, 'reminder-reconcile', '--store', linkStore);
+  assert.equal(reconcile().items[0].action, null);
+  await linkApply({ type: 'record_reminder_readback', record: { id: 'lookup', journeyId: linkFixture.snapshot.trip.id, intentId: reminder.id, correlation: { kind: 'lookup' }, provider: reminder.provider, accountRef: reminder.accountRef, providerTaskId: null, status: 'absent', configuration: null, source: linkSource, expiresAt: '2033-10-03T21:00:00+08:00' } }, 'link-lookup');
+  const action = reconcile().items[0].action; assert.equal(action.kind, 'create'); assert.equal(action.externalExecutionImplemented, false);
+  const beginOp = { type: 'begin_reminder_action', intentId: reminder.id, attemptId: 'attempt', actionKey: action.actionKey, asOf: linkFixture.asOf };
+  const beginPreview = stdinRun(beginOp, 'preview', '--store', linkStore, '--revision', String(run('read', '--store', linkStore).revision));
+  const beginMutation = { ...request(beginPreview, 'link-begin'), at: linkFixture.asOf };
+  const attemptCandidate = `${scratch}/attempt-candidate.json`;
+  const attemptBefore = await readFile(linkStore, 'utf8');
+  assert.equal(stdinRun(beginMutation, 'stage', '--store', linkStore, '--output', attemptCandidate).saved, false);
+  assert.equal(await readFile(linkStore, 'utf8'), attemptBefore);
+  assert.equal(stdinRun(beginMutation, 'apply', '--store', linkStore).replayed, false);
+  assert.equal(stdinRun(beginMutation, 'apply', '--store', linkStore).replayed, true);
+  assert.equal(reconcile().items[0].action, null);
+  assert.ok(reconcile().items[0].reasonCodes.includes('unknown_external_outcome_do_not_retry'));
+  assert.ok(stdinRun({ type: 'undo', commitId: 'link-begin' }, 'preview', '--store', linkStore, '--revision', String(run('read', '--store', linkStore).revision)).reasonCodes.includes('linkage_undo_forbidden'));
+  assert.equal(reconcile().externalActionsPerformed, 0);
+
+  console.log(JSON.stringify({ ok: true, runtime: process.version, independentProcesses: true, installedDependencies: false, checks: ['actual-change-effective-day', 'actual-change-unknown-clocks', 'actual-change-prior-plan-retained', 'linkage-schema-discovery', 'linkage-exact-date-predictions', 'linkage-readonly-no-write', 'linkage-projection-native-version', 'linkage-organized-visible-backups', 'linkage-withdrawn-branch-inactive', 'reminder-missing-provider-unknown', 'reminder-explicit-lookup-descriptor', 'reminder-stage-not-dispatch', 'reminder-attempt-CAS-replay', 'reminder-unknown-no-retry', 'reminder-undo-protected', 'reminder-no-external-actions', 'history-schema-and-lossless-init', 'history-archived-preview-no-write', 'history-stage-CAS-replay', 'history-four-category-search', 'history-source-local-dates-preserved', 'history-unconverted-local-timestamp', 'history-reimport-deduplicated', 'history-conflict-atomic', 'history-ordinary-write-refused', 'history-guide-explicit-draft-not-anonymized', 'history-latest-only-undo', 'split-utf8-stdin-preserved', 'experience-schema-discovery', 'experience-stage-CAS-replay', 'experience-plan-observation-reason-outcome', 'experience-correction-current-search', 'experience-explicit-journey-search', 'experience-context-recheck-not-preference', 'guide-draft-private-by-default', 'guide-no-write-no-share', 'option-schema-binding', 'legacy-options-unassessed', 'dated-exclusion-new-date-retained', 'check-context-itinerary-option-parity', 'blocked-option-choice-no-write', 'option-original-prose-and-baseline-retained', 'option-opening-not-proven', 'decision-lifecycle-schema', 'decision-completion-stage-CAS', 'decision-completion-replay', 'decision-inactive-deadline-options', 'decision-order-refund-unchanged', 'decision-stale-unknown-no-write', 'decision-reopen', 'decision-undo-withdraw', 'operator-schema-discovery', 'structured-stdin', 'anonymous-closure-reopening', 'operator-stage-CAS-replay', 'rank-vs-application', 'operator-deadlines-tentative', 'operator-no-write-errors', 'stale-date-evidence', 'manifest', 'init-no-overwrite', 'preview-no-write', 'restart-persistence', 'idempotent-replay', 'stage-not-saved', 'concurrent-CAS', 'locked-lodging', 'retained-issue', 'stale-revision', 'constraints', 'monotonic-undo', 'checkpoint-recovery', 'retained-lock', 'booked-dinner-blocked', 'blocked-apply-no-write', 'explicit-commitment-review', 'booking-not-progress', 'booked-dinner-undo', 'activity-link-required', 'explicit-booking-activity-link', 'fixed-time-afternoon-edit', 'activity-stage-not-saved', 'activity-stale-preview', 'activity-error-schema', 'protected-dinner', 'activity-undo', 'route-bound-query', 'route-fixture-import-no-write', 'route-stage-CAS', 'route-estimate-not-feasibility', 'route-address-change-mismatch', 'route-stale-exclusion', 'route-provider-failure-unknown', 'route-undo', 'itinerary-import-no-write', 'strict-deadline-visible', 'itinerary-not-feasible-without-evidence', 'human-preview-readonly', 'time-edit-stage-CAS', 'time-edit-restart-replay', 'immutable-baseline', 'itinerary-stale-revision', 'actual-exclusive-unknown-time', 'actual-edit-protection', 'itinerary-monotonic-undo', 'known-unknown-decision-deadlines', 'no-cancellation', 'unfinished-checklist-retained', 'legacy-plan-adoption-no-rewrite'] }));
 } finally { await rm(scratch, { recursive: true, force: true }); }

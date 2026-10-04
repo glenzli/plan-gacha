@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { linkageSchema, linkageOperations } from './linkageSchema';
 import { historyImportSchema } from './historyImport';
 import { experienceMetadataSchema } from './experienceSchema';
 import { setPlanDatesSchema } from '../domain/planDates';
@@ -23,9 +24,10 @@ export const memorySchema = z.strictObject({
   issues: z.array(issue).max(500),
   mapFacts: z.array(mapFactSchema).max(100),
 });
-export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema, itinerary: itinerarySchema.optional() });
+export const contentSchema = z.strictObject({ snapshot: planningSnapshotSchema, memory: memorySchema, linkage: linkageSchema.optional(), itinerary: itinerarySchema.optional() });
 export const operationSchema = z.discriminatedUnion('type', [
   assignmentOperationSchema,
+  ...linkageOperations,
   historyImportSchema,
   z.strictObject({ type: z.literal('undo_history_import'), commitId: identifier }),
   setPlanDatesSchema,

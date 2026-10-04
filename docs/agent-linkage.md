@@ -1,0 +1,92 @@
+# Agent 联动契约（core v10）
+
+本模块在同一权威 journey 中追加 linkage 数据，提供无副作用分析、可审查变更和提醒对账描述。它不会查询天气、开放或交通提供方，不会创建真实提醒、修改票/酒店，也不会发布 Site。来源真实性、账号授权、地点匹配仍由宿主核实；不可把合成 fixture 当作实际观测。现有 React、本地离线和 Drive 同步机制不变，Drive 不是原子 CAS 协同后端。
+
+## 最短可重复演示
+
+便携包只需 Node >=22.13，无需安装依赖：
+```sh
+node verify.mjs
+node tripctl.mjs schema
+node tripctl.mjs schema --operation record_observation
+node tripctl.mjs schema --operation bind_context
+```
+包内 agent-linkage-scenario.json、LINKAGE-DEMO.json、READONLY-DEMO.json 完全合成。verify.mjs 会用独立 CLI 进程演示 init → import/record → preview → stage（saved:false）→ apply → read/verify，并检查纯分析不改文件、预测不成为关闭、未知提醒不重发和只读投影来源版本。既有四个真实 stdio MCP 工具继续使用同一规划规则；这些新增有版本状态的操作通过 portable CLI/库调用，未声称已加入 MCP 或 browser WebMCP。
+
+宿主逐轮流程：
+1. materialize 唯一 current journey，记录其原生 Library 身份/版本及读取时间；不要另建权威副本。
+2. `context --store journey.json --as-of ISO`，`schema --operation TYPE`。
+3. 构造 operation；`preview --store journey.json --input operation.json --revision N`。
+4. 用预览的 operation/revision/previewToken，加唯一 idempotencyKey、actor、reason、at 构造 mutation。
+5. `stage --store journey.json --input mutation.json --output candidate.json` 仅生成候选，不证明远端保存。
+6. 宿主经明确授权以同一 Library 身份和 expected native version 替换，读回验证 revision/hash/receipt。冲突重新读、重新预览；不得覆盖。只在本地文件是权威时使用 apply 的本地 CAS。
+7. 所有外部提供方动作另走已授权适配器；本核心不执行。原生日志与发信/任务提供方不是一个事务。
+
+## 外部观测
+
+`record_observation` 需要稳定 id、publisherId、messageId、streamId；source.observedAt 是捕获时间，publishedAt 是来源发布时刻（未知填 null）。必须给 exact dateId、planId、标准化 planToken、place provider/ID/identity、whole_plan 或 part、expiry、confidence、basis、status、claim。若绑定活动，activityId/token 必须一起给出。先用 `observation-token --store journey.json --input {"planId":"..."}` 获取当前 token（CLI 的 --input 需文件或 -）。
+
+同一 publisher/message/scope 重放不追加；更改同一消息内容报 observation_identity_conflict。stream 只绑定同一来源与精确日期/地点/活动。乱序按 publishedAt（缺失才用 observedAt）排序；同时间冲突为 unknown。纠正/撤回必须指明 supersedesId；旧记录保留，失败、过期和撤回都不会回退使用旧成功或自动重开已保存闭馆。
+
+`evidence-impact --store journey.json --input query.json`，query=`{"asOf":"2033-10-03T18:01:00+08:00"}`。输出受影响日程、约束、备选、问题和 proposal。只有高置信、明确匹配、仍新鲜的 whole_plan official_final closure 可提出 apply_observation；预测、局部关闭、天气、交通仅供审查，不能自动推导整区关闭/分钟级可行性。apply_observation 与 set_plan_dates 共用单一闭馆数据和历史时间水位，保留日程及订单，保存时重查有效期。
+
+例：前日17:52:50发布的“明日全区暂停预测”和“后日仅山顶车辆暂停、北区下部不受影响”是两个 exact-date scope。不能合并日期，不能将 prediction 改称 final，不能把局部停运扩成北区关闭。地点、团集合/结束时间、酒店身份未知时输出待补问题。
+
+## 一次性提醒对账
+
+v1 只支持既有 decisionPoint 的 decision_needed：选项选择有效后、事项完成/撤回或截止时间已过，不再创建催决策任务；这不证明订单取消、退款或其他行政事项已完成。日期来自 decision.deadline 或显式 dueAtOverride。任意活动提醒和新一轮任务暂未自动化。
+
+- set_reminder_intent：稳定 id、decisionPointId、provider、accountRef、expectedVersion、标题/内容、Asia/Shanghai、显式 source。改变日期继续同一逻辑 id。
+- set_reminder_status：显式 paused/active/withdrawn；人工 pause 不被内容更新解除。
+- record_reminder_readback：**journeyId**、intentId、provider/account、精确 providerTaskId、观测配置、source/expiry。首次查无匹配任务使用 taskId:null + status:absent + correlation:{kind:"lookup"}，必须来自实际已授权查找；缺工具应 unknown 或保留未读取。
+- 首次收编已有任务使用 correlation:{kind:"authorized_existing",authorization:显式用户来源}，不能根据同标题猜认。以后读已绑定任务用 bound_task。
+- 创建/更新/暂停/取消的确认读回使用 correlation:{kind:"attempt",attemptId,actionKey}；必须核实提供方的原请求关联。相同配置不等于本次成功，没有可核关联就保持 unknown。
+- reminder-reconcile 输入 {asOf}，只输出 descriptor。新的 begin_reminder_action 保存 attemptId/actionKey 和原 desiredHash；其 asOf 必须等于 mutation.at，重新预览临近保存时间。**只有新 attempt 经权威保存并读回，且外部动作另获授权后，宿主才可派发一次。** stage、validate-request、已有 attempt 或 replayed:true 不授予再次派发。
+- resolve_reminder_attempt：unknown、not_applied、applied。超时/断线不能记 not_applied。applied 必须引用同旅程、原 attempt/actionKey、正确 providerTaskID 和旧 desired 配置的读回，再按当前 desired 对账。
+- unknown attempt 不受新截止时间、pause、完成/撤回影响：先查明原结果，再更新/取消。远端 disabled 尊重暂停；已消失的已绑定任务不会自动重新创建。明确人工 resume 才允许重新启用尚存在任务。
+- 未知结果、无读取工具、历史/容量满、状态冲突均阻止发送。没有 exactly-once 保证，且本包没有外部派发适配器。
+- 普通 undo 不可删除 linkage 的尝试、回执、观察或绑定审计；使用显式纠正操作。已归档 journey 不允许这些写入。
+
+## 私有只读 Site 投影
+
+`readonly-view --store journey.json --input view-request.json`：
+```json
+{"asOf":"2033-10-03T18:01:00+08:00","generatedAt":"2033-10-03T18:02:00+08:00","source":{"libraryFileId":"caller-supplied-owned-current-ID","libraryVersion":7,"retrievedAt":"2033-10-03T18:00:00+08:00"}}
+```
+来源元数据由宿主提供，不代表核心独立核验。source.revision/stateHash 对应确切输入；asOf、generatedAt、sourceRetrievedAt 各自独立，providerSyncAt:null、automaticRefresh:false。Site 仅是衍生缓存，刷新/权限/发布由另一个宿主执行，不能声称实时同步。
+
+首选消费 **organized**（organizationSchemaVersion:1）：
+- days 按 trip date 输出 primary.activityRefs、alternativeRefs、backupActivityRefs、票/承诺/酒店、weather/evidence、facts/preferences/exclusions、待定问题引用。
+- catalog 是记录的唯一展示定义；按引用渲染，不在多个历史卡片重复票、酒店或同一事实。一次票的数量仍取其已知结构数据/原文，核心不从“四票”等文本编造订单。
+- 当前 facts 依据稳定 id 和明确 supersedesFactId 去掉旧纠正版；不扫 history 当当前记录。跨类别的文本相似不会自动合并预约和承诺。
+- 日期候选、明确当前备选和真正已排主日程分别带 dateMeaning/role/scheduleApplied。即使缺计划活动绑定，已知 option 仍展示；inactiveAlternativeRefs 单列已失效/撤回分支。
+- 旧 experience.eventDateId 会直接归到该日；缺 plan/activity 的仍可见且 gaps:missing_typed_link。没有任何日期的进 unplaced。偏好仅显示已记录偏好；排除按 this_journey / journey_date 限定，不推导永久拉黑。
+- 旧天气数据按自带日期组织，freshness:not_validated；地点绑定不明不猜。当前观测按精确 scope 与 source/expiry展示。
+- 不解析 source.currentPlanningState 或自由文本猜唯一状态，不隐藏已知备选。flat 字段保留兼容，UI 应选 organized 单一展示路径。
+
+补旧数据关联用 **bind_context**，同样 preview/stage/CAS/readback：
+```json
+{"type":"bind_context","record":{"id":"explicit-backup-link","subjectType":"option","subjectId":"walking-backup","dateIds":["2033-10-05"],"planId":"walking-tour","role":"backup","source":{"kind":"synthetic","reference":"synthetic:explicit-user-backup-choice","observedAt":"2033-10-03T18:01:00+08:00"}}}
+```
+subjectType 可为 fact/preference/option/issue；activityId 需属于 plan。修正用新的 binding id 与更晚来源，保留旧绑定审计。这是显示关联，不改 option 原有可执行日期/requirements，不代表激活分支，也不补造集合时间或酒店身份。显示绑定的历史活动不会锁住当前活动编辑/删除；历史目标仍保留在目录并标 historical_activity_reference。显式新绑定作为整组关联，不混入旧 plan/activity 字段。无 typed itinerary 的旧 snapshot 备选也保留在 catalog.plans 和 unplaced.backupPlanRefs，不猜日期。复合引用逐段编码，合法冒号 ID 不碰撞。旧 v5–v9 状态无 linkage 字段仍原样可读，未自动迁移真实数据。
+
+## 验证与边界
+
+定向回归覆盖同输入同输出、来源消息重放、乱序/并列冲突、失败/过期/撤回、双向日期水位、未知 ID/地点内容更改、提醒跨旅程/账户/任务身份、未知派发结果和晚到成功、无期限暂停、已选分支失效、只读来源版本、备选不隐藏、旧事实按日期关联、显式绑定纠正、历史容量前置阻断。
+
+提醒描述仍需要真正的宿主适配器和原生提供方关联查询。组织投影无法把旧自由文本自动变成可信订单或活动身份；需明确绑定。预测不会自动变成规则，天气/交通也未扩成通用交通约束求解器。
+
+## 实际变更优先的有效日视图
+
+`itinerary.current` 是最新保存的计划表，可能还未根据自然语言 actual 报告调整；不能据此称它为已经发生的安排。organized.days[].primary 是供显示的有效视图，其 basis 明示来源：
+
+1. 结构化 skipped(activityId/dateId) 直接把对应旧活动放入 priorPlannedActivityRefs。
+2. 已有 changed_plan/skipped 报告可用 `link_actual_change` 显式关联 previousActivityIds 和 replacementActivities；新活动用稳定新 ID、明确用户来源，未知时刻填 timing:{}。这是实际报告的结构化关联，不是重写全表，不产生重复 fact、不取消订单、不证明到达/完成。
+3. 只有文字、还没有活动关联的 changed_plan 必须优先显示原始报告；basis=reported_change_needs_binding，旧计划置于 priorPlannedActivityRefs 作为待核历史，不自动从文字猜替代地点或时间。
+4. 没有实际变更时 basis=current_planned_schedule，仍只代表计划。原 current/baseline、订单与历史完整保留。
+
+`link_actual_change` record 包含 id、actualId、exact dateId、previousActivityIds、replacementActivities（空数组表示跳过）、source。来源需明确用户确认；旧活动必须属于该日的当前或历史计划。对同一 actualId 的关联纠正用新 id 和更晚 source，旧版本留审计；多个报告同时争用同一旧活动时投影保留待核，不任意取胜。
+
+匿名 fixture 展示：旧 current 仍有 lake；actual 说下午改去 memorial。关联后 primary 仅引用 reported-memorial，lake 只出现在旧计划引用；纪念地 timing:{}，未推断到达/结束时间。Site 应消费 organized 有效视图，不再把 flat current 表无条件置顶。
+
+带明确 activityId 的 changed_plan 只把该节点降为待核，不能隐藏同日其他已知安排；只有未指明活动的广义变更才保守折叠整张旧计划。primary.actualReportRefs 保留 started/finished/note 等全部当天已知实际报告。替代活动不凭数组位置推断时间顺序：activityRefsOrder=reported_order_unknown，reportedActivityRefs 单列，未知时刻仍为空。最小版实际替代路线只接受明确端点label，不接受未经行程校验的跨活动route IDs。

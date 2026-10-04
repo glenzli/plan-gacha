@@ -171,3 +171,5 @@ The portable `tripctl` shares the planning core and keeps explicit journey memor
 ### Archived feedback import
 
 Explicit `import_history` indexes the four legacy review categories into existing facts while retaining source JSON, timezone and archived planning guards. Reimports deduplicate stable source identities. Japanese dates/times remain Asia/Tokyo legacy values, unconverted; typed itinerary still supports Shanghai only. Request-only guide `lessonDrafts` never publish or save, and `anonymized:false` explicitly requires user review. See [the history import contract](docs/history-import.md).
+
+Agent 联动原型 v10：外部证据→影响/问题/版本化预览，提醒 intent/readback 对账（无真实发送），私有只读按日投影及显式旧数据绑定。见 [契约与合成演示](docs/agent-linkage.md)。

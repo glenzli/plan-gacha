@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { linkageQuerySchema, readonlyViewInputSchema } from './linkageSchema';
 import { experienceSearchSchema, experienceSearchRequestSchema, guideDraftSchema } from './experienceSchema';
 import { operationSchema, mutationSchema, TripError } from './schema';
 import { parseState, inspect, preview, hash, TRIPCTL_CORE_VERSION } from './engine';
@@ -6,14 +7,14 @@ import { preparePlanningContext, planningSnapshotSchema, toolNames } from '../do
 import { analyseItinerary } from './itinerary';
 
 export const operatorContextSchema = z.strictObject({ asOf: z.iso.datetime({ offset: true }), dateId: planningSnapshotSchema.shape.todayId.optional(), candidateLimit: z.number().int().min(1).max(20).optional() });
-const commands = ['experiences', 'experience-search', 'guide-draft', 'init', 'read', 'context', 'schema', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'validate-request', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'];
+const commands = ['evidence-impact', 'reminder-reconcile', 'readonly-view', 'observation-token', 'experiences', 'experience-search', 'guide-draft', 'init', 'read', 'context', 'schema', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'validate-request', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'];
 /** Discovery reflects the runtime schemas. Cross-field/state refinements still run in preview. */
 export function getOperatorSchema(operationType?: string) {
   const operations = operationSchema.options.map((option) => option.shape.type.value);
   const selected = operationType ? operationSchema.options.find((option) => option.shape.type.value === operationType) : undefined;
   if (operationType && !selected) throw new TripError('unknown_operation', 'Use schema to discover supported operations');
   return { ok: true, schemaVersion: 1, coreVersion: TRIPCTL_CORE_VERSION, saved: false, commands, operations, statelessMcpTools: toolNames,
-    ...(selected ? { operation: z.toJSONSchema(selected) } : { contextInput: z.toJSONSchema(operatorContextSchema), experienceInputs: { search: z.toJSONSchema(experienceSearchSchema), multiJourneySearch: z.toJSONSchema(experienceSearchRequestSchema), guideDraft: z.toJSONSchema(guideDraftSchema) }, mutationEnvelope: z.toJSONSchema(mutationSchema.omit({ operation: true })) }),
+    ...(selected ? { operation: z.toJSONSchema(selected) } : { contextInput: z.toJSONSchema(operatorContextSchema), linkageInput: z.toJSONSchema(linkageQuerySchema), readonlyViewInput: z.toJSONSchema(readonlyViewInputSchema), experienceInputs: { search: z.toJSONSchema(experienceSearchSchema), multiJourneySearch: z.toJSONSchema(experienceSearchRequestSchema), guideDraft: z.toJSONSchema(guideDraftSchema) }, mutationEnvelope: z.toJSONSchema(mutationSchema.omit({ operation: true })) }),
     validation: 'Runtime refinements, IDs, current state and preview guards remain authoritative; JSON Schema is structural discovery.',
     persistence: 'preview/context/schema do not write; stage creates a candidate, saved:false; external persistence requires same-identity CAS and readback.' };
 }
@@ -39,8 +40,9 @@ export async function readOperatorContext(stateInput: unknown, input: unknown) {
   const analysis = itinerary ? analyseItinerary(itinerary, { asOf, ...(dateId && itinerary.current.some((day) => day.dateId === dateId) ? { dateId } : {}) }, state.content) : null;
   return { ok: true, schemaVersion: 1, coreVersion: TRIPCTL_CORE_VERSION, revision: state.revision, stateHash: hash(state), saved: false, asOf,
     trip: { id: state.content.snapshot.trip.id, archived: state.content.snapshot.trip.archived, sourceTimeZones: [state.content.snapshot.trip.timeZone, state.content.snapshot.trip.timezone, state.content.snapshot.trip.time_zone].filter((v) => v !== undefined), todayId: context.todayId, dates: context.tripDates.map((date) => date.id), selectedDate: dateId || null },
+    linkage: state.content.linkage || null,
     schedule: state.content.snapshot.trip.schedule, lodgings: state.content.snapshot.trip.lodgings,
-    dateEvidence: state.history.filter((event) => event.operation.type === 'set_plan_dates').map((event) => ({ revision: event.revision, operation: event.operation })), plans: context.plans.map(({ id, name, available_dates, closed_dates, bookings }) => ({ id, name, available_dates, closed_dates, bookings })),
+    dateEvidence: state.history.filter((event) => (event.operation.type === 'set_plan_dates' || event.operation.type === 'apply_observation')).map((event) => ({ revision: event.revision, operation: event.operation })), plans: context.plans.map(({ id, name, available_dates, closed_dates, bookings }) => ({ id, name, available_dates, closed_dates, bookings })),
     checklist: { text: state.content.snapshot.trip.checklistText, state: state.content.snapshot.trip.checklistState },
     memory: { ...state.content.memory, issues: state.content.memory.issues.filter((issue) => issue.status === 'open') },
     itinerary: itinerary ? { baselineDates: itinerary.baseline.days.map((day) => day.dateId), current: itinerary.current.filter((day) => !dateId || day.dateId === dateId), actual: itinerary.actual, commitments: itinerary.commitments, analysisScope: dateId && itinerary.current.some((day) => day.dateId === dateId) ? dateId : 'all_imported_days', analysis } : null,

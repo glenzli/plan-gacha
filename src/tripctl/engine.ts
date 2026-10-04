@@ -1,6 +1,10 @@
 import { rememberedBlocks } from './planMemory';
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
-export const TRIPCTL_CORE_VERSION = 9;
+export const TRIPCTL_CORE_VERSION = 10;
+import { emptyLinkage, linkageOperationSchema } from './linkageSchema';
+import { appendObservation, observationDateChange, observationRestriction } from './observations';
+import { changeReminders, validateLinkage } from './reminders';
+import { reconcileReminders } from './reminderReconcile';
 import { importHistoricalFacts } from './historyImport';
 import { canonical, hash } from './identity';
 export { canonical, hash } from './identity';
@@ -50,6 +54,12 @@ export function parseState(input: unknown): TripState {
     || state.history.some((event, i) => i > 0 && canonical(event.before) !== canonical(state.history[i - 1].after))
     || state.history.length > 0 && canonical(state.content) !== canonical(state.history.at(-1)!.after)) throw new TripError('invalid_history', 'History, revision and current state must agree');
   if (state.content.itinerary) validateItinerary(state.content.itinerary, state.content.snapshot);
+  if (state.content.linkage) {
+    for (const list of Object.values(state.content.linkage)) if (list && new Set(list.map((r) => r.id)).size !== list.length) throw new TripError('duplicate_id', 'Linkage IDs must be unique per category');
+    const ids = new Set(state.content.linkage.reminderIntents.map((i) => i.id));
+    if ([...state.content.linkage.reminderAttempts, ...state.content.linkage.reminderReadbacks].some((r) => !ids.has(r.intentId))) throw new TripError('invalid_linkage', 'Reminder events need a known logical intent');
+  }
+  validateLinkage(state);
   validateExperiences(state);
   return state;
 }
@@ -90,7 +100,11 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   if (state.revision !== expectedRevision) throw new TripError('revision_conflict', `Expected revision ${expectedRevision}, current ${state.revision}`);
   const operation = parsed.data; const next = structuredClone(state.content); let detail: unknown = null; const blocks: string[] = []; let weatherOverride = false;
   if (state.content.snapshot.trip.archived && operation.type !== 'import_history' && operation.type !== 'undo_history_import') blocks.push('archived_trip');
-  if (operation.type === 'import_history') {
+  if (linkageOperationSchema.safeParse(operation).success && operation.type !== 'apply_observation') {
+    next.linkage ||= emptyLinkage();
+    if (operation.type === 'record_observation') { const result = appendObservation(next, operation.record); detail = result; if (!result.added) blocks.push('observation_already_recorded'); }
+    else { const result = changeReminders(state, next, linkageOperationSchema.parse(operation)); detail = result; if ('added' in result && result.added === false) blocks.push('linkage_event_already_recorded'); }
+  } else if (operation.type === 'import_history') {
     const result = importHistoricalFacts(next, operation); blocks.push(...result.blocks); detail = result.detail;
     if (!blocks.length) next.memory.facts.push(...result.added);
   } else if (operation.type === 'undo_history_import') {
@@ -127,17 +141,19 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
       }
       if (!blocks.length) { next.itinerary = result.nextItinerary; next.snapshot = result.nextSnapshot; }
     } catch (error) { if (error instanceof ItineraryError) throw new TripError(error.code, error.message); throw error; }
-  } else if (operation.type === 'set_plan_dates') {
+  } else if (operation.type === 'set_plan_dates' || operation.type === 'apply_observation') {
+    const dateOperation = operation.type === 'apply_observation' ? observationDateChange(next, operation.observationId, operation.asOf) : operation;
     // Evidence is caller supplied. History prevents older/equal-time contradictory reports
     // from superseding accepted restrictions; it cannot authenticate provider observations.
-    const touched = new Set([...(operation.closeDates || []), ...(operation.reopenDates || [])]);
+    const touched = new Set([...(dateOperation.closeDates || []), ...(dateOperation.reopenDates || [])]);
     for (const event of state.history) {
-      const prior = event.operation;
-      if (prior.type === 'set_plan_dates' && prior.planId === operation.planId
-        && (operation.availableDates || prior.availableDates || [...(prior.closeDates || []), ...(prior.reopenDates || [])].some((date) => touched.has(date)))
-        && Date.parse(operation.source.observedAt) <= Date.parse(prior.source.observedAt)) blocks.push('stale_date_evidence');
+      const stored = event.operation; const record = stored.type === 'apply_observation' ? event.before.linkage?.observations.find((r) => r.id === stored.observationId) : undefined;
+      const prior = record ? observationRestriction(record) : stored;
+      if (prior.type === 'set_plan_dates' && prior.planId === dateOperation.planId
+        && (dateOperation.availableDates || prior.availableDates || [...(prior.closeDates || []), ...(prior.reopenDates || [])].some((date) => touched.has(date)))
+        && Date.parse(dateOperation.source.observedAt) <= Date.parse(prior.source.observedAt)) blocks.push('stale_date_evidence');
     }
-    try { const result = await previewPlanDates(next.snapshot, operation); next.snapshot = result.nextSnapshot; detail = result.detail; }
+    try { const result = await previewPlanDates(next.snapshot, dateOperation); next.snapshot = result.nextSnapshot; detail = result.detail; }
     catch (error) { if (error instanceof PlanDatesError) throw new TripError(error.code, error.message); throw error; }
   } else if (operation.type === 'assign') {
     blocks.push(...rememberedBlocks(next, operation));
@@ -195,7 +211,8 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   else if (operation.type === 'undo') {
     const last = state.history.at(-1);
     if (!last || last.id !== operation.commitId) throw new TripError('undo_conflict', 'Only the latest commit can be undone without overwriting subsequent changes');
-    delete next.itinerary; Object.assign(next, structuredClone(last.before));
+    if (canonical(last.before.linkage) !== canonical(last.after.linkage)) blocks.push('linkage_undo_forbidden');
+    delete next.itinerary; delete next.linkage; Object.assign(next, structuredClone(last.before));
   }
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
@@ -209,6 +226,11 @@ export async function apply(stateInput: unknown, mutationInput: unknown) {
   if (existing) {
     if (existing.requestHash !== requestHash) throw new TripError('idempotency_key_reused', 'Idempotency key was used for a different request');
     return { state, receipt: { schemaVersion: 1, commitId: existing.id, committedRevision: existing.revision, currentRevision: state.revision, replayed: true } };
+  }
+  if (request.operation.type === 'apply_observation' || request.operation.type === 'begin_reminder_action') {
+    if (Date.parse(request.at) < Date.parse(request.operation.asOf)) throw new TripError('invalid_action_time', 'Apply timestamp cannot precede the reviewed analysis time');
+    if (request.operation.type === 'apply_observation') observationDateChange(state.content, request.operation.observationId, request.at);
+    else { if (Date.parse(request.at) !== Date.parse(request.operation.asOf)) throw new TripError('invalid_action_time', 'A reminder attempt must use its actual save timestamp as asOf; preview again before saving'); const id = request.operation.intentId; const action = reconcileReminders(state, request.at).items.find((i) => i.intentId === id)?.action; if (!action || action.actionKey !== request.operation.actionKey) throw new TripError('stale_reminder_action', 'Action expired or changed before this apply time'); }
   }
   if (state.history.length >= 200) throw new TripError('history_full', 'Prototype history limit reached; retain state and upgrade storage before another change');
   const proposal = await preview(state, request.operation, request.expectedRevision);

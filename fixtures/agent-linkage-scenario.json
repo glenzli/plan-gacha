@@ -1,0 +1,472 @@
+{
+  "snapshot": {
+    "schemaVersion": 1,
+    "todayId": "2033-10-03",
+    "trip": {
+      "id": "agent-linkage-synthetic",
+      "name": "Anonymous linkage scenario",
+      "startDateStr": "2033-10-02",
+      "tripDays": 6,
+      "plans": [
+        {
+          "id": "walking-tour",
+          "name": "Walking tour; date and meeting time unknown",
+          "priority": "backup"
+        }
+      ],
+      "schedule": {},
+      "lodgings": [],
+      "checklistText": "Confirm hotel identity and final daily notice",
+      "checklistState": {},
+      "archived": false
+    },
+    "weatherData": {}
+  },
+  "importOperation": {
+    "type": "import_itinerary",
+    "timeZone": "Asia/Shanghai",
+    "days": [
+      {
+        "dateId": "2033-10-02",
+        "planId": "first-day",
+        "title": "Late arrival then memorial",
+        "activities": [
+          {
+            "id": "depart",
+            "title": "Departure after a late flight",
+            "kind": "other",
+            "timing": {
+              "start": "07:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          },
+          {
+            "id": "lake",
+            "title": "Original crowded lake plan",
+            "kind": "visit",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          }
+        ]
+      },
+      {
+        "dateId": "2033-10-03",
+        "planId": "valley-day",
+        "title": "Congested valley",
+        "activities": [
+          {
+            "id": "valley",
+            "title": "Valley visit",
+            "kind": "visit",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          },
+          {
+            "id": "leave-valley",
+            "title": "Leave valley",
+            "kind": "other",
+            "timing": {
+              "start": "17:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          }
+        ]
+      },
+      {
+        "dateId": "2033-10-04",
+        "planId": "north-day",
+        "title": "North lower area, summit separate",
+        "activities": [
+          {
+            "id": "north-entry",
+            "title": "Four reported backup tickets: entry window 08:30–09:00",
+            "kind": "visit",
+            "timing": {
+              "start": "08:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          },
+          {
+            "id": "nearby-hotel",
+            "title": "Nearby hotel identity unknown",
+            "kind": "lodging",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          }
+        ]
+      },
+      {
+        "dateId": "2033-10-05",
+        "planId": "city-day",
+        "title": "Continue to city",
+        "activities": [
+          {
+            "id": "city",
+            "title": "City visit",
+            "kind": "visit",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          }
+        ]
+      }
+    ],
+    "constraints": [],
+    "commitments": [
+      {
+        "id": "four-tickets",
+        "kind": "reservation",
+        "dateId": "2033-10-04",
+        "activityId": "north-entry",
+        "text": "Synthetic user report: four tickets, 08:30–09:00 admission window; order unverified",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        }
+      }
+    ],
+    "options": [
+      {
+        "id": "north-next",
+        "dateIds": [
+          "2033-10-04"
+        ],
+        "condition": "Only after explicit review and current evidence",
+        "proposal": "Use four backup north tickets if final day notice permits",
+        "uncertainties": [
+          "Final day notice pending",
+          "Nearby hotel identity unknown"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        },
+        "requirements": {
+          "plans": [
+            {
+              "planId": "north-day",
+              "dateId": "2033-10-04"
+            }
+          ],
+          "reason": "Explicit synthetic plan binding",
+          "source": {
+            "kind": "synthetic",
+            "reference": "synthetic:agent-linkage-only",
+            "observedAt": "2033-10-01T12:00:00+08:00"
+          }
+        }
+      },
+      {
+        "id": "walking-backup",
+        "dateIds": [
+          "2033-10-04",
+          "2033-10-05"
+        ],
+        "condition": "Only after explicit review and current evidence",
+        "proposal": "Walking tour backup; exact day undecided",
+        "uncertainties": [
+          "Backup date unknown",
+          "Meeting and ending times unknown",
+          "Hotel identity unknown"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        },
+        "requirements": {
+          "plans": [
+            {
+              "planId": "walking-tour",
+              "dateId": "2033-10-04"
+            }
+          ],
+          "reason": "Explicit synthetic plan binding",
+          "source": {
+            "kind": "synthetic",
+            "reference": "synthetic:agent-linkage-only",
+            "observedAt": "2033-10-01T12:00:00+08:00"
+          }
+        }
+      },
+      {
+        "id": "old-later-north",
+        "dateIds": [
+          "2033-10-06"
+        ],
+        "condition": "Only after explicit review and current evidence",
+        "proposal": "Old later north branch",
+        "uncertainties": [
+          "Old unneeded reservation"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        },
+        "requirements": {
+          "plans": [
+            {
+              "planId": "north-day",
+              "dateId": "2033-10-06"
+            }
+          ],
+          "reason": "Explicit synthetic plan binding",
+          "source": {
+            "kind": "synthetic",
+            "reference": "synthetic:agent-linkage-only",
+            "observedAt": "2033-10-01T12:00:00+08:00"
+          }
+        }
+      }
+    ],
+    "decisionPoints": [
+      {
+        "id": "north-choice",
+        "text": "Decide next-day north entry after final notice",
+        "optionIds": [
+          "north-next",
+          "walking-backup"
+        ],
+        "deadline": "2033-10-03T22:00:00+08:00",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "old-branch",
+        "text": "Old later branch",
+        "optionIds": [
+          "old-later-north"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "redundant-hotel",
+        "text": "Redundant hotel disposition reported handled",
+        "optionIds": [
+          "old-later-north"
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-01T12:00:00+08:00"
+        }
+      }
+    ],
+    "source": {
+      "kind": "synthetic",
+      "reference": "synthetic:agent-linkage-only",
+      "observedAt": "2033-10-01T12:00:00+08:00"
+    }
+  },
+  "operations": [
+    {
+      "type": "record_actual",
+      "record": {
+        "id": "late-departure",
+        "dateId": "2033-10-02",
+        "activityId": "depart",
+        "kind": "started",
+        "bounds": {
+          "after": "09:00"
+        },
+        "text": "Late flight; left after nine; exact departure unknown",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-03T18:00:00+08:00"
+        }
+      }
+    },
+    {
+      "type": "record_actual",
+      "record": {
+        "id": "memorial-substitution",
+        "dateId": "2033-10-02",
+        "kind": "changed_plan",
+        "text": "Crowded lake replaced by memorial; completion not independently observed",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-03T18:00:00+08:00"
+        }
+      }
+    },
+    {
+      "type": "record_actual",
+      "record": {
+        "id": "valley-departure",
+        "dateId": "2033-10-03",
+        "activityId": "leave-valley",
+        "kind": "started",
+        "at": "2033-10-03T17:30:00+08:00",
+        "text": "Reported left congested valley at 17:30",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:agent-linkage-only",
+          "observedAt": "2033-10-03T18:00:00+08:00"
+        }
+      }
+    },
+    {
+      "type": "set_decision_status",
+      "decisionPointId": "old-branch",
+      "status": "withdrawn",
+      "confirmation": "explicit",
+      "reason": "City route replaces old later north branch",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:agent-linkage-only",
+        "observedAt": "2033-10-03T18:00:00+08:00"
+      }
+    },
+    {
+      "type": "set_decision_status",
+      "decisionPointId": "redundant-hotel",
+      "status": "completed",
+      "confirmation": "explicit",
+      "reason": "User reports redundant hotel handled; no provider action or refund verification",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:agent-linkage-only",
+        "observedAt": "2033-10-03T18:00:00+08:00"
+      }
+    },
+    {
+      "type": "link_actual_change",
+      "record": {
+        "id": "memorial-link",
+        "actualId": "memorial-substitution",
+        "dateId": "2033-10-02",
+        "previousActivityIds": [
+          "lake"
+        ],
+        "replacementActivities": [
+          {
+            "id": "reported-memorial",
+            "kind": "visit",
+            "title": "Memorial replacing the skipped crowded lake",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:explicit-memorial-substitution",
+              "observedAt": "2033-10-03T18:01:00+08:00"
+            }
+          }
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-memorial-substitution",
+          "observedAt": "2033-10-03T18:01:00+08:00"
+        }
+      }
+    }
+  ],
+  "observationDrafts": [
+    {
+      "id": "tomorrow-all",
+      "streamId": "tomorrow-all",
+      "messageId": "synthetic-bulletin-2033-10-03",
+      "publisherId": "synthetic-park-authority",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:official-prediction-example",
+        "observedAt": "2033-10-03T18:00:00+08:00"
+      },
+      "publishedAt": "2033-10-03T17:52:50+08:00",
+      "expiresAt": "2033-10-04T07:00:00+08:00",
+      "basis": "official_prediction",
+      "confidence": "high",
+      "status": "available",
+      "scope": {
+        "planId": "north-day",
+        "dateId": "2033-10-04",
+        "component": "whole_plan",
+        "componentLabel": "All areas",
+        "place": {
+          "provider": "synthetic",
+          "placeId": "synthetic-north",
+          "label": "Anonymous north area",
+          "identity": "matched"
+        }
+      },
+      "claim": {
+        "kind": "opening",
+        "state": "closed"
+      },
+      "summary": "Synthetic previous-day prediction; final daily notice remains pending"
+    },
+    {
+      "id": "following-summit",
+      "streamId": "following-summit",
+      "messageId": "synthetic-bulletin-2033-10-03",
+      "publisherId": "synthetic-park-authority",
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:official-prediction-example",
+        "observedAt": "2033-10-03T18:00:00+08:00"
+      },
+      "publishedAt": "2033-10-03T17:52:50+08:00",
+      "expiresAt": "2033-10-04T07:00:00+08:00",
+      "basis": "official_prediction",
+      "confidence": "high",
+      "status": "available",
+      "scope": {
+        "planId": "north-day",
+        "dateId": "2033-10-05",
+        "component": "part",
+        "componentLabel": "Summit vehicles only; north lower area unaffected",
+        "place": {
+          "provider": "synthetic",
+          "placeId": "synthetic-north",
+          "label": "Anonymous north area",
+          "identity": "matched"
+        }
+      },
+      "claim": {
+        "kind": "opening",
+        "state": "partial"
+      },
+      "summary": "Synthetic previous-day prediction; final daily notice remains pending"
+    }
+  ],
+  "asOf": "2033-10-03T18:01:00+08:00",
+  "generatedAt": "2033-10-03T18:02:00+08:00",
+  "notice": "All identities, dates, observations and orders are synthetic. Attach current observationPlanToken to each draft before preview. No real provider called."
+}

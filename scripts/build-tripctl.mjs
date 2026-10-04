@@ -38,7 +38,22 @@ for (const [id, operation] of [['import', operator.importOperation], ['adjust', 
 }
 const draft = core.createGuideDraft(reviewState, { asOf: '2032-06-04T12:00:00Z', experienceIds: ['queue-review', 'external-advice'] });
 await writeFile(`${output}/EXPERIENCE-DEMO.md`, `# 合成经验演示\n\n${draft.markdown}`);
-const files = ['history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
+
+await copyFile('fixtures/agent-linkage-scenario.json', `${output}/agent-linkage-scenario.json`);
+await copyFile('docs/agent-linkage.md', `${output}/AGENT-LINKAGE.md`);
+const linkage = JSON.parse(await readFile('fixtures/agent-linkage-scenario.json', 'utf8'));
+let linkageState = core.initialize(linkage.snapshot);
+const linkageSave = async (operation, id) => {
+  const p = await core.preview(linkageState, operation, linkageState.revision);
+  linkageState = (await core.apply(linkageState, core.mutationFromPreview(p, { idempotencyKey: id, actor: 'synthetic-demo', reason: 'Anonymous linkage demonstration', at: linkage.asOf }))).state;
+};
+await linkageSave(linkage.importOperation, 'linkage-import');
+for (const [n, op] of linkage.operations.entries()) await linkageSave(op, 'linkage-op-' + n);
+for (const draft of linkage.observationDrafts) await linkageSave({ type: 'record_observation', record: { ...draft, scope: { ...draft.scope, planToken: core.observationPlanToken(linkageState.content, draft.scope.planId) } } }, draft.id);
+await writeFile(`${output}/LINKAGE-DEMO.json`, JSON.stringify(await core.analyseEvidenceImpact(linkageState, { asOf: linkage.asOf }), null, 2));
+await writeFile(`${output}/READONLY-DEMO.json`, JSON.stringify(await core.exportReadonlyView(linkageState, { asOf: linkage.asOf, generatedAt: linkage.generatedAt }), null, 2));
+
+const files = ['agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));
