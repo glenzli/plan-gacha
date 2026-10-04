@@ -52,3 +52,5 @@ For Japan, preserve Asia/Tokyo, source calendar dates, clock strings and timesta
 ## v10 Agent 联动
 
 先读 AGENT-LINKAGE.md（源码 docs/agent-linkage.md）和 runtime schema。用 evidence-impact 审查精确日期/地点的来源证据；预测或局部停运不能升格整日闭馆。reminder-reconcile 仅描述动作；新 attempt 必须权威 CAS 保存并读回，外部动作另获授权，replayed/stage 不授予发送。unknown 结果要查原 attempt/actionKey，不能换 key 重发。跨旅程 readback 禁止。readonly-view 的 organized 是私有按日衍生投影，渲染稳定引用避免重复；缺 typed link 时保留已知备选及 gap，可用 bind_context 明确关联，不从自由文本猜计划/票/酒店或永久偏好。不得把 Site 当第二权威状态或声称自动同步。
+
+每天及每次新消息都应主动规整 canonical daily route，而非只追加聊天备注。用 set_day_route 保存明确顺序、活动类型、actual/planned/skipped 和 nightDate，保留景观路线/餐饮/当晚入住；旧计划只作历史。交通用已授权地图工具查询并保存证据；景观公路另加观景停留区间。无法查询时可给有来源/理由/asOf的 planning_assumption，实际时间和估计分开，不能伪装地图结果。缺精确时刻也保留完整路线，只问影响决策的关键缺口。反馈写结构经验并关联trip/date/活动（reportedActualId可关联实际新增节点）。每次新报告后检查 route.needsReview 并更新受影响日的条目，不让过时确认路线长期不变。

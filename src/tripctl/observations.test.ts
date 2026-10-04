@@ -1,6 +1,8 @@
+import { assessRouteEstimate } from './reminders';
+import { itineraryActivityToken } from './itinerary';
 import { describe, expect, it } from 'vitest';
 import fixture from '../../fixtures/agent-linkage-scenario.json';
-import { initialize, preview, apply, mutationFromPreview, canonical } from './engine';
+import { initialize, preview, apply, mutationFromPreview, canonical, parseState } from './engine';
 import { assessObservations, observationPlanToken } from './observations';
 import { analyseEvidenceImpact } from './evidenceImpact';
 import { exportReadonlyView } from './readonlyView';
@@ -152,13 +154,13 @@ it('reports unlinked actual changes first, then shows explicit replacements with
   expect(d.primary.basis).toBe('reported_change_needs_binding'); expect(d.primary.activityRefs).toEqual([]);
   expect(d.priorPlannedActivityRefs).toContain('activity:first-day:lake'); expect(d.unlinkedChangeReportRefs).toContain('actual:memorial-substitution');
   const unchanged = canonical(s.content.itinerary!.current);
-  s = await save(s, fixture.operations.at(-1)!, 'link-actual');
+  s = await save(s, fixture.operations.find((op) => op.type === 'link_actual_change')!, 'link-actual');
   v = await exportReadonlyView(s, { asOf: now, generatedAt: fixture.generatedAt }); d = v.organized.days[0];
   expect(d.primary.basis).toBe('explicit_actual_change'); expect(d.primary.activityRefs).toContain('reported-activity:reported-memorial');
   expect(d.primary.activityRefs).not.toContain('activity:first-day:lake'); expect(d.priorPlannedActivityRefs).toContain('activity:first-day:lake');
   expect(v.organized.catalog.reportedActivities[0].timing).toEqual({}); expect(v.organized.catalog.reportedActivities[0].completionVerified).toBe(false);
   expect(canonical(s.content.itinerary!.current)).toBe(unchanged); expect(s.content.memory.facts).toEqual([]);
-  const bad = structuredClone(fixture.operations.at(-1)!); if ('record' in bad && bad.record) Object.assign(bad.record, { id: 'wrong', dateId: '2033-10-03' });
+  const bad = structuredClone(fixture.operations.find((op) => op.type === 'link_actual_change')!); if ('record' in bad && bad.record) Object.assign(bad.record, { id: 'wrong', dateId: '2033-10-03' });
   await expect(save(s, bad, 'bad')).rejects.toMatchObject({ code: 'actual_change_mismatch' });
 });
 it('narrows option display dates, but stale display bindings never lock requirement changes', async () => {
@@ -196,4 +198,88 @@ it('rejects unvalidated cross-activity route references in reported replacements
   let s = await imported(); s = await save(s, fixture.operations[1], 'actual');
   const op = { type: 'link_actual_change', record: { id: 'route-link', actualId: 'memorial-substitution', dateId: '2033-10-02', previousActivityIds: ['lake'], replacementActivities: [{ id: 'route-new', kind: 'transfer', title: 'Reported route', timing: {}, route: { mode: 'driving', from: { label: 'Unknown origin' }, to: { label: 'Memorial' }, fromActivityId: 'does-not-exist' }, source: at(now) }], source: at(now) } };
   await expect(save(s, op, 'bad-route')).rejects.toMatchObject({ code: 'invalid_operation' });
+});
+async function routeScenario() { let s = await imported(); for (const [n, op] of fixture.operations.entries()) s = await save(s, op, 'route-op-' + n); return s; }
+const routeOperation = () => structuredClone(fixture.operations.find((op) => op.type === 'set_day_route')!);
+describe('ordered effective day route', () => {
+  it('keeps the scenic goal, meal, replacement visit and correct night in confirmed order; estimates are not actual times', async () => {
+    const s = await routeScenario(); const v = await exportReadonlyView(s, { asOf: now, generatedAt: fixture.generatedAt });
+    const rows = v.organized.catalog.routeEntries.filter((e) => e.status !== 'skipped');
+    expect(rows.map((e) => e.type)).toEqual(['route_scenery', 'meal', 'visit', 'lodging']);
+    expect(rows[0].timing).toEqual({}); expect(rows[0].planningEstimate?.durationMinutes).toEqual({ min: 165, max: 240 });
+    expect(rows[0].planningEstimate?.stopMinutes).toEqual({ min: 45, max: 90 }); expect(rows[0].estimateIsActual).toBe(false);
+    expect(rows.at(-1)?.nightDate).toBe('2033-10-02'); expect(v.organized.days[0].lodgingRefs).not.toContain('lodging:next-night');
+    expect(v.organized.days[0].route.skippedEntryRefs).toEqual(['route-entry:day2-route-v1:lake-skipped']);
+  });
+  it('rejects invalid clock bounds, undersized totals and wrong-night lodging', async () => {
+    let s = await imported(); for (const [n, op] of fixture.operations.filter((o) => o.type !== 'set_day_route').entries()) s = await save(s, op, 'op-' + n);
+    for (const timing of [{ start: '18:00', end: '10:00' }, { endDayOffset: 1 }]) {
+      const op = routeOperation(); Object.assign(op.record!.entries![0], { timing }); await expect(preview(s, op, s.revision)).rejects.toMatchObject({ code: 'invalid_operation' });
+    }
+    const badTotal = routeOperation(); Object.assign(badTotal.record!.entries![0].planningEstimate!, { durationMinutes: { min: 1, max: 2 }, stopMinutes: undefined });
+    await expect(preview(s, badTotal, s.revision)).rejects.toMatchObject({ code: 'invalid_operation' });
+    const badNight = routeOperation(); Object.assign(badNight.record!.entries!.at(-1)!, { lodgingId: 'next-night' });
+    await expect(preview(s, badNight, s.revision)).rejects.toMatchObject({ code: 'route_night_mismatch' });
+  });
+  it('marks scenic travel without a separate viewing allocation incomplete', async () => {
+    const s = await routeScenario(); const e = structuredClone(s.content.linkage!.dayRoutes![0].entries[0]);
+    delete e.planningEstimate!.stopMinutes; expect(assessRouteEstimate(s.content, e, '2033-10-02', now).estimateStatus).toBe('scenic_stop_range_needed');
+  });
+  it('rejects forged persisted lodging nights while retaining historical hotel snapshots after later edits', async () => {
+    const s = await routeScenario(); const invalid = structuredClone(s); const last = invalid.content.linkage!.dayRoutes![0].entries.at(-1)!;
+    last.lodgingId = 'next-night'; last.lodgingSnapshot = invalid.content.snapshot.trip.lodgings[1]; invalid.history.at(-1)!.after = invalid.content;
+    expect(() => parseState(invalid)).toThrow();
+    const changed = structuredClone(s); changed.content.snapshot.trip.lodgings[0].name = 'Later corrected hotel label'; changed.history.at(-1)!.after = changed.content;
+    expect(() => parseState(changed)).not.toThrow();
+  });
+  it('keeps a complete visible route after new reports and retains the feedback association to a reported meal', async () => {
+    let s = await routeScenario(); const future = fixture.generatedAt;
+    s = await save(s, { type: 'record_actual', record: { id: 'new-report', dateId: '2033-10-02', activityId: 'depart', kind: 'note', text: 'New source details for reconciliation', source: at(future) } }, 'new-report');
+    s = await save(s, { type: 'fact', record: { id: 'meal-feedback', text: 'Synthetic meal feedback', certainty: 'reported', source: at(future) } }, 'feedback');
+    s = await save(s, { type: 'bind_context', record: { id: 'feedback-link', subjectType: 'fact', subjectId: 'meal-feedback', dateIds: ['2033-10-02'], reportedActualId: 'memorial-substitution', activityId: 'reported-meal', role: 'context', source: at(future) } }, 'feedback-link');
+    const v = await exportReadonlyView(s, { asOf: future, generatedAt: future });
+    expect(v.organized.days[0].route.needsReview).toBe(true); expect(v.organized.days[0].route.entryRefs).toHaveLength(4);
+    expect(v.organized.catalog.facts[0].association.activityRef).toBe('reported-activity:reported-meal');
+  });
+  it('does not put a next-night hotel on a preceding day even when a legacy schedule points there', async () => {
+    const f = structuredClone(fixture.snapshot); f.trip.schedule = { '2033-10-02': { planId: 'walking-tour', lodgingId: 'next-night' } };
+    const v = await exportReadonlyView(initialize(f), { asOf: now, generatedAt: fixture.generatedAt });
+    expect(v.organized.days[0].lodgingRefs).not.toContain('lodging:next-night'); expect(v.organized.days[1].lodgingRefs).toContain('lodging:next-night');
+    expect(v.organized.gaps.some((g) => g.code === 'lodging_night_assignment_conflict')).toBe(true);
+  });
+  it.each(['unavailable', 'fixture', 'expired', 'wrong-day', 'old-token', 'opening', 'newer-failure', 'source-after-estimate'])('does not credit provider estimate with %s evidence', async (which) => {
+    let s = await routeScenario(); const source = { kind: 'provider' as const, reference: 'https://maps.example.test/fixture-contract-only', observedAt: now };
+    const record = { id: 'transport', kind: 'route', dateId: '2033-10-02', activityId: 'depart', activityToken: itineraryActivityToken(s.content.itinerary!, 'depart'), source, expiresAt: '2033-10-04T00:00:00+08:00', captureKind: 'live', status: 'estimate', mode: 'driving', durationMinutes: { min: 120, max: 150 }, detail: 'Synthetic validation payload, not an actual provider call' };
+    if (which === 'unavailable') Object.assign(record, { status: 'unavailable', durationMinutes: undefined });
+    if (which === 'fixture') record.captureKind = 'fixture';
+    if (which === 'source-after-estimate') record.source = { ...source, observedAt: fixture.generatedAt };
+    if (which === 'wrong-day') record.dateId = '2033-10-03';
+    if (which === 'old-token') record.activityToken = 'sha256:' + '0'.repeat(64);
+    if (which === 'wrong-day' || which === 'old-token') { const p = await preview(s, { type: 'itinerary_evidence', record }, s.revision); expect(p.canApply).toBe(false); expect(p.reasonCodes).toContain('evidence_binding_mismatch'); return; }
+    s = await save(s, { type: 'itinerary_evidence', record }, 'evidence');
+    if (which === 'newer-failure') s = await save(s, { type: 'itinerary_evidence', record: { ...record, id: 'failed', status: 'unavailable', durationMinutes: undefined, source: { ...source, observedAt: fixture.generatedAt } } }, 'failed');
+    const e = structuredClone(s.content.linkage!.dayRoutes![0].entries[0]);
+    Object.assign(e.planningEstimate!, { method: 'provider', source, evidenceRefs: [{ kind: which === 'opening' ? 'observation' : 'itinerary_evidence', id: 'transport' }] });
+    expect(assessRouteEstimate(s.content, e, '2033-10-02', which === 'expired' ? record.expiresAt : fixture.generatedAt).estimateStatus).toBe('unusable');
+  });
+  it('accepts only the latest correctly bound transport range as provider-backed planning data', async () => {
+    let s = await routeScenario(); const source = { kind: 'provider' as const, reference: 'https://maps.example.test/fixture-contract-only', observedAt: now };
+    s = await save(s, { type: 'itinerary_evidence', record: { id: 'transport', kind: 'route', dateId: '2033-10-02', activityId: 'depart', activityToken: itineraryActivityToken(s.content.itinerary!, 'depart'), source, expiresAt: '2033-10-04T00:00:00+08:00', captureKind: 'live', status: 'estimate', mode: 'driving', durationMinutes: { min: 120, max: 150 }, detail: 'Synthetic contract payload only' } }, 'evidence');
+    const e = structuredClone(s.content.linkage!.dayRoutes![0].entries[0]); Object.assign(e.planningEstimate!, { method: 'provider', source, evidenceRefs: [{ kind: 'itinerary_evidence', id: 'transport' }] });
+    expect(assessRouteEstimate(s.content, e, '2033-10-02', now)).toMatchObject({ estimateStatus: 'current_transport_estimate', estimateIsActual: false, stopMinutesBasis: 'explicit_planning_allowance' });
+  });
+});
+it('qualifies missing-estimate questions by route as well as entry identity', async () => {
+  let s = await routeScenario(); const source = at(fixture.generatedAt);
+  const first = { type: 'set_day_route', record: { id: 'route-first-new', dateId: '2033-10-02', entries: [{ id: 'drive', activity: { kind: 'planned', planId: 'first-day', activityId: 'depart' }, status: 'planned', purpose: 'default' }], source } };
+  s = await save(s, first, 'route-first-new');
+  s = await save(s, { type: 'edit_itinerary', source, changes: [{ action: 'insert', dateId: '2033-10-03', index: 0, activity: { id: 'another-drive', kind: 'transfer', title: 'Next day drive', timing: {}, route: { mode: 'driving', from: { label: 'Town' }, to: { label: 'Valley' } }, source } }] }, 'add-drive');
+  s = await save(s, { type: 'set_day_route', record: { id: 'route-next', dateId: '2033-10-03', entries: [{ id: 'drive', activity: { kind: 'planned', planId: 'valley-day', activityId: 'another-drive' }, status: 'planned', purpose: 'default' }], source } }, 'route-next');
+  const v = await exportReadonlyView(s, { asOf: fixture.generatedAt, generatedAt: fixture.generatedAt }); const questions = v.organized.catalog.pending.filter((q) => q.code === 'route_estimate_needed');
+  expect(questions).toHaveLength(2); expect(new Set(questions.map((q) => q.id)).size).toBe(2); expect(new Set(questions.map((q) => q.ref)).size).toBe(2);
+});
+it('rejects an ordered route confirmed before its planning estimate existed', async () => {
+  let s = await imported(); for (const [n, op] of fixture.operations.filter((o) => o.type !== 'set_day_route').entries()) s = await save(s, op, 'op-' + n);
+  const op = routeOperation(); op.record!.entries![0].planningEstimate!.asOf = fixture.generatedAt;
+  await expect(preview(s, op, s.revision)).rejects.toMatchObject({ code: 'future_route_estimate' });
 });

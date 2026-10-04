@@ -15,7 +15,20 @@
         }
       ],
       "schedule": {},
-      "lodgings": [],
+      "lodgings": [
+        {
+          "id": "city-night",
+          "name": "Anonymous city hotel",
+          "checkIn": "2033-10-02",
+          "checkOut": "2033-10-03"
+        },
+        {
+          "id": "next-night",
+          "name": "Anonymous next-night hotel",
+          "checkIn": "2033-10-03",
+          "checkOut": "2033-10-04"
+        }
+      ],
       "checklistText": "Confirm hotel identity and final daily notice",
       "checklistState": {},
       "archived": false
@@ -33,8 +46,8 @@
         "activities": [
           {
             "id": "depart",
-            "title": "Departure after a late flight",
-            "kind": "other",
+            "title": "Original scenic autumn drive",
+            "kind": "transfer",
             "timing": {
               "start": "07:30"
             },
@@ -42,6 +55,15 @@
               "kind": "synthetic",
               "reference": "synthetic:agent-linkage-only",
               "observedAt": "2033-10-01T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Anonymous departure town"
+              },
+              "to": {
+                "label": "Anonymous scenic road endpoint"
+              }
             }
           },
           {
@@ -379,6 +401,17 @@
         ],
         "replacementActivities": [
           {
+            "id": "reported-meal",
+            "kind": "meal",
+            "title": "Northeastern meal at anonymous town restaurant",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:explicit-ordered-day-reconstruction",
+              "observedAt": "2033-10-03T18:01:00+08:00"
+            }
+          },
+          {
             "id": "reported-memorial",
             "kind": "visit",
             "title": "Memorial replacing the skipped crowded lake",
@@ -388,11 +421,146 @@
               "reference": "synthetic:explicit-memorial-substitution",
               "observedAt": "2033-10-03T18:01:00+08:00"
             }
+          },
+          {
+            "id": "reported-night",
+            "kind": "lodging",
+            "title": "City hotel for this night",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:explicit-ordered-day-reconstruction",
+              "observedAt": "2033-10-03T18:01:00+08:00"
+            }
           }
         ],
         "source": {
           "kind": "synthetic",
           "reference": "synthetic:explicit-memorial-substitution",
+          "observedAt": "2033-10-03T18:01:00+08:00"
+        }
+      }
+    },
+    {
+      "type": "set_day_route",
+      "record": {
+        "id": "day2-route-v1",
+        "dateId": "2033-10-02",
+        "entries": [
+          {
+            "id": "scenic-drive",
+            "activity": {
+              "kind": "planned",
+              "planId": "first-day",
+              "activityId": "depart"
+            },
+            "status": "actual",
+            "purpose": "scenic_route",
+            "timing": {},
+            "planningEstimate": {
+              "durationMinutes": {
+                "min": 165,
+                "max": 240
+              },
+              "method": "planning_assumption",
+              "source": {
+                "kind": "synthetic",
+                "reference": "synthetic:explicit-ordered-day-reconstruction",
+                "observedAt": "2033-10-03T18:01:00+08:00"
+              },
+              "asOf": "2033-10-03T18:01:00+08:00",
+              "evidenceRefs": [],
+              "rationale": "Synthetic illustrative planning range; not an actual travel measurement. Scenic driving includes extra viewing stops.",
+              "travelMinutes": {
+                "min": 120,
+                "max": 150
+              },
+              "stopMinutes": {
+                "min": 45,
+                "max": 90
+              }
+            }
+          },
+          {
+            "id": "meal",
+            "activity": {
+              "kind": "reported",
+              "actualId": "memorial-substitution",
+              "activityId": "reported-meal"
+            },
+            "status": "actual",
+            "purpose": "default",
+            "timing": {},
+            "planningEstimate": {
+              "durationMinutes": {
+                "min": 45,
+                "max": 75
+              },
+              "method": "planning_assumption",
+              "source": {
+                "kind": "synthetic",
+                "reference": "synthetic:explicit-ordered-day-reconstruction",
+                "observedAt": "2033-10-03T18:01:00+08:00"
+              },
+              "asOf": "2033-10-03T18:01:00+08:00",
+              "evidenceRefs": [],
+              "rationale": "Synthetic illustrative planning range; not an actual travel measurement. Scenic driving includes extra viewing stops."
+            }
+          },
+          {
+            "id": "memorial",
+            "activity": {
+              "kind": "reported",
+              "actualId": "memorial-substitution",
+              "activityId": "reported-memorial"
+            },
+            "status": "actual",
+            "purpose": "default",
+            "timing": {},
+            "planningEstimate": {
+              "durationMinutes": {
+                "min": 30,
+                "max": 60
+              },
+              "method": "planning_assumption",
+              "source": {
+                "kind": "synthetic",
+                "reference": "synthetic:explicit-ordered-day-reconstruction",
+                "observedAt": "2033-10-03T18:01:00+08:00"
+              },
+              "asOf": "2033-10-03T18:01:00+08:00",
+              "evidenceRefs": [],
+              "rationale": "Synthetic illustrative planning range; not an actual travel measurement. Scenic driving includes extra viewing stops."
+            }
+          },
+          {
+            "id": "lake-skipped",
+            "activity": {
+              "kind": "planned",
+              "planId": "first-day",
+              "activityId": "lake"
+            },
+            "status": "skipped",
+            "purpose": "default",
+            "timing": {}
+          },
+          {
+            "id": "city-night",
+            "activity": {
+              "kind": "reported",
+              "actualId": "memorial-substitution",
+              "activityId": "reported-night"
+            },
+            "status": "planned",
+            "purpose": "default",
+            "nightDate": "2033-10-02",
+            "lodgingId": "city-night",
+            "timing": {}
+          }
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-ordered-day-reconstruction",
           "observedAt": "2033-10-03T18:01:00+08:00"
         }
       }

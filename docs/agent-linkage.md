@@ -90,3 +90,23 @@ subjectType 可为 fact/preference/option/issue；activityId 需属于 plan。�
 匿名 fixture 展示：旧 current 仍有 lake；actual 说下午改去 memorial。关联后 primary 仅引用 reported-memorial，lake 只出现在旧计划引用；纪念地 timing:{}，未推断到达/结束时间。Site 应消费 organized 有效视图，不再把 flat current 表无条件置顶。
 
 带明确 activityId 的 changed_plan 只把该节点降为待核，不能隐藏同日其他已知安排；只有未指明活动的广义变更才保守折叠整张旧计划。primary.actualReportRefs 保留 started/finished/note 等全部当天已知实际报告。替代活动不凭数组位置推断时间顺序：activityRefsOrder=reported_order_unknown，reportedActivityRefs 单列，未知时刻仍为空。最小版实际替代路线只接受明确端点label，不接受未经行程校验的跨活动route IDs。
+
+## 确认有序 daily route，而不是展示聊天记录
+
+每次收到新消息，agent 应读取权威 journey → 抽取对路线/反馈的明确增量 → 查询可用地图交通证据 → 提出/更新结构化当日路线 → 走 preview/stage/CAS/readback。不要把所有信息堆入 note 后继续展示 baseline。保留原有游玩意图：景观公路是 route_scenery，需要交通时间再加观景/停留区间，不能当纯赶路。能先估的用显式 planning_assumption 区间，真正影响选择的起终点、集合/结束时间或酒店身份才形成具体问题。
+
+`set_day_route` 仅更新一个 dateId 的有序条目，不重建全程。record={id,dateId,entries,source}；修正时读取最新记录、只调整受影响条目/顺序，保留其他条目，以新 id 和更晚 source 保存。
+
+每个 entry：稳定 id；activity 引用 `{kind:"planned",planId,activityId}` 或 `{kind:"reported",actualId,activityId}`；status 为 actual/planned/skipped；purpose 为 default/scenic_route。核心保存来源活动快照，回溯不受未来标题/计划修改影响。新目的地/餐饮可先用 link_actual_change 建立结构活动；也可用原有 edit_itinerary 插入计划活动后引用。实际报告不需要复制成 fact。反馈用结构化 experience + bind_context；绑定实际新增节点可用 reportedActualId+activityId（与 planId 二选一）。
+
+`timing` 是明确提供的时刻。实际条目缺它就 timing:{}，绝不能把旧计划时刻变成实际。`planningEstimate` 单列 `{durationMinutes:{min,max},travelMinutes?,stopMinutes?,method,source,asOf,expiresAt?,evidenceRefs,rationale}`：method=provider/user/planning_assumption；provider 需真实提供方来源和已保存证据引用，不能把模型假设冒充地图结果。若 travel 与 stop 同时给出，duration 的上下界分别等于两者相加。未知实际时刻不妨碍保留规划估计。地图读取失败要保留失败/unknown证据，可先用有解释的规划区间，不能伪造观测。
+
+`evidenceRefs` 引用已有 map_fact / itinerary_evidence / observation 稳定 ID；每次使用核对路线绑定、日期、来源时刻与有效期。输出 estimateStatus 明示 missing/future/stale/planning_assumption/user_estimate/current_transport_estimate/unusable，不把估计当执行保证。缺交通区间会产生具体路线查询问题，缺酒店身份会指出对应晚次；别把“无数据”当作停止代理工作的理由。
+
+住宿 entry 必须 nightDate===route.dateId；可带 canonical lodgingId。明确 checkIn/checkOut 或有效 reservations 控制酒店归属，次晚酒店不能因旧 schedule 指向而挂前日。冲突显式报 lodging_night_assignment_conflict。身份未知的住宿也可作为有序节点保留，具体询问酒店以便补最后一段车程。
+
+Site 消费 days[].route.entryRefs → catalog.routeEntries；skippedEntryRefs 只进历史/跳过区域。每条有 position/type/status/timing/timingBasis/planningEstimate；路线赏景、meal、visit、lodging 按确认顺序显示，未知距离/时刻不臆造。旧计划在 priorPlannedActivityRefs，不再压过确认路线。新 actual 晚于确认路线时 needsReview:true/pendingActualReportRefs，保持路线可见，提示 agent 立即规整受影响节点。
+
+fixture 的当前有效路线为景观自驾（含观景停留）→东北菜午餐→纪念地→当晚城市酒店；旧湖被明确 skipped。所有地点、估计区间、时间和住宿均为合成，仅用于验证结构契约，未调用真实地图。
+
+provider估计仅在最新且唯一、匹配本日活动与当前内容token、live且成功未过期的transport证据支持下可用；最新失败不回退旧成功，fixture与开放公告不作交通时长来源。walking map_fact还核对精确起终点活动及内容绑定。交通范围必须与来源范围一致；观景stop始终标为explicit_planning_allowance。scenic缺少独立travel/stop区间会提出具体补估问题。住宿条目保留保存时的lodgingSnapshot并验证当晚，以便后来酒店资料修改仍可保留历史路线。
