@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { MAX_STORE_BYTES } from './limits';
+import { analyseCapacity } from './capacity';
 import { analyseEvidenceImpact } from './evidenceImpact';
 import { reconcileReminders } from './reminderReconcile';
 import { exportReadonlyView } from './readonlyView';
@@ -17,7 +19,7 @@ import { ItineraryError } from './itinerarySchema';
 import { getOperatorSchema, readOperatorContext } from './operator';
 import { TripError } from './schema';
 import { prepareWalkingQuery, importWalkingObservation, inspectWalkingRoutes, RouteEvidenceError } from './routeEvidence';
-const json = async (path: string | undefined) => { if (!path) throw new TripError('missing_argument', 'A JSON input path is required'); if (path === '-') { process.stdin.setEncoding('utf8'); let text = ''; for await (const chunk of process.stdin) { text += chunk; if (Buffer.byteLength(text) > 16 * 1024 * 1024) throw new TripError('input_too_large', 'JSON stdin exceeds 16 MiB'); } return JSON.parse(text); } return JSON.parse(await readFile(path, 'utf8')); };
+const json = async (path: string | undefined) => { if (!path) throw new TripError('missing_argument', 'A JSON input path is required'); if (path === '-') { process.stdin.setEncoding('utf8'); let text = ''; for await (const chunk of process.stdin) { text += chunk; if (Buffer.byteLength(text) > MAX_STORE_BYTES) throw new TripError('input_too_large', 'JSON stdin exceeds 16 MiB'); } return JSON.parse(text); } return JSON.parse(await readFile(path, 'utf8')); };
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: { store: { type: 'string' }, input: { type: 'string' }, output: { type: 'string' }, revision: { type: 'string' }, date: { type: 'string' }, request: { type: 'string' }, help: { type: 'boolean' }, operation: { type: 'string' }, 'as-of': { type: 'string' }, limit: { type: 'string' } } });
   const command = positionals[0]; const path = values.store;
@@ -28,6 +30,7 @@ async function main() {
   if (!path) throw new TripError('missing_argument', '--store is required');
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
   const state = await loadState(path);
+  if (command === 'capacity') return analyseCapacity(state);
   if (command === 'evidence-impact') return analyseEvidenceImpact(state, await json(values.input));
   if (command === 'reminder-reconcile') { const q = linkageQuerySchema.safeParse(await json(values.input)); if (!q.success) throw new TripError('invalid_linkage_query', 'Supply explicit asOf'); return reconcileReminders(state, q.data.asOf); }
   if (command === 'readonly-view') return exportReadonlyView(state, await json(values.input));

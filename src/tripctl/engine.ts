@@ -1,3 +1,4 @@
+import { MAX_HISTORY_EVENTS } from './limits';
 import { rememberedBlocks } from './planMemory';
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
 export const TRIPCTL_CORE_VERSION = 10;
@@ -232,7 +233,7 @@ export async function apply(stateInput: unknown, mutationInput: unknown) {
     if (request.operation.type === 'apply_observation') observationDateChange(state.content, request.operation.observationId, request.at);
     else { if (Date.parse(request.at) !== Date.parse(request.operation.asOf)) throw new TripError('invalid_action_time', 'A reminder attempt must use its actual save timestamp as asOf; preview again before saving'); const id = request.operation.intentId; const action = reconcileReminders(state, request.at).items.find((i) => i.intentId === id)?.action; if (!action || action.actionKey !== request.operation.actionKey) throw new TripError('stale_reminder_action', 'Action expired or changed before this apply time'); }
   }
-  if (state.history.length >= 200) throw new TripError('history_full', 'Prototype history limit reached; retain state and upgrade storage before another change');
+  if (state.history.length >= MAX_HISTORY_EVENTS) throw new TripError('history_full', 'Prototype history limit reached; retain state and upgrade storage before another change');
   const proposal = await preview(state, request.operation, request.expectedRevision);
   if (proposal.previewToken !== request.previewToken) throw new TripError('stale_preview', 'State or operation changed; preview again');
   if (!proposal.canApply) throw new TripError('constraint_violation', proposal.reasonCodes.join(', '));

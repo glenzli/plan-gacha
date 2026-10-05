@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { MAX_HISTORY_EVENTS } from './limits';
 import { linkageSchema, linkageOperations } from './linkageSchema';
 import { historyImportSchema } from './historyImport';
 import { experienceMetadataSchema } from './experienceSchema';
@@ -49,7 +50,7 @@ export const mutationSchema = z.strictObject({
   acceptWeatherRisk: z.boolean().optional(),
 });
 const eventSchema = z.strictObject({ id: identifier, revision: z.number().int().positive(), operation: operationSchema, actor: z.string(), reason: z.string(), at: timestamp, requestHash: z.string(), before: contentSchema, after: contentSchema });
-export const tripStateSchema = z.strictObject({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), content: contentSchema, history: z.array(eventSchema).max(200) });
+export const tripStateSchema = z.strictObject({ schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), content: contentSchema, history: z.array(eventSchema).max(MAX_HISTORY_EVENTS) });
 export type TripState = z.infer<typeof tripStateSchema>;
 export type TripContent = z.infer<typeof contentSchema>;
 export type TripOperation = z.infer<typeof operationSchema>;

@@ -4,16 +4,16 @@ import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { apply, canonical, hash, parseState } from './engine';
 import { TripError, type TripState } from './schema';
-const MAX_BYTES = 16 * 1024 * 1024;
+import { MAX_STORE_BYTES } from './limits';
 export async function loadState(path: string) {
-  const info = await lstat(path); if (!info.isFile() || info.size > MAX_BYTES) throw new TripError('invalid_file', 'State must be a regular file smaller than 16 MiB');
+  const info = await lstat(path); if (!info.isFile() || info.size > MAX_STORE_BYTES) throw new TripError('invalid_file', 'State must be a regular file smaller than 16 MiB');
   try { return parseState(JSON.parse(await readFile(path, 'utf8'))); }
   catch (error) { if (error instanceof TripError) throw error; throw new TripError('invalid_state', 'Unable to parse journey state'); }
 }
 /** Atomic local replacement + fsync. External durability still needs an acknowledged versioned backup. */
 export async function atomicWrite(path: string, state: TripState) {
   const bytes = `${JSON.stringify(parseState(state), null, 2)}\n`;
-  if (Buffer.byteLength(bytes) > MAX_BYTES) throw new TripError('state_too_large', 'State exceeds prototype size limit');
+  if (Buffer.byteLength(bytes) > MAX_STORE_BYTES) throw new TripError('state_too_large', 'State exceeds prototype size limit');
   const temporary = `${path}.${randomUUID()}.tmp`; const handle = await open(temporary, 'wx', 0o600);
   try { await handle.writeFile(bytes); await handle.sync(); } finally { await handle.close(); }
   try { await rename(temporary, path); const directory = await open(dirname(path), 'r'); try { await directory.sync(); } finally { await directory.close(); } }

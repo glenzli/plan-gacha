@@ -1,4 +1,5 @@
 import * as z from 'zod/v4';
+import { MAX_STORE_BYTES, MAX_HISTORY_EVENTS } from './limits';
 import { linkageQuerySchema, readonlyViewInputSchema } from './linkageSchema';
 import { experienceSearchSchema, experienceSearchRequestSchema, guideDraftSchema } from './experienceSchema';
 import { operationSchema, mutationSchema, TripError } from './schema';
@@ -7,7 +8,7 @@ import { preparePlanningContext, planningSnapshotSchema, toolNames } from '../do
 import { analyseItinerary } from './itinerary';
 
 export const operatorContextSchema = z.strictObject({ asOf: z.iso.datetime({ offset: true }), dateId: planningSnapshotSchema.shape.todayId.optional(), candidateLimit: z.number().int().min(1).max(20).optional() });
-const commands = ['evidence-impact', 'reminder-reconcile', 'readonly-view', 'observation-token', 'experiences', 'experience-search', 'guide-draft', 'init', 'read', 'context', 'schema', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'validate-request', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'];
+const commands = ['capacity', 'evidence-impact', 'reminder-reconcile', 'readonly-view', 'observation-token', 'experiences', 'experience-search', 'guide-draft', 'init', 'read', 'context', 'schema', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'validate-request', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'];
 /** Discovery reflects the runtime schemas. Cross-field/state refinements still run in preview. */
 export function getOperatorSchema(operationType?: string) {
   const operations = operationSchema.options.map((option) => option.shape.type.value);
@@ -47,7 +48,7 @@ export async function readOperatorContext(stateInput: unknown, input: unknown) {
     memory: { ...state.content.memory, issues: state.content.memory.issues.filter((issue) => issue.status === 'open') },
     itinerary: itinerary ? { baselineDates: itinerary.baseline.days.map((day) => day.dateId), current: itinerary.current.filter((day) => !dateId || day.dateId === dateId), actual: itinerary.actual, commitments: itinerary.commitments, analysisScope: dateId && itinerary.current.some((day) => day.dateId === dateId) ? dateId : 'all_imported_days', analysis } : null,
     evaluation: result.data, candidates: { total: candidates.length, returned: applications.length, truncated: candidates.length > applications.length, items: applications },
-    capabilities: getOperatorSchema().operations, limits: { commits: 200, maximumStoreBytes: 16 * 1024 * 1024 },
+    capabilities: getOperatorSchema().operations, limits: { commits: MAX_HISTORY_EVENTS, maximumStoreBytes: MAX_STORE_BYTES },
     omitted: ['full audit snapshots (history/read)', 'baseline activities and nonselected current days (read)', 'resolved issues (read)'],
     limitations: ['not_a_transport_solver', 'rank_is_not_application_permission', 'snapshot_weather_has_no_verified_freshness', 'source_is_caller_supplied', 'decision_completion_is_not_order_or_refund_verification', 'no_automatic_branch_or_order_execution', 'no_browser_state_access', 'no_implicit_network_or_persistence'],
   };

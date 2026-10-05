@@ -21,6 +21,9 @@ await copyFile('docs/itinerary-core.md', `${output}/ITINERARY.md`);
 await copyFile('scripts/tripctl-portable.verify.mjs', `${output}/verify.mjs`);
 await copyFile('scripts/amap-walking-transport.py', `${output}/amap-walking-transport.py`);
 await copyFile('docs/tripctl.md', `${output}/README.md`);
+await copyFile('docs/history-storage.md', `${output}/HISTORY-STORAGE.md`);
+await copyFile('docs/presentation-contract.md', `${output}/PRESENTATION-CONTRACT.md`);
+await copyFile('scripts/history-capacity.verify.mjs', `${output}/history-capacity.verify.mjs`);
 await copyFile('node_modules/zod/LICENSE', `${output}/ZOD-LICENSE.txt`);
 const core = await import(pathToFileURL(`${output}/tripctl-lib.mjs`).href);
 const anonymous = JSON.parse(await readFile('fixtures/anonymous-itinerary.json', 'utf8'));
@@ -53,7 +56,7 @@ for (const draft of linkage.observationDrafts) await linkageSave({ type: 'record
 await writeFile(`${output}/LINKAGE-DEMO.json`, JSON.stringify(await core.analyseEvidenceImpact(linkageState, { asOf: linkage.asOf }), null, 2));
 await writeFile(`${output}/READONLY-DEMO.json`, JSON.stringify(await core.exportReadonlyView(linkageState, { asOf: linkage.asOf, generatedAt: linkage.generatedAt }), null, 2));
 
-const files = ['agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
+const files = ['HISTORY-STORAGE.md', 'PRESENTATION-CONTRACT.md', 'history-capacity.verify.mjs', 'agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));

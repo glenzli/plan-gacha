@@ -148,3 +148,7 @@ Optional `content.itinerary` now separates immutable baseline, current dated act
 ## Agent 联动与只读投影（v10）
 
 新增 evidence-impact、reminder-reconcile、observation-token、readonly-view，以及 schema 可发现的 record/apply_observation、提醒事件、bind_context。完整输入、CAS/readback流程和匿名演示见 [AGENT-LINKAGE.md](AGENT-LINKAGE.md)（源码 docs/agent-linkage.md）。提醒只输出契约，无外部派发；只读投影是带来源revision/hash的私有衍生缓存，非实时后端。
+
+## 容量检查与存储后续方案
+
+`node tripctl.mjs capacity --store journey.json` 只读返回原格式实际写出字节、历史快照占用和剩余提交名额；不会提高16MiB/200限制或迁移数据。历史增长结构、无损patch存储设计、CAS/回滚边界与独立合成长序列实验见 [history-storage.md](history-storage.md)（便携 `HISTORY-STORAGE.md`）。宿主展示适配字段的规范化设计与未实现边界见 [presentation-contract.md](presentation-contract.md)（便携 `PRESENTATION-CONTRACT.md`）。
