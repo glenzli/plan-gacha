@@ -24,3 +24,6 @@ export * from './readonlyView';
 export * from './historyImport';
 export * from './experienceSchema';
 export * from './experiences';
+
+export * from './presentationSchema';
+export * from './presentation';

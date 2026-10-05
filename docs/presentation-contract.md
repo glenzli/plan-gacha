@@ -1,47 +1,54 @@
-# 日程展示契约：权威记录与衍生投影
+# 正式只读展示接口（presentation contract 1 / core v10）
 
-状态：这是下一版正式 schema 的约束设计，**当前运行时没有名为 `presentationCatalog`、`historicaldailyRouteProjections` 或 `nightdatedlodgingArrangements` 的新存储字段/操作**。父宿主的同名适配字段仍属于 source adapter，不能宣称已经由 v10 schema 验证。当前可用的规范来源是 `readonly-view.organized`、`linkage.dayRoutes` 与已有 itinerary/住宿记录；两层不能互相覆盖或形成第二权威源。迁移真实适配字段需先取得其精确结构并以合成样例建立 adapter 映射，本轮没有读取或复制真实数据。
+`presentation-view` 已实现，输入/输出由 `presentationInputSchema`、`presentationOutputSchema` 验证；`schema` 返回可发现的 JSON Schema。它只读取同一权威 journey，不保存 catalog/历史投影/住宿展示缓存，不引入第二个写入口。旧 `readonly-view` 保留完整领域详情与兼容字段。
 
-## 所有投影的共同 envelope
+```sh
+node tripctl.mjs schema
+node tripctl.mjs presentation-view --store journey.json --input request.json
+```
 
-拟定 `presentationContractVersion:1` 独立于 journey schema、core版本和外层 Library version。每次导出必带：
+request：
+```json
+{"view":{"basis":"corrected_as_of"},"asOf":"2033-10-03T18:01:00+08:00","generatedAt":"2033-10-03T18:02:00+08:00","source":{"libraryFileId":"synthetic-current","libraryVersion":9,"retrievedAt":"2033-10-03T18:01:00+08:00"}}
+```
 
-- `readOnly:true, derived:true, saved:false, audience:'private_owner'`。
-- `source:{journeyId, revision, stateHash, hashScope, libraryFileId?, libraryVersion?, retrievedAt?}`；Library三项要么完整提供，要么明确未提供。native metadata 是宿主传入、未经核心独立认证。未来存储2使用有版本的 container/content/audit hash，不暗中复用 hash 名称。
-- `asOf, generatedAt, sourceTimeZone, automaticRefresh:false`；同一次投影中的目录、路线、住宿夜晚必须来自同一源 revision/hash。历史报告与现代估计以源事实时间各自标识，不能拿generatedAt当数据更新时间。
-- `gaps:[{code,refs,detail}]`：缺ID、缺日期、源冲突、未评估、旧分支、未知顺序均可见；不从自由文本猜出确定性关联、clock或完成状态。
+source可省略；提供时三字段必须完整。它是宿主声明的来源，不是核心的身份认证。历史请求改为 `"view":{"basis":"as_recorded","revision":1}`。未知字段、未知revision、时间冲突被拒绝。输出 `saved:false/readOnly:true/derived:true/audience:private_owner`。
 
-所有引用都用稳定业务ID及编码后的组合键，不用显示标题、数组位置或时间猜身份。相同 source revision + asOf + request → 相同语义投影。projection 缓存可以重建，不进入 business content，也不作为可写事实导入。
+## 三个已发布字段
 
-## presentationCatalog → 正规目录
+- **presentationCatalog**：`version:1`，`items` 是严格类型的展示摘要，包含ref/category/id/title/summary/dateIds/status/source，以及计划的结构化dateRestrictions、观测的basis/精确scope/claim/有效期/assessment。`unplacedRefs` 与 `inactiveAlternativeRefs` 保留缺日期关联的已知内容和失效分支。完整领域详情仍从同一输入的 `readonly-view.organized.catalog` 按相同ref读取；摘要不是新的业务事实。
+- **historicalDailyRouteProjections**：覆盖旅程每一天，含viewBasis/sourceRevision/sourceStateHash、确认routeId、basis/orderStatus、有序entries/skippedEntries、旧计划/actual/备选/问题/证据/预约/住宿夜晚引用及needsReview。默认是当前已保存知识下的有效路线；选as_recorded时则是该revision的历史路线。每个entry明确activityRef、类型、actual/planned/skipped/reported、timing/timingBasis、独立planningEstimate/estimateStatus、nightDate/lodgingId。completionVerified始终false，不从预订或记录存在推导已完成。
+- **nightDatedLodgingArrangements**：按精确nightDate呈现酒店、reservationId、routeEntryRef、timezone、来源revision/hash。status区分planned/reservation_reported/cancelled/unknown；liveStatusVerified始终false。取消行active:false，不会经酒店旧checkIn/out重新激活。只有明确route夜晚、尚无预订/酒店日期时仍产explicit_route_night；身份未定也保留该晚并提出具体问题。
 
-定义：`{version:1, entities:{plans,activities,reportedActivities,options,bookings,commitments,lodgings,facts,preferences,evidence,issues}, entityRefs, gaps}`。每个 entity 有 `{ref, entityType, id, journeyId, sourceRefs, payload}`；同一 ref 只解析到一个业务实体。payload 复用对应核心 schema，不把 source adapter 任意对象视为合格 payload。组合实体同时保留 planId/actualId，不靠字符串反解。
+字段采用上述规范大小写。父source adapter旧名 `historicaldailyRouteProjections`、`nightdatedlodgingArrangements` 应显式映射到规范字段；接口**不接收或自动迁移这些任意source对象**。输入仍只有权威state及查询。已有真实adapter资料需要父单writer用正式operation保存；不能把展示投影当source再次导入。
 
-与当前实现的映射：`readonly-view.organized.catalog` 是只读基础。旧snapshot备用plan、尚未typed的活动仍保留并给出缺口；显式 `bind_context` 负责事实/偏好/option/issue的日程关联。对反馈去重只接受明确 `supersedesFactId` 或同一规范来源key，不能因文本相似删掉历史。
+## 有效路线：baseline / current / actual
 
-**不会新增 `set_presentation_catalog` 之类的写操作。** 确认的新事实仍通过既有fact/preference/itinerary操作保存，展示目录从当前权威记录派生。这样不会每次反馈都把全目录再写入content与history。
+current代表最新保存的计划，可能仍等于baseline。展示优先顺序为：显式set_day_route → link_actual_change/结构化skip → 仍未关联的actual报告及待核旧计划 → 当前计划。不会为了展示而改写baseline/current或订单。
 
-## historicaldailyRouteProjections → 带时点的历史路线
+- 已有关联时，替代活动进入有效路线，被替代节点只在priorPlannedRefs/skippedEntries；尚未确认相对顺序时orderStatus=reported_order_unknown、position:null，不从数组位置编造先后。
+- 广义changed_plan尚缺关联时，原始actualReportRefs优先可见，needsReview及pendingQuestions指出缺项；已知局部变更只作用于对应活动。
+- set_day_route确认后，景观自驾→餐饮→新景点→当晚酒店按明确顺序显示。实际clock未知保持 `{}`；交通/观景估计单列，不能变成实际时间。旧湖可明确skipped而不再占主路线。
+- 新actual或link_actual_change纠正晚于路线确认时，已知路线保留并标needsReview。若纠正移除了旧route所引用的reported活动，catalog保留其历史快照引用，不因找不到latest activity使整个展示失败。agent须据新来源重新整理路线；接口不会自行推测替代项。
 
-拟定规范名称 `historicalDailyRouteProjections`；旧适配字段需要显式一对一映射和来源报告，不能静默改名覆盖。每条 `{journeyId,dateId,viewBasis,sourceRevision,sourceHash,knownAt,routeId,entryRefs,skippedEntryRefs,priorPlannedRefs,pendingActualReportRefs,needsReview}`：
+## 历史时点与来源身份
 
-- `viewBasis:'as_recorded'|'corrected_as_of'` 必填。前者按指定历史revision重建当时已知状态，不把后来的更正塞回过去；后者使用当前权威状态中截至asOf的明确纠正，并链接原报告/被替代路线。两者显示标签不同。
-- 路线 entry 引用同一次导出的catalog，明确 `position,status:actual|planned|skipped,purpose,activityRef,sourceRefs,timing?,planningEstimate?`。实际clock未知就缺省，估计不能填成实际time；景观自驾保留travel+viewing范围。新事实晚于路线确认时保留已知整条路，标needsReview与确切待处理报告。
-- `set_day_route` 已存在，当前是带来源的整条单日 route 声明；`link_actual_change` 记录实际替代关联。当前无“历史展示缓存写回”操作。历史快照及衍生投影只读导出，不能为渲染历史再append一条业务event。
-- 下一版若需频繁修改单个entry，应设计小范围 `amend_day_route(routeId,entryId,expectedRouteToken,patch,source)`；这是拟定操作，尚未实现。通过同一preview/CAS后只记录该项差异与显式顺序变更，保留旧route/entry IDs及来源。不能提前让宿主调用不存在的operation。
+输出分别提供 `source.authorityRevision/authorityStateHash`（实际读取的当前文件）和 `projectedRevision/projectedStateHash`（所选视图）。Library identity/version指前者，不把current文件的native version冒充历史revision的独立文件版本。hashScope为canonical-format-1-state。
 
-v10 `readonly-view` 只导出当前确认路线，尚无通用的任意历史revision投影CLI。后续需要受限、可核证的历史读取器，不能通过手工拼造rev0/history[]得到“过去状态”。
+as_recorded从完整审计prefix重建：revision0取最早before，其他revision取对应after，保留全部此前history，再走正式parseState。禁止拿current内容拼rev0/history[]，不混入后来的纠正。此过程只读，不创建或保存另一个权威journey。
 
-## nightdatedlodgingArrangements → 精确住宿夜晚
+`knownAt` 是选定prefix提交时间及typed memory/itinerary/linkage来源捕获时间的最大值；asOf早于knownAt会拒绝 `future_projection_revision`。`freshness.knowledgeBasis=selected_revision`，asOf仅在选定知识已经可用之后评估证据新鲜度，**不是按任意时刻过滤当前revision的隐式时间旅行**。需要较早知识就明确选历史revision。generatedAt不得早于asOf/来源读取时间。automaticRefresh:false、providerSyncAt:null。
 
-拟定规范名称 `nightDatedLodgingArrangements`；不是整个酒店catalog的复制。每条至少：`{journeyId,nightDate,timeZone,lodgingId?,reservationRef?,routeEntryRef?,status,sourceRefs,nightBasis,liveStatusVerified:false}`。
+## 引用和缺项
 
-- 酒店入住日期覆盖 `[checkIn,checkOut)`，前后连续日期按明确timezone解释。只有日期的住宿夜晚不擅自补checkin时刻。明确住宿nightDate优先于旧schedule误归日；冲突展示为gap，不能把次晚酒店归到前一天。
-- status区分 `planned|reservation_reported|cancelled|unknown`；需要当前有效reservation记录与来源才能归为reservation_reported。ticket/booking的done仍只是手续完成，不能推导已入住；route actual也不能证明平台订房状态。取消的记录保留审计但不生成活跃住宿夜晚。
-- 身份/夜晚来源独立：仅知道“市内住宿”时lodgingId未知、nightDate可已知；仍显示该夜并提出具体酒店身份缺口，不转为已订或删除整天路线。
-- 当前来源为snapshot lodging明确checkIn/checkOut、非cancelled reservations及 `set_day_route.entries[].nightDate/lodgingId`。当前 projection 对“所有reservation均取消但旧酒店级checkIn/out仍存在”的边界需要专项确认；设计要求不得静默重新激活已取消预订。
-- 后续如需宿主修正住宿安排，正式操作应只修改指定lodging/reservation/night关联，带expected token和source，继续保护已确认预订与未核实订单。**不新增每轮整体替换 `lodgingArrangements` 的大对象操作，不操作真实订房平台。**
+输出schema细化校验会拒绝跨revision/hash的日或住宿条目、重复/未知catalog引用、错夜引用、重复route entry、活跃cancelled预订。所有复合ref逐段编码；不以标题、数组位置或自由文本猜身份。catalog/路线/住宿来自同一次选定state。
 
-## 接入与版本验收
+pendingQuestions包含精确日期/地点的最终公告确认、备选集合/结束时间、路线交通证据、酒店身份、未绑定actual、新报告后的路线复核、取消预订仍在路线中的确认。gaps保留结构缺口。输出问题不等于自动提问或外部查询；宿主应先查询已有授权工具，向用户只追问影响决策且无法查得的缺项。
 
-当前宿主可立即消费v10 organized数据，但不能把这份设计当已发布schema。后续正式实现需：可发现输入/输出JSON Schema和状态细化校验；源适配合成fixtures；未知field/未知ID/错night/取消记录/时区/更正/跨revision混合拒绝；旧分支与缺口可见；导出零写入；同输入同输出；新操作只含小范围业务变化；过去视图不改变当前权威状态。导出后由宿主单独刷新私有Site，显示来源revision/hash/生成时间。此过程不是实时同步，也不自动获取浏览器数据。
+## 真实可运行链条与边界
+
+已实现：record_observation → evidence-impact（预测/局部/过期不会硬关全区）→ 显式preview/apply或stage/CAS → 共享日期限制；record_actual/link_actual_change/set_day_route → 有效展示；reminder intents/readback/begin/resolve → reminder-reconcile描述与unknown禁止重试；presentation-view → 严格结构的私有展示输入。
+
+仍由宿主执行：真实地图/天气读取、明确授权的提醒派发和原生关联读回、同一Library文件CAS、私有Site渲染/刷新。此接口不操作订单、不取消预订、不自动发布、不获取浏览器内存。存储v2仍为另一个待实现增量；本接口不迁移真实历史、不改变16MiB/200边界。
+
+便携 `verify.mjs` 通过真实独立CLI进程验证上述链条；PRESENTATION-DEMO.json展示current仍等于baseline但有效路线已变化，PRESENTATION-HISTORY-DEMO.json展示revision1的旧计划。PRESENTATION-SCHEMA.json供宿主验证/生成适配代码。所有演示与测试都是合成资料。

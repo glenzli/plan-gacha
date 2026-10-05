@@ -151,4 +151,4 @@ Optional `content.itinerary` now separates immutable baseline, current dated act
 
 ## 容量检查与存储后续方案
 
-`node tripctl.mjs capacity --store journey.json` 只读返回原格式实际写出字节、历史快照占用和剩余提交名额；不会提高16MiB/200限制或迁移数据。历史增长结构、无损patch存储设计、CAS/回滚边界与独立合成长序列实验见 [history-storage.md](history-storage.md)（便携 `HISTORY-STORAGE.md`）。宿主展示适配字段的规范化设计与未实现边界见 [presentation-contract.md](presentation-contract.md)（便携 `PRESENTATION-CONTRACT.md`）。
+`node tripctl.mjs capacity --store journey.json` 只读返回原格式实际写出字节、历史快照占用和剩余提交名额；不会提高16MiB/200限制或迁移数据。历史增长结构、无损patch存储设计、CAS/回滚边界与独立合成长序列实验见 [history-storage.md](history-storage.md)（便携 `HISTORY-STORAGE.md`）。已实现的正式只读presentation-view接口、输入输出schema及宿主边界见 [presentation-contract.md](presentation-contract.md)（便携 `PRESENTATION-CONTRACT.md`）。

@@ -110,3 +110,7 @@ Site 消费 days[].route.entryRefs → catalog.routeEntries；skippedEntryRefs �
 fixture 的当前有效路线为景观自驾（含观景停留）→东北菜午餐→纪念地→当晚城市酒店；旧湖被明确 skipped。所有地点、估计区间、时间和住宿均为合成，仅用于验证结构契约，未调用真实地图。
 
 provider估计仅在最新且唯一、匹配本日活动与当前内容token、live且成功未过期的transport证据支持下可用；最新失败不回退旧成功，fixture与开放公告不作交通时长来源。walking map_fact还核对精确起终点活动及内容绑定。交通范围必须与来源范围一致；观景stop始终标为explicit_planning_allowance。scenic缺少独立travel/stop区间会提出具体补估问题。住宿条目保留保存时的lodgingSnapshot并验证当晚，以便后来酒店资料修改仍可保留历史路线。
+
+## 正式展示出口
+
+`presentation-view` 提供schema可发现、运行时验证的presentationCatalog、historicalDailyRouteProjections和nightDatedLodgingArrangements，并区分当前权威文件与所选历史revision。父Site可直接消费这三个规范字段，完整领域详情继续用相同ref读取readonly-view。current仍等于baseline时，actual替代及确认路线也会优先；详见 [presentation-contract.md](presentation-contract.md)（便携PRESENTATION-CONTRACT.md），不再依赖未校验的source-adapter对象。

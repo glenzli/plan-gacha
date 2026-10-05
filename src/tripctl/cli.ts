@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { MAX_STORE_BYTES } from './limits';
+import { exportPresentationView } from './presentation';
 import { analyseCapacity } from './capacity';
 import { analyseEvidenceImpact } from './evidenceImpact';
 import { reconcileReminders } from './reminderReconcile';
@@ -30,6 +31,7 @@ async function main() {
   if (!path) throw new TripError('missing_argument', '--store is required');
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
   const state = await loadState(path);
+  if (command === 'presentation-view') return exportPresentationView(state, await json(values.input));
   if (command === 'capacity') return analyseCapacity(state);
   if (command === 'evidence-impact') return analyseEvidenceImpact(state, await json(values.input));
   if (command === 'reminder-reconcile') { const q = linkageQuerySchema.safeParse(await json(values.input)); if (!q.success) throw new TripError('invalid_linkage_query', 'Supply explicit asOf'); return reconcileReminders(state, q.data.asOf); }
