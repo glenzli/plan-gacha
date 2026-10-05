@@ -70,3 +70,6 @@ pendingQuestions包含精确日期/地点的最终公告确认、备选集合/�
 可复现演示：`arrangement-scenario.json` → importOperation/preparationOperations → preview(operation) → validate-request → stage → verify → presentation-view(contractVersion:2)。ARRANGEMENT-DEMO.json 展示三家酒店、Oct2 原 note 餐饮、Oct3 没有 typed day 的酒店报告、Oct4 没有 typed day 的景观公路计划目标；ARRANGEMENT-HISTORY-DEMO.json 展示补录前仍未映射的原文。verify.mjs 使用真实独立 CLI 进程执行这条链路，stage 后原 store 字节不变。
 
 coreVersion=11 会拒绝 v5–v10 未提交的旧 preview token，必须重新预览；原状态/hash/history 与已提交 idempotency receipt 仍兼容。journey schemaVersion 仍为 1。四个原始 stateless MCP 工具未扩展；新增受管操作通过 CLI/library 使用。
+
+
+确认路线的报告处理判定：changed_plan 若有有效 link_actual_change，或同一报告的所有最新 routeActivities 节点均被同日确认路线按精确 context/activity ID 引用、且来源不晚于路线确认，则不再是 unlinked。仅有新路线时间、无关节点、未引用的 context 或只引用部分节点都不足以消除提示；后续报告/纠正仍触发复核。只读 organized.route 是 needsReview 和 pendingActualReportRefs 的唯一判定来源，presentation 原样使用；未处理报告同时产生 unlinked_actual_change 核对项。此规则解释展示路线，不修改原报告、基线、计划或订单，也不补造 link_actual_change。此项仅修复投影，coreVersion 维持 11，既有预览 token 仍有效。
