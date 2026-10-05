@@ -2,7 +2,8 @@ import * as z from 'zod/v4';
 import { evidenceSourceSchema } from '../domain/evidence';
 import { planningSnapshotSchema } from '../domain/planningTools';
 import { itineraryActivitySchema } from './itinerarySchema';
-import { routeEstimateSchema } from './linkageSchema';
+import { tripDisplayOutputSchema } from './arrangementSchema';
+import { routeActivitySchema, routeEstimateSchema } from './linkageSchema';
 const date = planningSnapshotSchema.shape.todayId;
 const stamp = z.iso.datetime({ offset: true });
 const hash = z.string().regex(/^sha256:[0-9a-f]{64}$/);
@@ -10,6 +11,7 @@ const ref = z.string().min(1).max(1200);
 const refs = z.array(ref);
 const library = z.strictObject({ libraryFileId: z.string().min(1), libraryVersion: z.number().int().positive(), retrievedAt: stamp });
 export const presentationInputSchema = z.strictObject({
+  contractVersion: z.union([z.literal(1), z.literal(2)]).optional(),
   asOf: stamp, generatedAt: stamp, source: library.optional(),
   view: z.discriminatedUnion('basis', [z.strictObject({ basis: z.literal('corrected_as_of') }), z.strictObject({ basis: z.literal('as_recorded'), revision: z.number().int().nonnegative() })]),
 });
@@ -28,7 +30,7 @@ const route = z.strictObject({ dateId: date, viewBasis: z.enum(['corrected_as_of
 const night = z.strictObject({ ref, dateId: date, nightDate: date, timeZone: z.string().nullable(), lodgingRef: ref.nullable(), lodgingId: z.string().nullable(), reservationId: z.string().nullable(), routeEntryRef: ref.nullable(), title: z.string(),
   status: z.enum(['planned', 'reservation_reported', 'cancelled', 'unknown']), active: z.boolean(), nightBasis: z.enum(['reservation', 'explicit_stay_nights', 'schedule_only_night_unverified', 'explicit_route_night']), liveStatusVerified: z.literal(false), sourceRevision: z.number().int().nonnegative(), sourceStateHash: hash,
 });
-export const presentationOutputSchema = z.strictObject({
+const presentationBaseSchema = z.strictObject({
   presentationContractVersion: z.literal(1), readOnly: z.literal(true), derived: z.literal(true), saved: z.literal(false), audience: z.literal('private_owner'),
   source: z.strictObject({ journeyId: z.string(), authorityRevision: z.number().int().nonnegative(), authorityStateHash: hash, projectedRevision: z.number().int().nonnegative(), projectedStateHash: hash, hashScope: z.literal('canonical-format-1-state'), library: library.nullable(), metadataIsCallerSupplied: z.literal(true) }),
   freshness: z.strictObject({ asOf: stamp, generatedAt: stamp, knownAt: stamp.nullable(), automaticRefresh: z.literal(false), providerSyncAt: z.null(), knowledgeBasis: z.literal('selected_revision'), asOfUsage: z.literal('evidence_freshness_after_known_sources') }),
@@ -38,7 +40,8 @@ export const presentationOutputSchema = z.strictObject({
   pendingQuestions: z.array(z.strictObject({ ref, code: z.string(), text: z.string(), dateIds: z.array(date) })),
   gaps: z.array(z.strictObject({ code: z.string(), ref, detail: z.string() })),
   limitations: z.array(z.string()),
-}).superRefine((p, ctx) => {
+});
+const validatePresentation = (p: z.infer<typeof presentationBaseSchema> | Omit<z.infer<typeof presentationBaseSchema>, 'presentationContractVersion'>, ctx: z.RefinementCtx) => {
   const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
   const known = new Set(p.presentationCatalog.items.map((r) => r.ref)); const nights = new Set(p.nightDatedLodgingArrangements.map((r) => r.ref));
   if (known.size !== p.presentationCatalog.items.length || nights.size !== p.nightDatedLodgingArrangements.length) fail('Presentation references must be unique');
@@ -60,5 +63,37 @@ export const presentationOutputSchema = z.strictObject({
     if (n.status === 'cancelled' && n.active) fail('Cancelled reservations must not be active');
   }
   for (const q of p.pendingQuestions) { checkRefs([q.ref]); if (q.dateIds.some((d) => !p.trip.dateIds.includes(d))) fail('Question references an unknown date'); }
+};
+export const presentationOutputSchema = presentationBaseSchema.superRefine(validatePresentation);
+export const presentationOutputV2Schema = presentationBaseSchema.extend({
+  presentationContractVersion: z.literal(2), tripDisplayMetadata: tripDisplayOutputSchema,
+  routeActivityContexts: z.array(routeActivitySchema),
+  reservationCommitmentCoverage: z.array(z.strictObject({ commitmentId: z.string(), commitmentRef: ref, dateId: date, originalText: z.string(), status: z.enum(['explicitly_mapped', 'unmapped', 'conflict']), matches: z.array(z.strictObject({ lodgingId: z.string(), reservationId: z.string(), nightRefs: refs, source: evidenceSourceSchema, bindingSource: evidenceSourceSchema, paymentStatus: z.literal('unknown'), checkInStatus: z.literal('unknown') })) })),
+  adapterReplacement: z.strictObject({ automatic: z.literal(false), requiresHostEquivalenceCheck: z.literal(true), preserveUnknownFields: z.literal(true), catalogScope: z.literal('single_journey_entities'), displayMetadataScope: z.literal('one_entry_for_host_trip_index') }),
+}).superRefine(validatePresentation).superRefine((p, ctx) => {
+  const fail = (message: string) => ctx.addIssue({ code: 'custom', message });
+  const metadata = p.tripDisplayMetadata;
+  if (metadata.tripId !== p.source.journeyId || metadata.sourceRevision !== p.source.projectedRevision || metadata.sourceStateHash !== p.source.projectedStateHash) fail('Mixed identity or revision display metadata');
+  if (new Set(p.reservationCommitmentCoverage.map((r) => r.commitmentId)).size !== p.reservationCommitmentCoverage.length) fail('Duplicate reservation coverage');
+  const encode = (kind: string, ...ids: string[]) => kind + ':' + ids.map(encodeURIComponent).join(':');
+  for (const c of p.reservationCommitmentCoverage) {
+    const original = p.presentationCatalog.items.find((i) => i.ref === c.commitmentRef && i.category === 'commitments' && i.id === c.commitmentId);
+    if (!original || c.commitmentRef !== encode('commitment', c.commitmentId) || !original.dateIds.includes(c.dateId) || original.summary !== c.originalText) fail('Unknown or altered original reservation commitment');
+    if (c.status !== (c.matches.length === 1 ? 'explicitly_mapped' : c.matches.length ? 'conflict' : 'unmapped')) fail('Coverage status must match explicit mapping cardinality');
+    const keys = c.matches.map((m) => encode('reservation', m.lodgingId, m.reservationId));
+    if (new Set(keys).size !== keys.length) fail('Duplicate reservation mapping');
+    for (const m of c.matches) {
+      if (!m.nightRefs.length || new Set(m.nightRefs).size !== m.nightRefs.length || m.nightRefs.some((key) => !p.nightDatedLodgingArrangements.some((n) => n.ref === key && n.lodgingId === m.lodgingId && n.reservationId === m.reservationId)) || !m.nightRefs.some((key) => p.nightDatedLodgingArrangements.some((n) => n.ref === key && n.nightDate === c.dateId))) fail('Unknown or mismatched reservation night mapping');
+      if (m.source.kind === 'provider' || m.bindingSource.kind === 'provider' || Date.parse(m.source.observedAt) > Date.parse(m.bindingSource.observedAt) || Date.parse(m.bindingSource.observedAt) > Date.parse(p.freshness.asOf)) fail('Invalid reservation mapping provenance');
+    }
+  }
+  if (new Set(p.routeActivityContexts.map((r) => r.id)).size !== p.routeActivityContexts.length) fail('Duplicate context record');
+  for (const c of p.routeActivityContexts) {
+    const key = encode('context-activity', c.id, c.activity.id);
+    if (!p.trip.dateIds.includes(c.dateId) || !p.presentationCatalog.items.some((i) => i.ref === key && i.dateIds.includes(c.dateId)) || c.actualReportId && !p.presentationCatalog.items.some((i) => i.ref === encode('actual', c.actualReportId!) && i.category === 'actualReports' && i.dateIds.includes(c.dateId))) fail('Unknown context activity or original report reference');
+    if (c.source.kind === 'provider' || c.activity.source.kind === 'provider' || Date.parse(c.source.observedAt) > Date.parse(p.freshness.asOf)) fail('Invalid route context provenance');
+    for (const day of p.historicalDailyRouteProjections) for (const e of [...day.entries, ...day.skippedEntries]) if (e.activityRef === key && (day.dateId !== c.dateId || e.status !== (c.role === 'planned_target' ? 'planned' : 'reported'))) fail('Route entry promoted or moved a context activity');
+  }
 });
+export type PresentationV2 = z.infer<typeof presentationOutputV2Schema>;
 export type Presentation = z.infer<typeof presentationOutputSchema>;

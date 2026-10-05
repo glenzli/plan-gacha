@@ -27,3 +27,6 @@ export * from './experiences';
 
 export * from './presentationSchema';
 export * from './presentation';
+
+export * from './arrangementSchema';
+export * from './arrangements';

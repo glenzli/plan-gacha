@@ -57,10 +57,23 @@ await writeFile(`${output}/LINKAGE-DEMO.json`, JSON.stringify(await core.analyse
 await writeFile(`${output}/READONLY-DEMO.json`, JSON.stringify(await core.exportReadonlyView(linkageState, { asOf: linkage.asOf, generatedAt: linkage.generatedAt }), null, 2));
 await writeFile(`${output}/PRESENTATION-DEMO.json`, JSON.stringify(await core.exportPresentationView(linkageState, { view: { basis: 'corrected_as_of' }, asOf: linkage.asOf, generatedAt: linkage.generatedAt }), null, 2));
 await writeFile(`${output}/PRESENTATION-HISTORY-DEMO.json`, JSON.stringify(await core.exportPresentationView(linkageState, { view: { basis: 'as_recorded', revision: 1 }, asOf: linkage.asOf, generatedAt: linkage.generatedAt }), null, 2));
+await copyFile('fixtures/arrangement-scenario.json', `${output}/arrangement-scenario.json`);
+const arrangement = JSON.parse(await readFile('fixtures/arrangement-scenario.json', 'utf8'));
+let arrangementState = core.initialize(arrangement.snapshot);
+const arrangementSave = async (operation, id) => {
+  const p = await core.preview(arrangementState, operation, arrangementState.revision);
+  arrangementState = (await core.apply(arrangementState, core.mutationFromPreview(p, { idempotencyKey: id, actor: 'synthetic-demo', reason: 'Explicit arrangement reconciliation', at: arrangement.asOf }))).state;
+};
+await arrangementSave(arrangement.importOperation, 'arrangement-import');
+for (const [n, op] of arrangement.preparationOperations.entries()) await arrangementSave(op, 'arrangement-report-' + n);
+const beforeArrangement = arrangementState.revision;
+await arrangementSave(arrangement.operation, 'arrangement-reconcile');
+await writeFile(`${output}/ARRANGEMENT-DEMO.json`, JSON.stringify(await core.exportPresentationView(arrangementState, { contractVersion: 2, view: { basis: 'corrected_as_of' }, asOf: arrangement.asOf, generatedAt: arrangement.generatedAt }), null, 2));
+await writeFile(`${output}/ARRANGEMENT-HISTORY-DEMO.json`, JSON.stringify(await core.exportPresentationView(arrangementState, { contractVersion: 2, view: { basis: 'as_recorded', revision: beforeArrangement }, asOf: arrangement.asOf, generatedAt: arrangement.generatedAt }), null, 2));
 const discovery = core.getOperatorSchema();
-await writeFile(`${output}/PRESENTATION-SCHEMA.json`, JSON.stringify({ input: discovery.presentationInput, output: discovery.presentationOutput }, null, 2));
+await writeFile(`${output}/PRESENTATION-SCHEMA.json`, JSON.stringify({ input: discovery.presentationInput, output: discovery.presentationOutput, outputV2: discovery.presentationOutputV2, tripDisplayOutput: discovery.tripDisplayOutput }, null, 2));
 
-const files = ['PRESENTATION-DEMO.json', 'PRESENTATION-HISTORY-DEMO.json', 'PRESENTATION-SCHEMA.json', 'HISTORY-STORAGE.md', 'PRESENTATION-CONTRACT.md', 'history-capacity.verify.mjs', 'agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
+const files = ['arrangement-scenario.json', 'ARRANGEMENT-DEMO.json', 'ARRANGEMENT-HISTORY-DEMO.json', 'PRESENTATION-DEMO.json', 'PRESENTATION-HISTORY-DEMO.json', 'PRESENTATION-SCHEMA.json', 'HISTORY-STORAGE.md', 'PRESENTATION-CONTRACT.md', 'history-capacity.verify.mjs', 'agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));

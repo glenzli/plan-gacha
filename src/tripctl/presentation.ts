@@ -1,12 +1,14 @@
 import { hash, parseState } from './engine';
 import { TripError } from './schema';
 import { exportReadonlyView } from './readonlyView';
-import { presentationInputSchema, presentationOutputSchema, type Presentation } from './presentationSchema';
+import { presentationInputSchema, presentationOutputSchema, presentationOutputV2Schema, type Presentation, type PresentationV2 } from './presentationSchema';
+import { exportTripDisplay } from './arrangements';
+import { reservationBindingSchema } from './arrangementSchema';
 const ref = (kind: string, ...parts: string[]) => kind + ':' + parts.map(encodeURIComponent).join(':');
 const text = (x: unknown) => typeof x === 'string' ? x : '';
 const object = (x: unknown): Record<string, unknown> => x && typeof x === 'object' ? x as Record<string, unknown> : {};
 /** One typed read-only interface. Historical views are reconstructed from the same audit prefix. */
-export async function exportPresentationView(input: unknown, request: unknown): Promise<Presentation> {
+export async function exportPresentationView(input: unknown, request: unknown): Promise<Presentation | PresentationV2> {
   const parsed = presentationInputSchema.safeParse(request); if (!parsed.success) throw new TripError('invalid_presentation_request', 'Use explicit view basis, asOf/generatedAt and an optional complete Library source');
   const q = parsed.data; const authority = parseState(input); const revision = q.view.basis === 'as_recorded' ? q.view.revision : authority.revision;
   if (revision > authority.revision) throw new TripError('unknown_revision', 'Historical revision is outside the authoritative audit');
@@ -20,7 +22,7 @@ export async function exportPresentationView(input: unknown, request: unknown): 
       else collectCaptures(item);
     }
   };
-  [state.content.memory, state.content.itinerary, state.content.linkage].forEach(collectCaptures);
+  [state.content.memory, state.content.itinerary, state.content.linkage, state.content.displayMetadata, state.content.snapshot.trip.lodgings].forEach(collectCaptures);
   const knownAt = captureTimes.reduce<string | null>((last, at) => !last || Date.parse(at) > Date.parse(last) ? at : last, null);
   if (knownAt && Date.parse(knownAt) > Date.parse(q.asOf)) throw new TripError('future_projection_revision', 'Select a revision already recorded by asOf; do not mix later corrections into an earlier view');
   const view = await exportReadonlyView(state, { asOf: q.asOf, generatedAt: q.generatedAt, ...(q.source ? { source: q.source } : {}) });
@@ -29,9 +31,9 @@ export async function exportPresentationView(input: unknown, request: unknown): 
   for (const [category, entries] of Object.entries(organized.catalog)) for (const row of entries) {
     const r = row as unknown as Record<string, unknown>; const association = object(r.association); const scope = object(r.scope);
     const dates = Array.isArray(r.dateIds) ? r.dateIds : Array.isArray(association.dateIds) ? association.dateIds : [r.dateId || scope.dateId].filter(Boolean);
-    catalog.push({ ref: text(r.ref), category: category as Presentation['presentationCatalog']['items'][number]['category'], id: text(r.id || r.activityId) || null,
+    catalog.push({ ref: text(r.ref), category: (category === 'routeActivities' ? 'activities' : category) as Presentation['presentationCatalog']['items'][number]['category'], id: text(r.id || r.activityId) || null,
       title: text(r.title || r.name || r.text || r.summary || r.proposal || r.id), summary: text(r.note || r.text || r.summary || r.proposal || r.description), dateIds: dates.filter((d): d is string => typeof d === 'string' && view.trip.dates.includes(d)),
-      status: text(r.status || r.disposition || object(r.eligibility).status) || null, source: r.source ? r.source as Presentation['presentationCatalog']['items'][number]['source'] : null,
+      status: text(r.status || r.role || r.disposition || object(r.eligibility).status) || null, source: r.source ? r.source as Presentation['presentationCatalog']['items'][number]['source'] : null,
       dateRestrictions: category === 'plans' ? { closedDates: (r.closedDates || []) as string[], availableDates: (r.availableDates || []) as string[] } : null,
       evidence: category === 'evidence' ? { basis: text(r.basis), scopeDate: text(scope.dateId), scopeComponent: scope.component as 'whole_plan' | 'part', claimKind: text(object(r.claim).kind) || null, claimValue: text(object(r.claim).state || object(r.claim).risk) || null, assessmentStatus: text(r.status), reasonCodes: r.reasonCodes as string[], publishedAt: text(r.publishedAt) || null, observedAt: text(r.observedAt), expiresAt: text(r.expiresAt) } : null });
   }
@@ -41,7 +43,7 @@ export async function exportPresentationView(input: unknown, request: unknown): 
     const r = routeEntries.get(key); const a = planned.get(key); const actual = reported.get(key);
     if (!r && !a && !actual) throw new TripError('invalid_presentation_reference', 'Effective route references an unknown activity');
     const typed = r?.activitySnapshot || a?.typed || actual;
-    const activityRef = r ? r.activity.kind === 'planned' ? ref('activity', r.activity.planId, r.activity.activityId) : ref('reported-activity', r.activity.activityId) : key;
+    const activityRef = r ? r.activity.kind === 'planned' ? ref('activity', r.activity.planId, r.activity.activityId) : r.activity.kind === 'context' ? ref('context-activity', r.activity.contextId, r.activity.activityId) : ref('reported-activity', r.activity.activityId) : key;
     return { ref: key, position, activityRef, title: r?.title ?? a?.title ?? actual?.title ?? '', kind: r ? r.type as 'route_scenery' : typed?.kind || 'unknown', status: r?.status || (actual ? 'reported' : 'planned'), completionVerified: false,
       timing: r?.timing || typed?.timing || {}, timingBasis: r ? r.timingBasis as 'planned_activity' : actual ? 'reported_activity' : 'planned_activity',
       planningEstimate: r?.planningEstimate || null, estimateStatus: r?.estimateStatus || 'missing', planningEstimatesAreActuals: false, route: typed?.route || null,
@@ -89,5 +91,21 @@ export async function exportPresentationView(input: unknown, request: unknown): 
     limitations: ['Read-only projection; no automatic external lookup, reminder dispatch or Site refresh', 'Catalog is a typed display summary; readonly-view organized.catalog retains complete domain details using the same refs', 'Historical source Library version belongs to the authority file; projected revision/hash identifies the selected audit prefix', 'Actual/reported entries do not prove completion; planning estimates are not actual clocks'],
   };
   const result = presentationOutputSchema.safeParse(output); if (!result.success) throw new TripError('invalid_presentation', 'Derived presentation violated its schema or reference/revision contract: ' + result.error.issues.map((i) => i.message).join('; '));
-  return result.data;
+  if (q.contractVersion !== 2) return result.data;
+  const coverage: PresentationV2['reservationCommitmentCoverage'] = (c.itinerary?.commitments || []).filter((r) => r.kind === 'reservation').map((row) => {
+    const matches: PresentationV2['reservationCommitmentCoverage'][number]['matches'] = [];
+    for (const hotel of c.snapshot.trip.lodgings) for (const reservation of hotel.reservations || []) {
+      const b = reservationBindingSchema.safeParse(reservation.tripctlArrangement);
+      if (b.success && b.data.commitmentIds.includes(row.id)) matches.push({ lodgingId: hotel.id, reservationId: reservation.id, nightRefs: nights.filter((n) => n.lodgingId === hotel.id && n.reservationId === reservation.id).map((n) => n.ref), source: b.data.source, bindingSource: b.data.bindingSource, paymentStatus: 'unknown', checkInStatus: 'unknown' });
+    }
+    return { commitmentId: row.id, commitmentRef: ref('commitment', row.id), dateId: row.dateId, originalText: row.text, status: matches.length === 1 ? 'explicitly_mapped' : matches.length ? 'conflict' : 'unmapped', matches };
+  });
+  const v2 = { ...result.data, presentationContractVersion: 2 as const, tripDisplayMetadata: exportTripDisplay(state), routeActivityContexts: c.linkage?.routeActivities || [], reservationCommitmentCoverage: coverage, adapterReplacement: { automatic: false as const, requiresHostEquivalenceCheck: true as const, preserveUnknownFields: true as const, catalogScope: 'single_journey_entities' as const, displayMetadataScope: 'one_entry_for_host_trip_index' as const } };
+  for (const row of coverage.filter((r) => r.status !== 'explicitly_mapped')) {
+    const key = ref('question', 'reservation-commitment-unmapped', row.commitmentId); const message = 'This reservation commitment has no explicit canonical hotel/reservation mapping. Preserve its original text; confirm its kind and identity before mapping it to nights.';
+    v2.pendingQuestions.push({ ref: key, code: 'reservation_commitment_unmapped', text: message, dateIds: [row.dateId] });
+    v2.presentationCatalog.items.push({ ref: key, category: 'pending', id: null, title: message, summary: message, dateIds: [row.dateId], status: 'unresolved', source: null, dateRestrictions: null, evidence: null });
+    v2.historicalDailyRouteProjections.find((d) => d.dateId === row.dateId)?.questionRefs.push(key);
+  }
+  return presentationOutputV2Schema.parse(v2);
 }

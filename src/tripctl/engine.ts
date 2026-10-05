@@ -1,7 +1,9 @@
 import { MAX_HISTORY_EVENTS } from './limits';
 import { rememberedBlocks } from './planMemory';
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
-export const TRIPCTL_CORE_VERSION = 10;
+export const TRIPCTL_CORE_VERSION = 11;
+import { arrangementOperationSchema } from './arrangementSchema';
+import { changeArrangements, validateArrangements, isDisplayMetadataOnly } from './arrangements';
 import { emptyLinkage, linkageOperationSchema } from './linkageSchema';
 import { appendObservation, observationDateChange, observationRestriction } from './observations';
 import { changeReminders, validateLinkage } from './reminders';
@@ -62,6 +64,7 @@ export function parseState(input: unknown): TripState {
   }
   validateLinkage(state);
   validateExperiences(state);
+  validateArrangements(state);
   return state;
 }
 export function initialize(snapshot: unknown): TripState {
@@ -100,8 +103,10 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   if (!parsed.success) throw new TripError('invalid_operation', 'Operation schema is invalid');
   if (state.revision !== expectedRevision) throw new TripError('revision_conflict', `Expected revision ${expectedRevision}, current ${state.revision}`);
   const operation = parsed.data; const next = structuredClone(state.content); let detail: unknown = null; const blocks: string[] = []; let weatherOverride = false;
-  if (state.content.snapshot.trip.archived && operation.type !== 'import_history' && operation.type !== 'undo_history_import') blocks.push('archived_trip');
-  if (linkageOperationSchema.safeParse(operation).success && operation.type !== 'apply_observation') {
+  if (state.content.snapshot.trip.archived && operation.type !== 'import_history' && operation.type !== 'undo_history_import' && !isDisplayMetadataOnly(operation) && !(operation.type === 'undo' && state.history.at(-1) && isDisplayMetadataOnly(state.history.at(-1)!.operation))) blocks.push('archived_trip');
+  if (arrangementOperationSchema.safeParse(operation).success) {
+    detail = changeArrangements(state, next, arrangementOperationSchema.parse(operation));
+  } else if (linkageOperationSchema.safeParse(operation).success && operation.type !== 'apply_observation') {
     next.linkage ||= emptyLinkage();
     if (operation.type === 'record_observation') { const result = appendObservation(next, operation.record); detail = result; if (!result.added) blocks.push('observation_already_recorded'); }
     else { const result = changeReminders(state, next, linkageOperationSchema.parse(operation)); detail = result; if ('added' in result && result.added === false) blocks.push('linkage_event_already_recorded'); }
@@ -213,7 +218,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
     const last = state.history.at(-1);
     if (!last || last.id !== operation.commitId) throw new TripError('undo_conflict', 'Only the latest commit can be undone without overwriting subsequent changes');
     if (canonical(last.before.linkage) !== canonical(last.after.linkage)) blocks.push('linkage_undo_forbidden');
-    delete next.itinerary; delete next.linkage; Object.assign(next, structuredClone(last.before));
+    delete next.itinerary; delete next.linkage; delete next.displayMetadata; Object.assign(next, structuredClone(last.before));
   }
   contentSchema.parse(next);
   const canApply = blocks.length === 0;

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { exportTripDisplay } from './arrangements';
 import { MAX_STORE_BYTES } from './limits';
 import { exportPresentationView } from './presentation';
 import { analyseCapacity } from './capacity';
@@ -31,6 +32,7 @@ async function main() {
   if (!path) throw new TripError('missing_argument', '--store is required');
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
   const state = await loadState(path);
+  if (command === 'trip-display') return exportTripDisplay(state);
   if (command === 'presentation-view') return exportPresentationView(state, await json(values.input));
   if (command === 'capacity') return analyseCapacity(state);
   if (command === 'evidence-impact') return analyseEvidenceImpact(state, await json(values.input));
@@ -53,7 +55,7 @@ async function main() {
   if (command === 'preview') { const revision = Number(values.revision); if (values.revision === undefined || !Number.isSafeInteger(revision) || revision < 0) throw new TripError('missing_revision', '--revision must be an explicit nonnegative integer'); return { ok: true, ...await preview(state, await json(values.input), revision) }; }
   if (command === 'apply') return { ok: true, ...await commitStore(path, await json(values.input)) };
   if (command === 'stage') { if (!values.output) throw new TripError('missing_argument', '--output is required'); return { ok: true, ...await stageStore(path, values.output, await json(values.input)) }; }
-  if (command === 'validate-request') return { ok: true, receipt: (await apply(state, await json(values.input))).receipt, saved: false };
+  if (command === 'validate-request') { const result = await apply(state, await json(values.input)); return { ok: true, receipt: result.receipt, capacity: analyseCapacity(result.state), saved: false }; }
   throw new TripError('unknown_command', 'Use --help to discover supported commands');
 }
 main().then((result) => process.stdout.write(`${JSON.stringify(result)}\n`)).catch((error) => {

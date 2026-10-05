@@ -1,0 +1,421 @@
+{
+  "snapshot": {
+    "schemaVersion": 1,
+    "todayId": "2033-10-05",
+    "trip": {
+      "id": "agent-linkage-synthetic",
+      "name": "Anonymous linkage scenario",
+      "startDateStr": "2033-10-02",
+      "tripDays": 6,
+      "plans": [
+        {
+          "id": "walking-tour",
+          "name": "Walking tour; date and meeting time unknown",
+          "priority": "backup"
+        }
+      ],
+      "schedule": {},
+      "lodgings": [
+        {
+          "id": "city-night",
+          "name": "Anonymous city hotel",
+          "checkIn": "2033-10-02",
+          "checkOut": "2033-10-03",
+          "opaqueHotelField": {
+            "keep": "hotel-extension"
+          }
+        },
+        {
+          "id": "next-night",
+          "name": "Anonymous next-night hotel",
+          "checkIn": "2033-10-03",
+          "checkOut": "2033-10-04",
+          "reservations": [
+            {
+              "id": "stay-c",
+              "checkIn": "2033-10-03",
+              "checkOut": "2033-10-04",
+              "status": "booked",
+              "opaqueReservationField": {
+                "keep": "reservation-extension"
+              }
+            }
+          ]
+        }
+      ],
+      "checklistText": "Confirm hotel identity and final daily notice",
+      "checklistState": {},
+      "archived": false
+    },
+    "weatherData": {}
+  },
+  "importOperation": {
+    "type": "import_itinerary",
+    "timeZone": "Asia/Shanghai",
+    "days": [
+      {
+        "dateId": "2033-10-02",
+        "planId": "first-day",
+        "title": "Late arrival then memorial",
+        "activities": [
+          {
+            "id": "depart",
+            "title": "Original scenic autumn drive",
+            "kind": "transfer",
+            "timing": {
+              "start": "07:30"
+            },
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            },
+            "route": {
+              "mode": "driving",
+              "from": {
+                "label": "Anonymous departure town"
+              },
+              "to": {
+                "label": "Anonymous scenic road endpoint"
+              }
+            }
+          },
+          {
+            "id": "lake",
+            "title": "Original crowded lake plan",
+            "kind": "visit",
+            "timing": {},
+            "source": {
+              "kind": "synthetic",
+              "reference": "synthetic:agent-linkage-only",
+              "observedAt": "2033-10-01T12:00:00+08:00"
+            }
+          }
+        ]
+      }
+    ],
+    "constraints": [],
+    "commitments": [
+      {
+        "id": "reservation-hotel-a-night-20331004",
+        "kind": "reservation",
+        "dateId": "2033-10-04",
+        "text": "Hotel A; check-in Oct 4, check-out Oct 5; booking reported, actual check-in/payment unknown",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:original-report",
+          "observedAt": "2033-10-04T12:00:00+08:00"
+        }
+      },
+      {
+        "id": "unmapped-ticket",
+        "kind": "reservation",
+        "dateId": "2033-10-04",
+        "text": "Reservation kind still needs confirmation; do not infer a hotel",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:original-report",
+          "observedAt": "2033-10-04T12:00:00+08:00"
+        }
+      }
+    ],
+    "options": [],
+    "decisionPoints": [],
+    "source": {
+      "kind": "synthetic",
+      "reference": "synthetic:agent-linkage-only",
+      "observedAt": "2033-10-01T12:00:00+08:00"
+    }
+  },
+  "preparationOperations": [
+    {
+      "type": "record_actual",
+      "record": {
+        "id": "meal-note",
+        "dateId": "2033-10-02",
+        "kind": "note",
+        "text": "A historical meal was reported; no exact time supplied",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:original-report",
+          "observedAt": "2033-10-04T12:00:00+08:00"
+        }
+      }
+    },
+    {
+      "type": "record_actual",
+      "record": {
+        "id": "hotel-note",
+        "dateId": "2033-10-03",
+        "kind": "note",
+        "text": "Hotel C was reported; check-in/payment unknown",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:original-report",
+          "observedAt": "2033-10-04T12:00:00+08:00"
+        }
+      }
+    }
+  ],
+  "operation": {
+    "type": "reconcile_journey_context",
+    "confirmation": "explicit",
+    "displayMetadata": {
+      "expectedVersion": 0,
+      "record": {
+        "displayName": "Anonymous autumn journey",
+        "aliases": [
+          "Autumn test"
+        ],
+        "year": 2033,
+        "month": 10,
+        "knownWindowStart": "2033-10-02",
+        "knownWindowEnd": "2033-10-07"
+      },
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:explicit-reconciliation",
+        "observedAt": "2033-10-05T10:00:00+08:00"
+      }
+    },
+    "lodgings": {
+      "changes": [
+        {
+          "lodgingId": "hotel-a",
+          "expectedLodgingToken": null,
+          "reservations": [
+            {
+              "id": "stay-a",
+              "checkIn": "2033-10-04",
+              "checkOut": "2033-10-05",
+              "status": "booked",
+              "commitmentIds": [
+                "reservation-hotel-a-night-20331004"
+              ],
+              "source": {
+                "kind": "synthetic",
+                "reference": "synthetic:original-report",
+                "observedAt": "2033-10-04T12:00:00+08:00"
+              }
+            }
+          ],
+          "name": "Hotel A"
+        },
+        {
+          "lodgingId": "city-night",
+          "expectedLodgingToken": "sha256:c43c7ca615b61985b2836a711cea7e0ba31e9eaa8b9b5d72a12b2e0e09b1a372",
+          "reservations": [
+            {
+              "id": "stay-b",
+              "checkIn": "2033-10-02",
+              "checkOut": "2033-10-03",
+              "status": "booked",
+              "commitmentIds": [],
+              "source": {
+                "kind": "synthetic",
+                "reference": "synthetic:original-report",
+                "observedAt": "2033-10-04T12:00:00+08:00"
+              }
+            }
+          ]
+        },
+        {
+          "lodgingId": "next-night",
+          "expectedLodgingToken": "sha256:613f80b47e19816d00bdf8c9d6657acf5cac7ebdfa774a01ebed35907d094155",
+          "reservations": [
+            {
+              "id": "stay-c",
+              "checkIn": "2033-10-03",
+              "checkOut": "2033-10-04",
+              "status": "booked",
+              "commitmentIds": [],
+              "source": {
+                "kind": "synthetic",
+                "reference": "synthetic:original-report",
+                "observedAt": "2033-10-04T12:00:00+08:00"
+              }
+            }
+          ]
+        }
+      ],
+      "source": {
+        "kind": "synthetic",
+        "reference": "synthetic:explicit-reconciliation",
+        "observedAt": "2033-10-05T10:00:00+08:00"
+      },
+      "confirmation": "explicit"
+    },
+    "routeActivities": [
+      {
+        "id": "context-meal",
+        "dateId": "2033-10-02",
+        "role": "reported_activity",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-reconciliation",
+          "observedAt": "2033-10-05T10:00:00+08:00"
+        },
+        "activity": {
+          "id": "context-activity-meal",
+          "kind": "meal",
+          "title": "Reported historical meal",
+          "timing": {},
+          "source": {
+            "kind": "synthetic",
+            "reference": "synthetic:explicit-reconciliation",
+            "observedAt": "2033-10-05T10:00:00+08:00"
+          }
+        },
+        "actualReportId": "meal-note"
+      },
+      {
+        "id": "context-scenic",
+        "dateId": "2033-10-04",
+        "role": "planned_target",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-reconciliation",
+          "observedAt": "2033-10-05T10:00:00+08:00"
+        },
+        "activity": {
+          "id": "context-activity-scenic",
+          "kind": "transfer",
+          "title": "Scenic road target",
+          "timing": {},
+          "source": {
+            "kind": "synthetic",
+            "reference": "synthetic:explicit-reconciliation",
+            "observedAt": "2033-10-05T10:00:00+08:00"
+          },
+          "route": {
+            "mode": "driving",
+            "from": {
+              "label": "Synthetic west endpoint"
+            },
+            "to": {
+              "label": "Synthetic east endpoint"
+            }
+          }
+        }
+      },
+      {
+        "id": "context-hotel",
+        "dateId": "2033-10-03",
+        "role": "reported_activity",
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-reconciliation",
+          "observedAt": "2033-10-05T10:00:00+08:00"
+        },
+        "activity": {
+          "id": "context-activity-hotel",
+          "kind": "lodging",
+          "title": "Hotel C report",
+          "timing": {},
+          "source": {
+            "kind": "synthetic",
+            "reference": "synthetic:explicit-reconciliation",
+            "observedAt": "2033-10-05T10:00:00+08:00"
+          }
+        },
+        "actualReportId": "hotel-note"
+      }
+    ],
+    "dayRoutes": [
+      {
+        "id": "route-context-meal",
+        "dateId": "2033-10-02",
+        "entries": [
+          {
+            "id": "entry-context-meal",
+            "activity": {
+              "kind": "context",
+              "contextId": "context-meal",
+              "activityId": "context-activity-meal"
+            },
+            "status": "reported",
+            "purpose": "default"
+          }
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-reconciliation",
+          "observedAt": "2033-10-05T10:00:00+08:00"
+        }
+      },
+      {
+        "id": "route-context-scenic",
+        "dateId": "2033-10-04",
+        "entries": [
+          {
+            "id": "entry-context-scenic",
+            "activity": {
+              "kind": "context",
+              "contextId": "context-scenic",
+              "activityId": "context-activity-scenic"
+            },
+            "status": "planned",
+            "purpose": "scenic_route"
+          }
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-reconciliation",
+          "observedAt": "2033-10-05T10:00:00+08:00"
+        }
+      },
+      {
+        "id": "route-context-hotel",
+        "dateId": "2033-10-03",
+        "entries": [
+          {
+            "id": "entry-context-hotel",
+            "activity": {
+              "kind": "context",
+              "contextId": "context-hotel",
+              "activityId": "context-activity-hotel"
+            },
+            "status": "reported",
+            "purpose": "default",
+            "nightDate": "2033-10-03",
+            "lodgingId": "next-night"
+          }
+        ],
+        "source": {
+          "kind": "synthetic",
+          "reference": "synthetic:explicit-reconciliation",
+          "observedAt": "2033-10-05T10:00:00+08:00"
+        }
+      }
+    ]
+  },
+  "asOf": "2033-10-05T12:00:00+08:00",
+  "generatedAt": "2033-10-05T12:01:00+08:00",
+  "sourceAdapters": {
+    "presentationCatalog": {
+      "entries": [
+        {
+          "tripId": "agent-linkage-synthetic",
+          "displayName": "Legacy trip label",
+          "aliases": [
+            "Legacy alias"
+          ],
+          "year": 2033,
+          "month": 10,
+          "knownWindowStart": "2033-10-02",
+          "knownWindowEnd": "2033-10-07",
+          "unknownAdapterField": {
+            "keep": "host-owned"
+          }
+        }
+      ]
+    },
+    "historicalDailyRouteProjections": [
+      {
+        "dateId": "2033-10-02",
+        "legacyMealText": "Original display-only meal",
+        "unknownAdapterField": true
+      }
+    ]
+  }
+}

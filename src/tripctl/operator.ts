@@ -1,5 +1,6 @@
+import { tripDisplayOutputSchema } from './arrangementSchema';
 import * as z from 'zod/v4';
-import { presentationInputSchema, presentationOutputSchema } from './presentationSchema';
+import { presentationInputSchema, presentationOutputSchema, presentationOutputV2Schema } from './presentationSchema';
 import { MAX_STORE_BYTES, MAX_HISTORY_EVENTS } from './limits';
 import { linkageQuerySchema, readonlyViewInputSchema } from './linkageSchema';
 import { experienceSearchSchema, experienceSearchRequestSchema, guideDraftSchema } from './experienceSchema';
@@ -9,14 +10,14 @@ import { preparePlanningContext, planningSnapshotSchema, toolNames } from '../do
 import { analyseItinerary } from './itinerary';
 
 export const operatorContextSchema = z.strictObject({ asOf: z.iso.datetime({ offset: true }), dateId: planningSnapshotSchema.shape.todayId.optional(), candidateLimit: z.number().int().min(1).max(20).optional() });
-const commands = ['presentation-view', 'capacity', 'evidence-impact', 'reminder-reconcile', 'readonly-view', 'observation-token', 'experiences', 'experience-search', 'guide-draft', 'init', 'read', 'context', 'schema', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'validate-request', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'];
+const commands = ['trip-display', 'presentation-view', 'capacity', 'evidence-impact', 'reminder-reconcile', 'readonly-view', 'observation-token', 'experiences', 'experience-search', 'guide-draft', 'init', 'read', 'context', 'schema', 'check', 'rank', 'preview', 'apply', 'stage', 'history', 'verify', 'validate-request', 'route-query', 'route-import', 'routes', 'itinerary', 'itinerary-token', 'itinerary-report'];
 /** Discovery reflects the runtime schemas. Cross-field/state refinements still run in preview. */
 export function getOperatorSchema(operationType?: string) {
   const operations = operationSchema.options.map((option) => option.shape.type.value);
   const selected = operationType ? operationSchema.options.find((option) => option.shape.type.value === operationType) : undefined;
   if (operationType && !selected) throw new TripError('unknown_operation', 'Use schema to discover supported operations');
   return { ok: true, schemaVersion: 1, coreVersion: TRIPCTL_CORE_VERSION, saved: false, commands, operations, statelessMcpTools: toolNames,
-    ...(selected ? { operation: z.toJSONSchema(selected) } : { presentationInput: z.toJSONSchema(presentationInputSchema), presentationOutput: z.toJSONSchema(presentationOutputSchema), contextInput: z.toJSONSchema(operatorContextSchema), linkageInput: z.toJSONSchema(linkageQuerySchema), readonlyViewInput: z.toJSONSchema(readonlyViewInputSchema), experienceInputs: { search: z.toJSONSchema(experienceSearchSchema), multiJourneySearch: z.toJSONSchema(experienceSearchRequestSchema), guideDraft: z.toJSONSchema(guideDraftSchema) }, mutationEnvelope: z.toJSONSchema(mutationSchema.omit({ operation: true })) }),
+    ...(selected ? { operation: z.toJSONSchema(selected) } : { presentationInput: z.toJSONSchema(presentationInputSchema), presentationOutput: z.toJSONSchema(presentationOutputSchema), presentationOutputV2: z.toJSONSchema(presentationOutputV2Schema), tripDisplayOutput: z.toJSONSchema(tripDisplayOutputSchema), contextInput: z.toJSONSchema(operatorContextSchema), linkageInput: z.toJSONSchema(linkageQuerySchema), readonlyViewInput: z.toJSONSchema(readonlyViewInputSchema), experienceInputs: { search: z.toJSONSchema(experienceSearchSchema), multiJourneySearch: z.toJSONSchema(experienceSearchRequestSchema), guideDraft: z.toJSONSchema(guideDraftSchema) }, mutationEnvelope: z.toJSONSchema(mutationSchema.omit({ operation: true })) }),
     validation: 'Runtime refinements, IDs, current state and preview guards remain authoritative; JSON Schema is structural discovery.',
     persistence: 'preview/context/schema do not write; stage creates a candidate, saved:false; external persistence requires same-identity CAS and readback.' };
 }

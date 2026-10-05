@@ -52,3 +52,21 @@ pendingQuestions包含精确日期/地点的最终公告确认、备选集合/�
 仍由宿主执行：真实地图/天气读取、明确授权的提醒派发和原生关联读回、同一Library文件CAS、私有Site渲染/刷新。此接口不操作订单、不取消预订、不自动发布、不获取浏览器内存。存储v2仍为另一个待实现增量；本接口不迁移真实历史、不改变16MiB/200边界。
 
 便携 `verify.mjs` 通过真实独立CLI进程验证上述链条；PRESENTATION-DEMO.json展示current仍等于baseline但有效路线已变化，PRESENTATION-HISTORY-DEMO.json展示revision1的旧计划。PRESENTATION-SCHEMA.json供宿主验证/生成适配代码。所有演示与测试都是合成资料。
+
+
+## v11：显式规整酒店、历史节点与旅行显示索引
+
+`schema --operation reconcile_journey_context` 是一次受管、可预览的复合操作。可选组件按 displayMetadata → lodgings → routeActivities → dayRoutes 顺序在克隆内容中校验，全部成功才产生一个 history event。任一失败零写入。它不执行任意嵌套 operation、订单操作或远端派发。`validate-request` 返回**候选**的精确 writer 字节数与剩余容量；仍须 stage 成功后由宿主同 identity CAS、原生读回。16MiB/200 次上限未改变；接近上限时不要反复追加试验事件。
+
+- `upsert_lodging_arrangements` 显式给 hotel ID、完整原始对象的 `expectedLodgingToken`（新建用 null）、名称/地点补丁、稳定 reservation ID、checkIn/checkOut、pending/booked/cancelled、原 commitmentIds 和来源。用导出的 `lodgingToken(rawHotel)` 或 CLI read 的原始对象计算 hash。按 [checkIn, checkOut) 展开晚次；状态仅为来源报告，付款/实际入住仍未知。原 commitment 文本不变；从不解析“Hotel A”这类自由文本自动建酒店。未提及的酒店/预订和 loose 扩展保留。日期/状态纠正须 reason 和更新的原始来源；酒店/预订来源历史水印在 undo 后仍生效。预订 ID 不能换酒店。已有精确坐标的局部地址变更拒绝，需另行解决完整地点绑定，避免旧坐标搭配新地址。
+- `set_trip_display_metadata` 保存 versioned displayName/aliases/year/month/knownWindowStart/knownWindowEnd/source，expectedVersion 首次为 0。未知年月/窗口用 null。`trip-display` 导出一条对应 tripId 的命名记录，供宿主显式合并跨旅行索引。它不改 snapshot.trip.name、日程或稳定 ID；归档旅行也可独立修正及撤销显示元数据。
+- `record_route_activity` 的 reported_activity 必须指向同日原 actualReportId（允许原 kind=note）；planned_target 只表示用户明确的计划目标。两者可以绑定过去日期和没有 typed day 的日期，独立 activity ID 不进入 current/baseline/registeredActivityIds。纠正用新 record ID + supersedesId，稳定 activity/day/role/report 不变。它不能替代 link_actual_change，也不能把 note 伪装成 changed_plan、skip 或完成。
+- `set_day_route` 可引用 `{kind:"context",contextId,activityId}`；reported_activity 只能 status=reported，planned_target 只能 status=planned。未知实际钟点保持空；不能把估算当实际。后来的 context 纠正保留旧路线快照并标 needsReview，新路线须引用最新 context record。
+
+`presentation-view` 默认仍返回严格 v1；输入 `contractVersion:2` 才附加 tripDisplayMetadata、reservationCommitmentCoverage、routeActivityContexts 和 adapterReplacement。v2 对酒店/预订/晚次、原报告、旅行身份和 projected revision/hash 交叉校验。unmapped reservation commitment 原文仍显示并产生核对项；它可能是门票，不能推断成酒店。`presentationCatalog.items` 始终是**单旅行实体摘要**，不是宿主 `presentationCatalog.entries` 跨旅行索引的替代品。后者由宿主用 trip-display 逐条合并。
+
+旧 source adapters 在逐字段等价核对完成前继续保留，包括未知扩展、旧原文和来源。核心不读取、不迁移、不删除任意宿主 adapter；fixture 的 unknownAdapterField 用来证明投影没有隐式改变输入，并不声称已经完成真实 adapter 等价迁移。
+
+可复现演示：`arrangement-scenario.json` → importOperation/preparationOperations → preview(operation) → validate-request → stage → verify → presentation-view(contractVersion:2)。ARRANGEMENT-DEMO.json 展示三家酒店、Oct2 原 note 餐饮、Oct3 没有 typed day 的酒店报告、Oct4 没有 typed day 的景观公路计划目标；ARRANGEMENT-HISTORY-DEMO.json 展示补录前仍未映射的原文。verify.mjs 使用真实独立 CLI 进程执行这条链路，stage 后原 store 字节不变。
+
+coreVersion=11 会拒绝 v5–v10 未提交的旧 preview token，必须重新预览；原状态/hash/history 与已提交 idempotency receipt 仍兼容。journey schemaVersion 仍为 1。四个原始 stateless MCP 工具未扩展；新增受管操作通过 CLI/library 使用。

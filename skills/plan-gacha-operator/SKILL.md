@@ -54,3 +54,12 @@ For Japan, preserve Asia/Tokyo, source calendar dates, clock strings and timesta
 先读 AGENT-LINKAGE.md（源码 docs/agent-linkage.md）和 runtime schema。用 evidence-impact 审查精确日期/地点的来源证据；预测或局部停运不能升格整日闭馆。reminder-reconcile 仅描述动作；新 attempt 必须权威 CAS 保存并读回，外部动作另获授权，replayed/stage 不授予发送。unknown 结果要查原 attempt/actionKey，不能换 key 重发。跨旅程 readback 禁止。readonly-view 的 organized 是私有按日衍生投影，渲染稳定引用避免重复；缺 typed link 时保留已知备选及 gap，可用 bind_context 明确关联，不从自由文本猜计划/票/酒店或永久偏好。不得把 Site 当第二权威状态或声称自动同步。
 
 每天及每次新消息都应主动规整 canonical daily route，而非只追加聊天备注。用 set_day_route 保存明确顺序、活动类型、actual/planned/skipped 和 nightDate，保留景观路线/餐饮/当晚入住；旧计划只作历史。交通用已授权地图工具查询并保存证据；景观公路另加观景停留区间。无法查询时可给有来源/理由/asOf的 planning_assumption，实际时间和估计分开，不能伪装地图结果。缺精确时刻也保留完整路线，只问影响决策的关键缺口。反馈写结构经验并关联trip/date/活动（reportedActualId可关联实际新增节点）。每次新报告后检查 route.needsReview 并更新受影响日的条目，不让过时确认路线长期不变。
+
+
+## v11 明确规整，保留原证据
+
+实际报告是 note 或没有旧 typed activity 时，不得伪造 changed_plan/skip 来满足 link_actual_change。用 record_route_activity 明确 reported_activity + 同日 actualReportId，或 planned_target + 用户来源；随后 set_day_route context 引用，保持 reported/planned、未知实际时间和 completionVerified:false。不要为了展示改写过去 current/baseline。
+
+原 reservation commitment 没有 typed hotel 时，用 upsert_lodging_arrangements 显式链接稳定酒店/预订 ID、入住/离店、报告状态与 commitmentIds，不从散文推断；付款/入住未知。原有酒店完整 token 与来源/纠正 guard 必须通过。多酒店、显示名和历史路线一起规整时优先一次 reconcile_journey_context，先看所有组件预览和 validate-request 的候选容量，stage 再原身份 CAS/readback，避免反复写满历史。
+
+跨旅行命名索引用 trip-display 的一条 display metadata 导出合并。presentation-view 默认 v1；需要映射覆盖/上下文证据时显式 contractVersion:2。单旅行 presentationCatalog.items 不是宿主跨旅行 entries 索引。保留旧 adapter 与所有未知字段，逐字段等价核对前不得自动丢弃；不声称规整或刷新自动完成。完整合同见 PRESENTATION-CONTRACT.md。
