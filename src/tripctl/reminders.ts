@@ -1,3 +1,4 @@
+import { appendRouteActivity, validateRouteActivities } from './routeContext';
 import { canonical, hash } from './identity';
 import { appendObservation } from './observations';
 import { analyseItinerary } from './itinerary';
@@ -13,6 +14,7 @@ const nightMatches = (stay: TripContent['snapshot']['trip']['lodgings'][number],
 const human = (source: { kind: string }) => { if (source.kind === 'provider') fail('unconfirmed_reminder_intent', 'Provider reports cannot establish user reminder intent'); };
 export function changeReminders(state: TripState, next: TripContent, op: LinkageOperation, validatingHistory = false) {
   const l = next.linkage!;
+  if (op.type === 'record_route_activity') return appendRouteActivity(state, next, op.record);
 
   if (op.type === 'set_day_route') {
     const r = op.record; human(r.source); l.dayRoutes ||= [];
@@ -24,9 +26,15 @@ export function changeReminders(state: TripState, next: TripContent, op: Linkage
       if (a.kind === 'planned') {
         activity = next.itinerary?.current.find((d) => d.dateId === r.dateId && d.planId === a.planId)?.activities.find((x) => x.id === a.activityId);
         if (!activity) activity = [next, ...state.history.flatMap((h) => [h.before, h.after])].flatMap((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])]).find((d) => d.dateId === r.dateId && d.planId === a.planId && d.activities.some((x) => x.id === a.activityId))?.activities.find((x) => x.id === a.activityId);
-      } else {
+      } else if (a.kind === 'reported') {
         const change = l.actualChanges?.filter((x) => x.actualId === a.actualId && x.dateId === r.dateId).at(-1);
         activity = change?.replacementActivities.find((x) => x.id === a.activityId);
+      } else {
+        const context = l.routeActivities?.find((x) => x.id === a.contextId && x.activity.id === a.activityId && x.dateId === r.dateId);
+        if (!context || l.routeActivities?.some((x) => x.supersedesId === context.id)) fail('route_context_mismatch', 'New routes require the latest same-day context record');
+        if (e.status !== (context!.role === 'planned_target' ? 'planned' : 'reported')) fail('route_context_status_mismatch', 'Context role cannot be promoted to actual, skipped or completed');
+        if (Date.parse(context!.source.observedAt) > Date.parse(r.source.observedAt)) fail('future_route_source', 'Route must follow context binding');
+        activity = context!.activity;
       }
       if (!activity) fail('unknown_id', 'Each ordered route entry needs an existing typed planned or reported activity on this day');
       if (e.purpose === 'scenic_route' && activity!.kind !== 'transfer') fail('route_purpose_mismatch', 'Scenic route purpose requires a transfer activity');
@@ -148,6 +156,7 @@ export function changeReminders(state: TripState, next: TripContent, op: Linkage
 /** Revalidates persisted references. Expired or changed-place observations remain valid historical data. */
 export function validateLinkage(state: TripState) {
   const l = state.content.linkage; if (!l) return;
+  validateRouteActivities(state);
   const routeTimes = new Map<string, number>();
   for (const route of l.dayRoutes || []) {
     human(route.source);
@@ -158,7 +167,9 @@ export function validateLinkage(state: TripState) {
       if (e.planningEstimate && Date.parse(e.planningEstimate.asOf) > Date.parse(route.source.observedAt)) fail('invalid_day_route', 'Route confirmation predates its planning estimate');
       if (e.activitySnapshot.id !== e.activity.activityId || Date.parse(e.activitySnapshot.source.observedAt) > Date.parse(route.source.observedAt) || (e.activitySnapshot.kind === 'lodging' ? e.nightDate !== route.dateId : e.nightDate !== undefined || e.lodgingId !== undefined)) fail('invalid_day_route', 'Route snapshot or night binding mismatch');
       const ref = e.activity;
-      const known = ref.kind === 'reported' ? l.actualChanges?.some((r) => r.actualId === ref.actualId && r.dateId === route.dateId && r.replacementActivities.some((a) => canonical(a) === canonical(e.activitySnapshot))) : [state.content, ...state.history.flatMap((h) => [h.before, h.after])].some((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])].some((d) => d.dateId === route.dateId && d.planId === ref.planId && d.activities.some((a) => canonical(a) === canonical(e.activitySnapshot))));
+      const context = ref.kind === 'context' ? l.routeActivities?.find((r) => r.id === ref.contextId && r.activity.id === ref.activityId && r.dateId === route.dateId) : undefined;
+      if (context && (e.status !== (context.role === 'planned_target' ? 'planned' : 'reported') || Date.parse(context.source.observedAt) > Date.parse(route.source.observedAt))) fail('invalid_day_route', 'Context role or report time does not match its route');
+      const known = ref.kind === 'context' ? context && canonical(context.activity) === canonical(e.activitySnapshot) : ref.kind === 'reported' ? l.actualChanges?.some((r) => r.actualId === ref.actualId && r.dateId === route.dateId && r.replacementActivities.some((a) => canonical(a) === canonical(e.activitySnapshot))) : [state.content, ...state.history.flatMap((h) => [h.before, h.after])].some((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])].some((d) => d.dateId === route.dateId && d.planId === ref.planId && d.activities.some((a) => canonical(a) === canonical(e.activitySnapshot))));
       for (const ref of e.planningEstimate?.evidenceRefs || []) { const list = ref.kind === 'map_fact' ? state.content.memory.mapFacts : ref.kind === 'itinerary_evidence' ? state.content.itinerary?.evidence || [] : l.observations; if (!list.some((x) => x.id === ref.id)) fail('invalid_day_route', 'Estimate references missing evidence'); }
       if (e.lodgingId && (!e.lodgingSnapshot || e.lodgingSnapshot.id !== e.lodgingId || !nightMatches(e.lodgingSnapshot, route.dateId) || ![state.content, ...state.history.flatMap((h) => [h.before, h.after])].some((c) => c.snapshot.trip.lodgings.some((l) => canonical(l) === canonical(e.lodgingSnapshot)))) || !e.lodgingId && e.lodgingSnapshot) fail('invalid_day_route', 'Route lodging identity and night must match the saved source snapshot');
       if (!known) fail('invalid_day_route', 'Route references an unknown or altered source activity');

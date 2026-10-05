@@ -47,9 +47,11 @@ export const reminderAttemptSchema = z.strictObject({
 export const contextBindingSchema = z.strictObject({ id: linkId, subjectType: z.enum(['fact', 'preference', 'option', 'issue']), subjectId: linkId, dateIds: z.array(planningSnapshotSchema.shape.todayId).max(30).refine((v) => new Set(v).size === v.length), planId: linkId.optional(), activityId: linkId.optional(), reportedActualId: linkId.optional(), role: z.enum(['backup', 'context']), source }).refine((r) => (!r.activityId || Boolean(r.planId || r.reportedActualId)) && (!r.reportedActualId || Boolean(r.activityId) && !r.planId), 'Activity binding requires its plan or reported actual identity, never a mixed target');
 export const actualChangeSchema = z.strictObject({ id: linkId, actualId: linkId, dateId: planningSnapshotSchema.shape.todayId, previousActivityIds: z.array(linkId).min(1).max(80).refine((v) => new Set(v).size === v.length), replacementActivities: z.array(itineraryActivitySchema).max(80), source }).refine((r) => r.replacementActivities.every((a) => !a.route?.fromActivityId && !a.route?.toActivityId), 'Reported replacement routes use explicit endpoint labels only; cross-activity route references require planned-itinerary validation');
 
+export const routeActivitySchema = z.strictObject({ id: linkId, dateId: planningSnapshotSchema.shape.todayId, activity: itineraryActivitySchema, role: z.enum(['reported_activity', 'planned_target']), actualReportId: linkId.optional(), supersedesId: linkId.optional(), source }).refine((r) => (r.role !== 'reported_activity' || Boolean(r.actualReportId)) && !r.activity.route?.fromActivityId && !r.activity.route?.toActivityId, 'Reported context needs its actual report; context routes use endpoint labels only');
 const routeReference = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('planned'), planId: linkId, activityId: linkId }),
   z.strictObject({ kind: z.literal('reported'), actualId: linkId, activityId: linkId }),
+  z.strictObject({ kind: z.literal('context'), contextId: linkId, activityId: linkId }),
 ]);
 
 const routeTiming = itineraryActivitySchema.shape.timing.refine((t) => (!t.endDayOffset || Boolean(t.end)) && !(t.start && t.end && !t.endDayOffset && t.end < t.start), 'Clock bounds require an explicit overnight offset and end');
@@ -61,11 +63,12 @@ export const routeEstimateSchema = z.strictObject({ durationMinutes: minutesRang
   if (e.travelMinutes && e.stopMinutes && (e.durationMinutes.min !== e.travelMinutes.min + e.stopMinutes.min || e.durationMinutes.max !== e.travelMinutes.max + e.stopMinutes.max)) ctx.addIssue({ code: 'custom', message: 'Total duration bounds must include travel plus viewing/stop bounds' });
 });
 
-export const dayRouteEntrySchema = z.strictObject({ id: linkId, activity: routeReference, status: z.enum(['actual', 'planned', 'skipped']), purpose: z.enum(['default', 'scenic_route']), planningEstimate: routeEstimateSchema.optional(), timing: routeTiming.optional(), nightDate: planningSnapshotSchema.shape.todayId.optional(), lodgingId: linkId.optional() });
+export const dayRouteEntrySchema = z.strictObject({ id: linkId, activity: routeReference, status: z.enum(['actual', 'planned', 'skipped', 'reported']), purpose: z.enum(['default', 'scenic_route']), planningEstimate: routeEstimateSchema.optional(), timing: routeTiming.optional(), nightDate: planningSnapshotSchema.shape.todayId.optional(), lodgingId: linkId.optional() });
 export const dayRouteInputSchema = z.strictObject({ id: linkId, dateId: planningSnapshotSchema.shape.todayId, entries: z.array(dayRouteEntrySchema).min(1).max(80).refine((v) => new Set(v.map((e) => e.id)).size === v.length && new Set(v.map((e) => e.activity.kind + ':' + e.activity.activityId)).size === v.length), source });
 export const dayRouteSchema = dayRouteInputSchema.extend({ entries: z.array(dayRouteEntrySchema.extend({ activitySnapshot: itineraryActivitySchema, lodgingSnapshot: planningSnapshotSchema.shape.trip.shape.lodgings.element.optional() })).min(1).max(80) });
 
 export const linkageSchema = z.strictObject({
+  routeActivities: z.array(routeActivitySchema).max(200).optional(),
   dayRoutes: z.array(dayRouteSchema).max(100).optional(),
   actualChanges: z.array(actualChangeSchema).max(100).optional(),
   contextBindings: z.array(contextBindingSchema).max(300).optional(),
@@ -73,6 +76,7 @@ export const linkageSchema = z.strictObject({
   reminderReadbacks: z.array(reminderReadbackSchema).max(300), reminderAttempts: z.array(reminderAttemptSchema).max(200),
 });
 export const linkageOperations = [
+  z.strictObject({ type: z.literal('record_route_activity'), record: routeActivitySchema }),
   z.strictObject({ type: z.literal('set_day_route'), record: dayRouteInputSchema }),
   z.strictObject({ type: z.literal('link_actual_change'), record: actualChangeSchema }),
   z.strictObject({ type: z.literal('bind_context'), record: contextBindingSchema }),
