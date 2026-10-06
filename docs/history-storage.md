@@ -1,4 +1,6 @@
-# Formal lossless history storage (core 12)
+# Formal history storage (core 12)
+
+Product retention now targets useful business memory and concise change reasons, with the latest20 changes for recovery. Complete format2 events are the current technical migration foundation, not a promise to keep every intermediate adjustment forever. `history-maintenance` provides an implemented read-only semantic consolidation preview; see [history-maintenance.md](history-maintenance.md). No history is deleted in this phase.
 
 Format 1 remains readable and writable with its existing 200-event and 16 MiB limits. Reading, `capacity`, `preview`, `stage` and ordinary `apply` do not implicitly migrate it. Format 2 is a single local offline JSON document. It retains the initial content, current content, every original event ID/revision/operation/actor/reason/timestamp/request hash, reversible content patches and a content/audit hash chain. It does not rerun historical business operations or remove events. Domain schemaVersion stays 1; storageFormat=2 and codecVersion=1 identify the representation.
 

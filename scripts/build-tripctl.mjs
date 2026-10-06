@@ -21,6 +21,8 @@ await copyFile('docs/itinerary-core.md', `${output}/ITINERARY.md`);
 await copyFile('scripts/tripctl-portable.verify.mjs', `${output}/verify.mjs`);
 await copyFile('scripts/amap-walking-transport.py', `${output}/amap-walking-transport.py`);
 await copyFile('docs/tripctl.md', `${output}/README.md`);
+await copyFile('docs/history-maintenance.md', `${output}/HISTORY-MAINTENANCE.md`);
+await copyFile('scripts/history-maintenance.verify.mjs', `${output}/history-maintenance.verify.mjs`);
 await copyFile('docs/history-storage.md', `${output}/HISTORY-STORAGE.md`);
 await copyFile('docs/presentation-contract.md', `${output}/PRESENTATION-CONTRACT.md`);
 await copyFile('scripts/history-capacity.verify.mjs', `${output}/history-capacity.verify.mjs`);
@@ -73,7 +75,7 @@ await writeFile(`${output}/ARRANGEMENT-HISTORY-DEMO.json`, JSON.stringify(await 
 const discovery = core.getOperatorSchema();
 await writeFile(`${output}/PRESENTATION-SCHEMA.json`, JSON.stringify({ input: discovery.presentationInput, output: discovery.presentationOutput, outputV2: discovery.presentationOutputV2, tripDisplayOutput: discovery.tripDisplayOutput }, null, 2));
 
-const files = ['arrangement-scenario.json', 'ARRANGEMENT-DEMO.json', 'ARRANGEMENT-HISTORY-DEMO.json', 'PRESENTATION-DEMO.json', 'PRESENTATION-HISTORY-DEMO.json', 'PRESENTATION-SCHEMA.json', 'HISTORY-STORAGE.md', 'PRESENTATION-CONTRACT.md', 'history-capacity.verify.mjs', 'agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
+const files = ['HISTORY-MAINTENANCE.md', 'history-maintenance.verify.mjs', 'arrangement-scenario.json', 'ARRANGEMENT-DEMO.json', 'ARRANGEMENT-HISTORY-DEMO.json', 'PRESENTATION-DEMO.json', 'PRESENTATION-HISTORY-DEMO.json', 'PRESENTATION-SCHEMA.json', 'HISTORY-STORAGE.md', 'PRESENTATION-CONTRACT.md', 'history-capacity.verify.mjs', 'agent-linkage-scenario.json', 'AGENT-LINKAGE.md', 'LINKAGE-DEMO.json', 'READONLY-DEMO.json', 'history-import-scenario.json', 'HISTORY-IMPORT.md', 'experience-scenario.json', 'EXPERIENCE.md', 'EXPERIENCE-DEMO.md', 'operator-scenario.json', 'OPERATOR-FLOW.md', 'tripctl.mjs', 'tripctl-lib.mjs', 'synthetic.snapshot.json', 'booked-day.snapshot.json', 'anonymous-itinerary.json', 'ITINERARY.md', 'OPERATOR-SKILL.md', 'DEMO.html', 'DEMO.md', 'verify.mjs', 'amap-walking-transport.py', 'README.md', 'ZOD-LICENSE.txt'];
 const hashes = {};
 for (const file of files) hashes[file] = createHash('sha256').update(await readFile(`${output}/${file}`)).digest('hex');
 await writeFile(`${output}/manifest.json`, JSON.stringify({ schemaVersion: 1, runtime: 'Node >=22.13; no install required', files: hashes }, null, 2));

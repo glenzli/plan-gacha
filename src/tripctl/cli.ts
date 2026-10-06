@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { previewHistoryMaintenance } from './historyMaintenance';
 import { prepareMigration, commitMigration, exportFormat1 } from './migration';
 import { storageIdentity, eventMetadata, isStorage2 } from './storage2';
 import { exportTripDisplay } from './arrangements';
@@ -36,6 +37,7 @@ async function main() {
   if (command === 'migrate' || command === 'export-format1') { if (!values.output) throw new TripError('missing_argument', '--output is required'); return command === 'migrate' ? prepareMigration(path, values.output, await json(values.input)) : exportFormat1(path, values.output, await json(values.input)); }
   if (command === 'commit-migration') return commitMigration(path, await json(values.input));
   const loaded = await loadStore(path); const state = loaded.state;
+  if (command === 'history-maintenance') return { ...previewHistoryMaintenance(state, await json(values.input)), sourceFileHash: loaded.fileHash };
   if (command === 'trip-display') return exportTripDisplay(state);
   if (command === 'presentation-view') return exportPresentationView(state, await json(values.input));
   if (command === 'capacity') return analyseCapacity(state);

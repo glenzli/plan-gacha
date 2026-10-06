@@ -6,6 +6,8 @@ See [operator-flow.md](operator-flow.md) (portable `OPERATOR-FLOW.md`) for the c
 
 Experience capture reuses the existing `fact` operation with optional metadata. Read-only `experiences`, `experience-search` and `guide-draft` are documented in [experience-review.md](experience-review.md) (portable `EXPERIENCE.md`). These commands do not save, share or scan other files.
 
+收到新的出行意向或安排，宿主操作员应同轮核查开放、分项价格、预约、当天售票、提前办理与截止时间，逐项明确“需要/不需要/未核”，附来源和查询时间；硬期限优先告知。现有fact/bind_context、issue、opening observation和decision deadline可承载结果。票务详情当前为带来源的文本，不是金额/库存求解器。见包内 OPERATOR-SKILL.md 和 AGENT-LINKAGE.md（源码 [主动核查契约](agent-linkage.md#意向立即触发信息核查)）。这是agent研究流程，不自动购票或新建定时任务。
+
 ## Operator workflow
 
 Every turn: read the current authoritative journey, its revision, decisions/exclusions, actual progress, unresolved issues and reasons. Use `check`/`rank` as needed. Preview an explicit operation, inspect effects, then save it. Claim a change is saved only after the applicable durable store acknowledges success.
@@ -173,3 +175,6 @@ coreVersion=11 会拒绝 v5–v10 未提交的旧 preview token，必须重新�
 
 
 Core12 adds formal explicit format2 storage migration. Use `verify` to capture logical hash scope and exact fileHash, `migrate` to prepare a lossless candidate/exact original backup/report, then host same-ID native CAS/readback (or explicit local `commit-migration`). Ordinary reads never migrate. Continue using preview/stage after adoption. Old pending previews need refreshing; committed receipts replay. `export-format1` exports complete latest history only if it fits old limits. See [history-storage.md](history-storage.md) for the protocol, budgets and unknown-save recovery. Library authorities and adapter schemas are not rewritten by the CLI.
+
+
+`history-maintenance --store journey.json --input request.json` previews simpler retention: current arrangements, actual reports, place/lodging identities, experiences and key reasons; latest20 changes for recovery; older routine adjustments grouped into reason cards. Input is {asOf,expectedRevision,expectedStateHash}. It is saved:false/dry_run, creates no backup and frees no bytes yet. See [history-maintenance.md](history-maintenance.md). The current format2 remains readable; coreVersion stays12 and existing preview/receipt/CAS behavior is unchanged.
