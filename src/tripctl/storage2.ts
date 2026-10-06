@@ -1,4 +1,6 @@
 import * as z from 'zod/v4';
+import { observationSchema } from './linkageSchema';
+import { setPlanDatesSchema } from '../domain/planDates';
 import { canonical, hash as digest } from './identity';
 import { contentSchema, eventMetadataSchema, TripError, type TripState, type TripContent } from './schema';
 import { MAX_STORE_BYTES, MAX_HISTORY_EVENTS, MAX_STORAGE2_EVENTS, MAX_STORAGE2_EVENT_BYTES, MAX_STORAGE2_REPLAY_BYTES, MAX_STORAGE2_PATCHES_PER_EVENT, MAX_STORAGE2_PATH_DEPTH } from './limits';
@@ -11,13 +13,25 @@ export const storagePatchSchema = z.discriminatedUnion('kind', [
 ]);
 export type StoragePatch = z.infer<typeof storagePatchSchema>;
 export const encodedEventSchema = eventMetadataSchema.extend({ previousHash: token, beforeHash: token, afterHash: token, forward: z.array(storagePatchSchema).max(MAX_STORAGE2_PATCHES_PER_EVENT), reverse: z.array(storagePatchSchema).max(MAX_STORAGE2_PATCHES_PER_EVENT), chainHash: token });
-export const storage2Schema = z.strictObject({ storageFormat: z.literal(2), codecVersion: z.literal(1), schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), anchor: contentSchema, content: contentSchema, history: z.array(encodedEventSchema).max(MAX_STORAGE2_EVENTS), auditHeadHash: token });
+const storage2LegacySchema = z.strictObject({ storageFormat: z.literal(2), codecVersion: z.literal(1), schemaVersion: z.literal(1), revision: z.number().int().nonnegative(), anchor: contentSchema, content: contentSchema, history: z.array(encodedEventSchema).max(MAX_STORAGE2_EVENTS), auditHeadHash: token });
+const trip = contentSchema.shape.snapshot.shape.trip;
+/** Tagged raw identity versions, not fabricated complete historical journey snapshots. */
+export const historicalIdentitySchema = z.strictObject({ kind: z.literal('historical_identity'), sourceRevision: z.number().int().nonnegative(), snapshot: z.strictObject({ trip: z.strictObject({ id: trip.shape.id, plans: trip.shape.plans, lodgings: trip.shape.lodgings }) }), itinerary: contentSchema.shape.itinerary.unwrap().pick({ baseline: true, current: true, registeredActivityIds: true }).optional(), linkage: contentSchema.shape.linkage.unwrap().pick({ actualChanges: true }).optional() });
+export const checkpointLibrarySchema = z.strictObject({ libraryFileId: z.string().min(1).max(300), expectedCurrentVersion: z.number().int().positive(), retrievedAt: z.iso.datetime({ offset: true }) });
+export const historyCheckpointSchema = z.strictObject({ checkpointVersion: z.literal(1), revision: z.number().int().positive(), anchorHash: token, priorStateHash: token, priorAuditHeadHash: token, sourceFileHash: token,
+  createdAt: z.iso.datetime({ offset: true }), actor: z.string().min(1).max(200), reason: z.string().min(1).max(4000), sourceLibrary: checkpointLibrarySchema.optional(), recoveryExternallyVerified: z.literal(false),
+  archive: z.array(eventMetadataSchema).max(MAX_STORAGE2_EVENTS), summaries: z.array(z.json()).max(MAX_STORAGE2_EVENTS), identitySources: z.array(historicalIdentitySchema).max(MAX_STORAGE2_EVENTS + 1),
+  dateSources: z.array(z.strictObject({ commitId: z.string().min(1), observation: observationSchema })).max(MAX_STORAGE2_EVENTS), prefixKnownAt: z.iso.datetime({ offset: true }).nullable(), checkpointHash: token,
+});
+export const storage2Schema = z.discriminatedUnion('codecVersion', [storage2LegacySchema, storage2LegacySchema.extend({ codecVersion: z.literal(2), checkpoint: historyCheckpointSchema })]);
+type HistoricalIdentity = z.infer<typeof historicalIdentitySchema>;
+type Checkpoint = z.infer<typeof historyCheckpointSchema>;
 export type StoredState2 = z.infer<typeof storage2Schema>;
 type JsonValue = z.infer<ReturnType<typeof z.json>>;
 type EncodedEvent = z.infer<typeof encodedEventSchema>;
 type Metadata = z.infer<typeof eventMetadataSchema>;
 export type State2 = Omit<TripState, 'history'> & Omit<StoredState2, 'history'> & { history: (TripState['history'][number] & EncodedEvent)[] };
-type Info = { state: State2; identities: { revision: number; content: TripContent }[]; receipts: Map<string, State2['history'][number]>; cache: Map<number, TripContent>; replayBytes: number; prefixCosts: number[] };
+type Info = { state: State2; identities: { revision: number; content: TripContent | HistoricalIdentity }[]; receipts: Map<string, Metadata>; cache: Map<number, TripContent>; replayBytes: number; prefixCosts: number[] };
 const registry = new WeakMap<object, Info>();
 const fail = (code: string, message: string): never => { throw new TripError(code, message); };
 const own = (o: object, key: string) => Object.hasOwn(o, key);
@@ -138,11 +152,17 @@ function makeEvent(metadata: Metadata, before: TripContent, after: TripContent, 
   if (jsonBytes(event) > MAX_STORAGE2_EVENT_BYTES) fail('storage_budget_exceeded', 'Encoded event exceeds 2 MiB; retain the original state');
   return event;
 }
-const identityShape = (c: TripContent) => ({ plans: c.snapshot.trip.plans, lodgings: c.snapshot.trip.lodgings, baseline: c.itinerary?.baseline, current: c.itinerary?.current, registered: c.itinerary?.registeredActivityIds, replacements: c.linkage?.actualChanges });
+const identityShape = (c: TripContent | HistoricalIdentity) => ({ plans: c.snapshot.trip.plans, lodgings: c.snapshot.trip.lodgings, baseline: c.itinerary?.baseline, current: c.itinerary?.current, registered: c.itinerary?.registeredActivityIds, replacements: c.linkage?.actualChanges });
 const identityTouched = (patches: StoragePatch[]) => patches.some((p) => !p.path.length || ['snapshot/trip/plans', 'snapshot/trip/lodgings', 'itinerary/baseline', 'itinerary/current', 'itinerary/registeredActivityIds', 'linkage/actualChanges'].some((wanted) => { const key = p.path.join('/'); return key === wanted || key.startsWith(wanted + '/') || wanted.startsWith(key + '/'); }));
+export function checkpointOf(state: TripState): Checkpoint | undefined { return isStorage2(state) && 'checkpoint' in state ? state.checkpoint as Checkpoint : undefined; }
+export function anchorRevision(state: TripState) { return checkpointOf(state)?.revision || 0; }
+function checkpointBody(checkpoint: Checkpoint) { const { checkpointHash: _hash, ...body } = checkpoint; void _hash; return body; }
+const checkpointHash = (checkpoint: Checkpoint) => digest({ scope: 'tripctl-history-checkpoint-v1', storageFormat: 2, codecVersion: 2, schemaVersion: 1, ...checkpointBody(checkpoint) });
+function wireCheckpoint(wire: StoredState2) { return wire.codecVersion === 2 ? wire.checkpoint : undefined; }
 function runtime(wire: StoredState2, identities: Info['identities'], prefixCosts: number[], previous?: Info, lastBefore?: TripContent): State2 {
   const state = { ...wire, history: wire.history.map((encoded) => ({ ...encoded })) } as State2;
-  const info: Info = { state, identities: immutable(identities), prefixCosts, replayBytes: jsonBytes(state.anchor) + jsonBytes(state.content) + prefixCosts.at(-1)!, receipts: new Map(), cache: new Map([[0, state.anchor], [state.revision, state.content]]) };
+  const checkpoint = wireCheckpoint(wire); const base = checkpoint?.revision || 0;
+  const info: Info = { state, identities: immutable(identities), prefixCosts, replayBytes: jsonBytes(state.anchor) + jsonBytes(state.content) + (checkpoint ? jsonBytes(checkpoint.identitySources) : 0) + prefixCosts.at(-1)!, receipts: new Map((checkpoint?.archive || []).map((e) => [e.id, e])), cache: new Map([[base, state.anchor], [state.revision, state.content]]) };
   if (lastBefore && state.revision) info.cache.set(state.revision - 1, lastBefore);
   for (const event of state.history) {
     Object.defineProperties(event, { before: { get: () => contentAt(state, event.revision - 1), enumerable: false }, after: { get: () => contentAt(state, event.revision), enumerable: false } });
@@ -158,17 +178,30 @@ export function readStorage2(input: unknown): State2 {
   const size = jsonBytes(input);
   if (size > MAX_STORE_BYTES) fail('state_too_large', 'Encoded container exceeds 16 MiB');
   const parsed = storage2Schema.safeParse(input); if (!parsed.success) return fail('invalid_storage2', 'Format2 schema, codec version or event bounds are invalid');
-  const wire = parsed.data; if (canonical(wire) !== canonical(input)) fail('invalid_storage2', 'Container parsing must not normalize or lose original fields'); if (wire.history.length !== wire.revision) fail('invalid_storage2', 'Revision and encoded history count differ');
-  let current = immutable(wire.anchor); let head = anchorHead(current); let replayBytes = jsonBytes(current) + jsonBytes(wire.content); const prefixCosts = [0]; let previousContent: TripContent | undefined;
-  const ids = new Set<string>(); const identities = [{ revision: 0, content: current }];
+  const wire = parsed.data; if (canonical(wire) !== canonical(input)) fail('invalid_storage2', 'Container parsing must not normalize or lose original fields');
+  const checkpoint = wireCheckpoint(wire); const base = checkpoint?.revision || 0;
+  if (base > wire.revision || wire.history.length !== wire.revision - base || wire.revision > MAX_STORAGE2_EVENTS) fail('invalid_storage2', 'Global revision, checkpoint and suffix counts differ or exceed the bounded receipt budget');
+  const ids = new Set<string>();
+  if (checkpoint) {
+    if (checkpoint.anchorHash !== digest(wire.anchor) || checkpoint.checkpointHash !== checkpointHash(checkpoint) || checkpoint.archive.length !== base) fail('invalid_checkpoint', 'Checkpoint identity, archive coverage or hash differs');
+    for (const [n, e] of checkpoint.archive.entries()) { if (jsonBytes(e) > MAX_STORAGE2_EVENT_BYTES) fail('storage_budget_exceeded', 'Archived event metadata exceeds 2 MiB'); if (e.revision !== n + 1 || ids.has(e.id)) fail('invalid_checkpoint', 'Archived event identities must cover each prefix revision once'); ids.add(e.id); }
+    const lastKnown = checkpoint.archive.reduce<string | null>((last, e) => !last || Date.parse(e.at) > Date.parse(last) ? e.at : last, null);
+    if (checkpoint.prefixKnownAt !== lastKnown || checkpoint.archive.some((e) => Date.parse(e.at) > Date.parse(checkpoint.createdAt))) fail('invalid_checkpoint', 'Prefix knowledge time or checkpoint time differs');
+    const identityRevisions = new Set<number>();
+    for (const source of checkpoint.identitySources) { if (source.sourceRevision > base || identityRevisions.has(source.sourceRevision) || source.snapshot.trip.id !== wire.anchor.snapshot.trip.id) fail('invalid_checkpoint', 'Historical identity versions must belong to this prefix and journey'); identityRevisions.add(source.sourceRevision); }
+    const applied = checkpoint.archive.filter((e) => e.operation.type === 'apply_observation');
+    if (checkpoint.dateSources.length !== applied.length || new Set(checkpoint.dateSources.map((r) => r.commitId)).size !== applied.length || applied.some((e) => !checkpoint.dateSources.some((r) => r.commitId === e.id && e.operation.type === 'apply_observation' && r.observation.id === e.operation.observationId))) fail('invalid_checkpoint', 'Every archived applied observation needs its exact original source');
+  }
+  let current = immutable(wire.anchor); let head = checkpoint?.checkpointHash || anchorHead(current); let replayBytes = jsonBytes(current) + jsonBytes(wire.content) + (checkpoint ? jsonBytes(checkpoint.identitySources) : 0); const prefixCosts = [0]; let previousContent: TripContent | undefined;
+  const identities: Info['identities'] = [...(checkpoint?.identitySources || []).map((c) => ({ revision: c.sourceRevision, content: c })), { revision: base, content: current }];
   for (const [n, event] of wire.history.entries()) {
-    if (event.revision !== n + 1 || ids.has(event.id) || event.previousHash !== head || event.beforeHash !== digest(current) || event.chainHash !== digest(eventBody(event))) fail('invalid_storage2', 'Audit event identity, order or hash chain mismatch');
+    if (event.revision !== base + n + 1 || ids.has(event.id) || event.previousHash !== head || event.beforeHash !== digest(current) || event.chainHash !== digest(eventBody(event))) fail('invalid_storage2', 'Audit event identity, order or hash chain mismatch');
     if (jsonBytes(event) > MAX_STORAGE2_EVENT_BYTES) fail('storage_budget_exceeded', 'Encoded event exceeds 2 MiB'); ids.add(event.id);
     const charge = (bytes: number) => { replayBytes += bytes; if (replayBytes > MAX_STORAGE2_REPLAY_BYTES) fail('storage_budget_exceeded', 'Forward/inverse patch replay exceeds 512 MiB cumulative result bytes'); };
     const next = applyStoragePatches(current, event.forward, charge);
     const shape = contentSchema.safeParse(next); if (!shape.success || canonical(shape.data) !== canonical(next)) fail('invalid_storage2', 'Decoded event content violates the domain schema or loses fields');
     if (event.afterHash !== digest(next) || canonical(applyStoragePatches(next, event.reverse, charge)) !== canonical(current)) fail('invalid_storage2', 'Forward or inverse patch does not reproduce its exact content hash');
-    prefixCosts.push(replayBytes - jsonBytes(wire.anchor) - jsonBytes(wire.content));
+    prefixCosts.push(replayBytes - jsonBytes(wire.anchor) - jsonBytes(wire.content) - (checkpoint ? jsonBytes(checkpoint.identitySources) : 0));
     previousContent = current; current = immutable(next); head = event.chainHash;
     if (identityTouched(event.forward) && canonical(identityShape(identities.at(-1)!.content)) !== canonical(identityShape(current))) identities.push({ revision: event.revision, content: current });
   }
@@ -179,15 +212,15 @@ export function readStorage2(input: unknown): State2 {
 export function contentAt(state: TripState, revision: number): TripContent {
   if (!Number.isSafeInteger(revision) || revision < 0 || revision > state.revision) fail('unknown_revision', 'Historical revision is outside the journey');
   if (!isStorage2(state)) return revision === state.revision ? state.content : revision === 0 ? state.history[0]?.before || state.content : state.history[revision - 1].after;
-  const info = infoFor(state); const existing = info.cache.get(revision); if (existing) return existing;
-  const starts = [...info.cache.entries(), ...info.identities.map((r): [number, TripContent] => [r.revision, r.content])];
+  const info = infoFor(state); const base = anchorRevision(state); if (revision < base) fail('history_compacted', 'Exact older revisions require a prior version containing them; the latest prior checkpoint may itself already be compacted'); const existing = info.cache.get(revision); if (existing) return existing;
+  const starts = [...info.cache.entries(), ...info.identities.filter((r) => r.revision >= base && 'memory' in r.content).map((r): [number, TripContent] => [r.revision, r.content as TripContent])];
   const [start, value] = starts.sort((a, b) => Math.abs(a[0] - revision) - Math.abs(b[0] - revision))[0]; let result = value;
-  if (start < revision) for (let n = start; n < revision; n++) result = applyStoragePatches(result, state.history[n].forward);
-  else for (let n = start - 1; n >= revision; n--) result = applyStoragePatches(result, state.history[n].reverse);
-  result = immutable(result); if (info.cache.size >= 4) { const removable = [...info.cache.keys()].find((n) => n !== 0 && n !== state.revision); if (removable !== undefined) info.cache.delete(removable); } info.cache.set(revision, result); return result;
+  if (start < revision) for (let n = start; n < revision; n++) result = applyStoragePatches(result, state.history[n - base].forward);
+  else for (let n = start - 1; n >= revision; n--) result = applyStoragePatches(result, state.history[n - base].reverse);
+  result = immutable(result); if (info.cache.size >= 4) { const removable = [...info.cache.keys()].find((n) => n !== base && n !== state.revision); if (removable !== undefined) info.cache.delete(removable); } info.cache.set(revision, result); return result;
 }
 /** Chronological source snapshots only when historic plan/activity/hotel identities change. */
-export function historicalSources(state: Pick<TripState, 'content' | 'history'>, includeCurrent = true): TripContent[] {
+export function historicalSources(state: Pick<TripState, 'content' | 'history'>, includeCurrent = true): (TripContent | HistoricalIdentity)[] {
   if (isStorage2(state)) return infoFor(state).identities.filter((r) => includeCurrent || r.revision < state.revision).map((r) => r.content);
   return state.history.length ? [state.history[0].before, ...state.history.slice(0, includeCurrent ? undefined : -1).map((h) => h.after)] : includeCurrent ? [state.content] : [];
 }
@@ -202,26 +235,28 @@ export function appendStorage2(state: State2, metadata: Metadata, after: TripCon
   measure(after); measure(eventMetadata(metadata));
   const checkedContent = contentSchema.safeParse(after); if (!checkedContent.success || canonical(checkedContent.data) !== canonical(after)) fail('invalid_storage2', 'Append content must satisfy its schema without normalization');
   const checkedMetadata = eventMetadataSchema.safeParse(eventMetadata(metadata)); if (!checkedMetadata.success || canonical(checkedMetadata.data) !== canonical(eventMetadata(metadata))) fail('invalid_storage2', 'Append metadata must satisfy its schema without normalization');
-  const info = infoFor(state); if (state.history.length >= MAX_STORAGE2_EVENTS) fail('history_full', 'Format2 event budget reached; retain all history and upgrade storage before another edit');
+  const info = infoFor(state); if (info.receipts.size >= MAX_STORAGE2_EVENTS) fail('history_full', 'Format2 event budget reached; retain all history and upgrade storage before another edit');
   if (metadata.revision !== state.revision + 1 || info.receipts.has(metadata.id)) fail('invalid_storage2', 'Append must have the next revision and a fresh event identity');
   const encoded = makeEvent(eventMetadata(metadata), state.content, after, state.auditHeadHash);
   let replayBytes = info.replayBytes - jsonBytes(state.content) + jsonBytes(after); let eventCost = 0;
   const charge = (bytes: number) => { eventCost += bytes; replayBytes += bytes; if (replayBytes > MAX_STORAGE2_REPLAY_BYTES) fail('storage_budget_exceeded', 'New event exceeds the forward/inverse replay budget'); };
   const current = immutable(applyStoragePatches(state.content, encoded.forward, charge));
   if (canonical(current) !== canonical(after) || canonical(applyStoragePatches(current, encoded.reverse, charge)) !== canonical(state.content)) fail('invalid_storage2', 'New delta failed its forward/inverse checks');
-  const wire: StoredState2 = { storageFormat: 2, codecVersion: 1, schemaVersion: 1, revision: metadata.revision, anchor: state.anchor, content: current, history: [...state.history.map((e) => ({ ...e })), encoded], auditHeadHash: encoded.chainHash };
+  const checkpoint = checkpointOf(state); const baseWire = { storageFormat: 2 as const, schemaVersion: 1 as const, revision: metadata.revision, anchor: state.anchor, content: current, history: [...state.history.map((e) => ({ ...e })), encoded], auditHeadHash: encoded.chainHash };
+  const wire: StoredState2 = checkpoint ? { ...baseWire, codecVersion: 2, checkpoint } : { ...baseWire, codecVersion: 1 };
   if (jsonBytes(wire) > MAX_STORE_BYTES) fail('state_too_large', 'New encoded container exceeds 16 MiB');
   const identities = [...info.identities]; if (identityTouched(encoded.forward) && canonical(identityShape(identities.at(-1)!.content)) !== canonical(identityShape(current))) identities.push({ revision: metadata.revision, content: current });
   return runtime(wire, identities, [...info.prefixCosts, info.prefixCosts.at(-1)! + eventCost], info, state.content);
 }
 export function selectRevision(state: TripState, revision: number): TripState {
   const content = contentAt(state, revision); if (!isStorage2(state)) return { ...state, revision, content, history: state.history.slice(0, revision) };
-  const info = infoFor(state); const history = state.history.slice(0, revision).map((e) => ({ ...e })); const head = history.at(-1)?.chainHash || anchorHead(state.anchor);
-  // Prefixes are derived only from an already verified immutable chain.
-  return runtime({ storageFormat: 2, codecVersion: 1, schemaVersion: 1, revision, anchor: state.anchor, content, history, auditHeadHash: head }, info.identities.filter((r) => r.revision <= revision), info.prefixCosts.slice(0, revision + 1));
+  const info = infoFor(state); const checkpoint = checkpointOf(state); const base = anchorRevision(state); const history = state.history.filter((e) => e.revision <= revision).map((e) => ({ ...e })); const head = history.at(-1)?.chainHash || checkpoint?.checkpointHash || anchorHead(state.anchor);
+  const baseWire = { storageFormat: 2 as const, schemaVersion: 1 as const, revision, anchor: state.anchor, content, history, auditHeadHash: head };
+  return runtime(checkpoint ? { ...baseWire, codecVersion: 2, checkpoint } : { ...baseWire, codecVersion: 1 }, info.identities.filter((r) => r.revision <= revision), info.prefixCosts.slice(0, revision - base + 1));
 }
 export function exportLegacyState(state: TripState): TripState {
   if (!isStorage2(state)) return state;
+  if (checkpointOf(state)) fail('downgrade_unrepresentable', 'Compacted prefix snapshots are not present; restore the prior full version rather than fabricate a complete legacy export');
   if (state.history.length > MAX_HISTORY_EVENTS) fail('downgrade_unrepresentable', 'Complete legacy export exceeds 200 events');
   let before = state.anchor; let expandedBytes = jsonBytes(state.content);
   const history = state.history.map((event) => { const after = applyStoragePatches(before, event.forward); const row = { ...eventMetadata(event), before, after }; expandedBytes += jsonBytes(row); if (expandedBytes > MAX_STORE_BYTES) fail('downgrade_unrepresentable', 'Complete legacy export exceeds 16 MiB compact bytes'); before = after; return row; });
@@ -231,6 +266,48 @@ export function stateHashScope(state: TripState) { return isStorage2(state) ? 'c
 export function stateHash(state: TripState) { return isStorage2(state) ? digest({ scope: 'tripctl-content-and-audit-head-v2', schemaVersion: 1, journeyId: state.content.snapshot.trip.id, revision: state.revision, contentHash: digest(state.content), auditHeadHash: state.auditHeadHash }) : digest(state); }
 export function storageIdentity(state: TripState) { return { storageFormat: isStorage2(state) ? 2 : 1, stateHashScope: stateHashScope(state), stateHash: stateHash(state), contentHash: digest(state.content), auditHeadHash: isStorage2(state) ? state.auditHeadHash : null, containerHash: digest(state) }; }
 export function findReceipt(state: TripState, id: string) { return isStorage2(state) ? infoFor(state).receipts.get(id) : state.history.find((e) => e.id === id); }
-export function storage2Stats(state: State2) { const info = infoFor(state); return { replayBytes: info.replayBytes, identitySnapshots: info.identities.length, cachedContentRevisions: info.cache.size, eventLimit: MAX_STORAGE2_EVENTS, eventBytesLimit: MAX_STORAGE2_EVENT_BYTES, replayBytesLimit: MAX_STORAGE2_REPLAY_BYTES, patchLimit: MAX_STORAGE2_PATCHES_PER_EVENT }; }
+export function storage2Stats(state: State2) { const info = infoFor(state); return { replayBytes: info.replayBytes, identitySnapshots: info.identities.length, cachedContentRevisions: info.cache.size, eventLimit: MAX_STORAGE2_EVENTS, codecVersion: state.codecVersion, anchorRevision: anchorRevision(state), archivedMetadataCount: checkpointOf(state)?.archive.length || 0, fullEventCount: state.history.length, receiptCount: info.receipts.size, eventBytesLimit: MAX_STORAGE2_EVENT_BYTES, replayBytesLimit: MAX_STORAGE2_REPLAY_BYTES, patchLimit: MAX_STORAGE2_PATCHES_PER_EVENT }; }
 
 export function stateHashContext(state: TripState) { return { storageFormat: isStorage2(state) ? 2 as const : 1 as const, stateHashScope: stateHashScope(state) }; }
+
+/** Complete immutable audit metadata remains available after technical prefix deltas are removed. */
+export function auditEvents(state: TripState): Metadata[] { return [...(checkpointOf(state)?.archive || []), ...state.history]; }
+export function receiptCount(state: TripState) { return isStorage2(state) ? infoFor(state).receipts.size : state.history.length; }
+export function originalDateRestriction(state: TripState, event: Metadata) {
+  if (event.operation.type === 'set_plan_dates') return event.operation;
+  if (event.operation.type !== 'apply_observation') return null;
+  const id = event.operation.observationId; const observation = checkpointOf(state)?.dateSources.find((r) => r.commitId === event.id)?.observation || state.history.find((e) => e.id === event.id)?.before.linkage?.observations.find((r) => r.id === id);
+  if (!observation) return fail('invalid_checkpoint', 'Applied observation lost its original dated source');
+  return setPlanDatesSchema.parse({ type: 'set_plan_dates', planId: observation.scope.planId, closeDates: [observation.scope.dateId], reason: observation.summary, source: { ...observation.source, observedAt: observation.publishedAt || observation.source.observedAt } });
+}
+function projectIdentity(content: TripContent | HistoricalIdentity, revision: number): HistoricalIdentity {
+  const value = { kind: 'historical_identity' as const, sourceRevision: revision, snapshot: { trip: { id: content.snapshot.trip.id, plans: content.snapshot.trip.plans, lodgings: content.snapshot.trip.lodgings } },
+    ...(content.itinerary ? { itinerary: { baseline: content.itinerary.baseline, current: content.itinerary.current, registeredActivityIds: content.itinerary.registeredActivityIds } } : {}), ...(content.linkage?.actualChanges ? { linkage: { actualChanges: content.linkage.actualChanges } } : {}) };
+  return value;
+}
+export function createHistoryCheckpoint(input: TripState, details: { createdAt: string; actor: string; reason: string; sourceFileHash: string; sourceLibrary?: z.infer<typeof checkpointLibrarySchema>; summaries: unknown[] }) {
+  measure(details);
+  const state = encodeStorage2(input); const base = Math.max(0, state.revision - 20);
+  if (base <= anchorRevision(state)) fail('nothing_to_compact', 'No older full technical history exists outside the latest20 recovery window');
+  const anchor = contentAt(state, base); const archive = auditEvents(state).filter((e) => e.revision <= base).map(eventMetadata); const prior = checkpointOf(state);
+  const identities: HistoricalIdentity[] = []; let lastIdentity = ''; let identityBytes = 2;
+  for (const row of infoFor(state).identities.filter((r) => r.revision <= base)) {
+    const source = projectIdentity(row.content, row.revision); const size = jsonBytes(source);
+    // The derived projection can be much larger than the original small-delta log.
+    // Bound cumulative identity bytes before hashing, recursive schema copies or suffix diffing.
+    if (identityBytes + size + Number(identities.length > 0) > MAX_STORE_BYTES) fail('state_too_large', 'Historical identity projections exceed 16 MiB; retain the original state');
+    const shape = canonical(identityShape(source)); if (shape !== lastIdentity) { identityBytes += size + Number(identities.length > 0); identities.push(source); lastIdentity = shape; }
+  }
+  const dateSources = archive.filter((e) => e.operation.type === 'apply_observation').map((e) => {
+    const observation = prior?.dateSources.find((r) => r.commitId === e.id)?.observation || state.history.find((r) => r.id === e.id)?.before.linkage?.observations.find((r) => e.operation.type === 'apply_observation' && r.id === e.operation.observationId);
+    if (!observation) return fail('invalid_checkpoint', 'Cannot compact without the exact original applied-observation evidence'); return { commitId: e.id, observation };
+  });
+  const assembled = { checkpointVersion: 1, revision: base, anchorHash: digest(anchor), priorStateHash: stateHash(input), priorAuditHeadHash: state.auditHeadHash, ...details, recoveryExternallyVerified: false, archive, identitySources: identities, dateSources, prefixKnownAt: archive.reduce<string | null>((last, e) => !last || Date.parse(e.at) > Date.parse(last) ? e.at : last, null), checkpointHash: 'sha256:' + '0'.repeat(64) };
+  const retained = state.history.filter((e) => e.revision > base);
+  // Plain references only until the complete candidate preflight passes. Hashes have fixed size.
+  measure({ storageFormat: 2, codecVersion: 2, schemaVersion: 1, revision: state.revision, anchor, content: state.content, history: retained.map((e) => ({ ...e })), checkpoint: assembled, auditHeadHash: assembled.checkpointHash });
+  const checkpoint = historyCheckpointSchema.parse(assembled);
+  checkpoint.checkpointHash = checkpointHash(checkpoint); let head = checkpoint.checkpointHash;
+  const history = retained.map((e) => { const encoded = makeEvent(eventMetadata(e), e.before, e.after, head); head = encoded.chainHash; return encoded; });
+  return readStorage2({ storageFormat: 2, codecVersion: 2, schemaVersion: 1, revision: state.revision, anchor, content: state.content, history, checkpoint, auditHeadHash: head });
+}

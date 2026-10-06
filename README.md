@@ -24,7 +24,7 @@
 
 助手收到目的地意向或当天/次日安排后，应在同轮主动核查开放、票价分项、是否预约、当天能否购买，以及必须提前办理的时间和截止时间。每项明确回答“需要 / 不需要 / 尚未核实”，附来源与查询时间；硬期限优先告知，未知不说成无需。已有票也要核对开放与预约。这是操作员执行流程，查询依赖宿主现有工具，不会自动购票或新建定时任务，见 [主动信息核查契约](docs/agent-linkage.md#意向立即触发信息核查)。
 
-历史保留以当前安排、明确实际报告、地点住宿、体验和关键变更/否决理由为主。`history-maintenance` 已可只读展示“旧普通调整合并摘要 + 最近20笔完整恢复”的效果；本轮不删历史、不写真实记录、不增加备份，见 [整理预览](docs/history-maintenance.md)。
+历史保留以当前安排、明确实际报告、地点住宿、体验和关键变更/否决理由为主。`history-maintenance` 提供只读摘要预览；显式 `prepare-maintenance` 生成可采用的 checkpoint，保留全部原操作与业务理由，只去掉较旧技术差异。最近20笔可精确恢复，更早完整快照需读先前版本。本地明确采用会保存一个可替换的精确恢复点；本轮只用合成文件验证，见 [整理与恢复](docs/history-maintenance.md)。
 
 ### 经验复盘与攻略草稿
 
@@ -107,7 +107,7 @@ An assistant can discover schemas, pass JSON over stdin, inspect compact context
 
 On a destination intent or a new arrangement, the operator immediately checks opening, itemized prices, reservations, same-day sales and advance/cutoff requirements. It explicitly reports required, not required or unverified for every item, cites sources and lookup times, and puts hard deadlines first. These are host research steps; no ticket purchase or new scheduled task is automatic. [The operator contract](docs/agent-linkage.md#意向立即触发信息核查) maps results and unknowns to existing evidence, facts, issues and decision deadlines.
 
-`history-maintenance` previews keeping current arrangements, explicit actual reports, place/lodging identity, experiences and key reasons, grouping older routine adjustments while retaining the latest 20 full changes for recovery. It is a read-only dry-run: no history is removed and no extra backups are created. See [retention rules](docs/history-maintenance.md).
+`history-maintenance` previews keeping current arrangements, explicit actual reports, place/lodging identity, experiences and key reasons, grouping older routine adjustments while retaining the latest 20 full changes for recovery. The report stays read-only. Explicit prepare-maintenance creates a codec2 checkpoint candidate that retains every original operation, business reason and receipt while removing older technical deltas; local commit-maintenance adopts it after saving one exact replaceable recovery file. Older full views require a prior version; no real authority is compacted by this delivery. See [retention rules](docs/history-maintenance.md).
 
 The optional [experience-review loop](docs/experience-review.md) links observations, adjustment history and reported outcomes in existing facts. Read-only search uses explicitly supplied journeys; external guides remain distinct from firsthand reports and temporary conditions require rechecking. Dedicated guide lessons can be exported for user review with private fields omitted by default. Export does not publish or share.
 

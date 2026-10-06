@@ -1,4 +1,4 @@
-import { historicalSources, stateHash, stateHashContext } from './storage2';
+import { historicalSources, stateHash, stateHashContext, auditEvents } from './storage2';
 import type * as z from 'zod/v4';
 import { lodgingChangesSchema, reservationBindingSchema, tripDisplayOutputSchema, type ArrangementOperation } from './arrangementSchema';
 import { TripError, type TripState, type TripContent, type TripOperation } from './schema';
@@ -17,7 +17,7 @@ export function isDisplayMetadataOnly(op: TripOperation) { return op.type === 's
 export function lodgingToken(lodging: TripContent['snapshot']['trip']['lodgings'][number]) { return hash(lodging); }
 function upsertLodgings(state: TripState, next: TripContent, input: z.infer<typeof lodgingChangesSchema>) {
   human(input.source); const when = Date.parse(input.source.observedAt); const dates = preparePlanningContext(next.snapshot).tripDates.map((d) => d.id);
-  const audit = state.history.flatMap((h) => components(h.operation));
+  const audit = auditEvents(state).flatMap((h) => components(h.operation));
   if (new Set(input.changes.map((c) => c.lodgingId)).size !== input.changes.length) fail('duplicate_id', 'Only one patch per hotel in a reconciliation');
   for (const change of input.changes) {
     const old = next.snapshot.trip.lodgings.find((l) => l.id === change.lodgingId);
@@ -68,7 +68,7 @@ export function changeArrangements(state: TripState, next: TripContent, op: Arra
   if (op.type === 'set_trip_display_metadata') {
     human(op.source);
     if ((next.displayMetadata?.version || 0) !== op.expectedVersion) fail('display_metadata_version_conflict', 'Re-read the current display metadata version');
-    const prior = [next.displayMetadata?.source.observedAt, ...state.history.flatMap((h) => components(h.operation)).filter((a) => a.type === 'set_trip_display_metadata').map((a) => a.source.observedAt)].filter((t): t is string => Boolean(t));
+    const prior = [next.displayMetadata?.source.observedAt, ...auditEvents(state).flatMap((h) => components(h.operation)).filter((a) => a.type === 'set_trip_display_metadata').map((a) => a.source.observedAt)].filter((t): t is string => Boolean(t));
     if (prior.some((t) => Date.parse(t) >= Date.parse(op.source.observedAt))) fail('stale_display_metadata', 'Display corrections need newer explicit source evidence, including after undo');
     next.displayMetadata = { ...op.record, version: op.expectedVersion + 1, source: op.source };
     return { kind: 'trip_display_metadata', tripId: next.snapshot.trip.id, version: next.displayMetadata.version, snapshotNameChanged: false, scheduleChanged: false };

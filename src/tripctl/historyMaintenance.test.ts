@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fixture from '../../fixtures/planning-tools.snapshot.json';
 import operator from '../../fixtures/operator-scenario.json';
+import booked from '../../fixtures/booked-day.snapshot.json';
 import experiences from '../../fixtures/experience-scenario.json';
 import { initialize, preview, apply, mutationFromPreview, hash, canonical } from './engine';
 import { encodeStorage2 } from './storage2';
@@ -18,6 +19,25 @@ describe('semantic history-maintenance dry-run', () => {
     expect(report.summaries[0].reasons.map((r) => [r.text, r.occurrences])).toEqual([['先核对交通，不把计划当实际', 1], ['调整查看日期', 24]]);
     expect(report.recovery.keepRecentFullEventIds).toEqual(s.history.slice(-20).map((e) => e.id)); expect(canonical(s)).toBe(before); expect(historyMaintenanceOutputSchema.safeParse(report).success).toBe(true); expect(report.saved).toBe(false); expect(report.applicationImplemented).toBe(false);
     expect(previewHistoryMaintenance(s, q(s))).toEqual(report); expect(report.summaries[0].impliesVisitedOrSkipped).toBe(false);
+  });
+  it('retains nested commitment adjustment reasons separately from a generic mutation reason', async () => {
+    let s: TripState = encodeStorage2(initialize(booked));
+    const reason = '餐馆临时关闭、用户同意调整预订';
+    const op = { type: 'assign', dateId: '2026-10-11', planId: 'indoor', commitmentChanges: [{ dateId: '2026-10-11', planId: 'museum', reason }] };
+    s = (await change(s, op, 'adjust-reservation', '按用户要求调整')).state;
+    for (let n = 0; n < 20; n++) s = (await change(s, { type: 'set_context', todayId: '2026-10-11' }, 'later-' + n)).state;
+    const report = previewHistoryMaintenance(s, q(s));
+    expect(JSON.stringify(report)).toContain(reason);
+    expect(report.technicalMemory.protectedCommitRefs).toContainEqual(expect.objectContaining({ id: 'adjust-reservation', businessReasons: expect.arrayContaining([expect.objectContaining({ origin: 'commitment', subjectId: 'museum:2026-10-11', planId: 'museum', dateId: '2026-10-11', text: reason, actor: 'synthetic', at, source: null })]) }));
+    expect(JSON.stringify(report)).toContain('按用户要求调整');
+  });
+  it('retains nested explicit veto/lifecycle reasons in protected business records', async () => {
+    let s = (await change(initialize(operator.snapshot), operator.importOperation, 'import')).state;
+    const reason = '用户明确否决，不再沿用未核实方案';
+    s = (await change(s, { type: 'set_decision_status', decisionPointId: 'hotel-deadline', status: 'withdrawn', confirmation: 'explicit', reason, source: { kind: 'synthetic', reference: 'synthetic:veto', observedAt: at } }, 'withdraw', '按用户要求调整')).state;
+    for (let n = 0; n < 20; n++) s = (await change(s, { type: 'set_context', todayId: '2031-06-04' }, 'later-' + n)).state;
+    const report = previewHistoryMaintenance(s, q(s));
+    expect(report.technicalMemory.protectedCommitRefs).toContainEqual(expect.objectContaining({ id: 'withdraw', operation: expect.objectContaining({ reason }), businessReasons: expect.arrayContaining([expect.objectContaining({ text: reason, origin: 'decision', subjectId: 'hotel-deadline' })]) }));
   });
   it('keeps fewer-than20 changes intact and does not invent a storage saving', async () => { const s = await contexts(3); const report = previewHistoryMaintenance(s, q(s)); expect(report.summaries).toEqual([]); expect(report.recovery.keepRecentFullEventIds).toHaveLength(3); expect(report.effect.reclaimedStorageBytes).toBe(0); });
   it('retains old experience references, explicit veto reasons, facts and unknown outcomes', async () => {

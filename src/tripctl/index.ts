@@ -34,3 +34,5 @@ export * from './arrangements';
 export * from './storage2';
 export * from './migration';
 export * from './historyMaintenance';
+
+export * from './historyCompaction';

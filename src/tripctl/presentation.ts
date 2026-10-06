@@ -1,4 +1,4 @@
-import { selectRevision, stateHashScope } from './storage2';
+import { selectRevision, stateHashScope, auditEvents } from './storage2';
 import { hash, parseState } from './engine';
 import { TripError } from './schema';
 import { exportReadonlyView } from './readonlyView';
@@ -14,7 +14,7 @@ export async function exportPresentationView(input: unknown, request: unknown): 
   const q = parsed.data; const authority = parseState(input); const revision = q.view.basis === 'as_recorded' ? q.view.revision : authority.revision;
   if (revision > authority.revision) throw new TripError('unknown_revision', 'Historical revision is outside the authoritative audit');
   const state = revision === authority.revision ? authority : parseState(selectRevision(authority, revision));
-  const captureTimes: string[] = state.history.map((e) => e.at);
+  const captureTimes: string[] = auditEvents(state).map((e) => e.at);
   const collectCaptures = (value: unknown) => {
     if (!value || typeof value !== 'object') return;
     if (Array.isArray(value)) { value.forEach(collectCaptures); return; }

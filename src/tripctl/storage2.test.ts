@@ -4,7 +4,7 @@ import scenario from '../../fixtures/arrangement-scenario.json';
 import linkage from '../../fixtures/agent-linkage-scenario.json';
 import { initialize, preview, apply, mutationFromPreview, parseState, hash } from './engine';
 import { hash as digest } from './identity';
-import { encodeStorage2, appendStorage2, exportLegacyState, applyStoragePatches, diffStorage, storageIdentity, storage2Stats, selectRevision, historicalSources, isStorage2 } from './storage2';
+import { encodeStorage2, appendStorage2, createHistoryCheckpoint, exportLegacyState, applyStoragePatches, diffStorage, storageIdentity, storage2Stats, selectRevision, historicalSources, isStorage2 } from './storage2';
 import { exportPresentationView } from './presentation';
 import { analyseCapacity } from './capacity';
 import type { TripState } from './schema';
@@ -84,6 +84,8 @@ describe('formal lossless bounded storage2', () => {
     let state = encodeStorage2((await apply(legacy, first)).state);
     for (let n = 2; n <= 2048; n++) state = appendStorage2(state, { id: 'limit-' + n, revision: n, operation: { type: 'set_context', todayId: fixture.todayId }, actor: 'synthetic', reason: 'Synthetic log limit', at, requestHash: 'synthetic' }, state.content);
     const loaded = parseState(wire(state)); expect(loaded.history).toHaveLength(2048); expect((await apply(loaded, first)).receipt.replayed).toBe(true);
+    const checkpoint = parseState(createHistoryCheckpoint(loaded, { createdAt: at, actor: 'synthetic', reason: 'Bounded receipts after compaction', sourceFileHash: 'sha256:' + '1'.repeat(64), summaries: [] })); expect(checkpoint.history).toHaveLength(20); expect(analyseCapacity(checkpoint).commits.count).toBe(2048); expect((await apply(checkpoint, first)).receipt.replayed).toBe(true);
+    const cp = await preview(checkpoint, { type: 'set_context', todayId: fixture.todayId }, checkpoint.revision); await expect(apply(checkpoint, mutationFromPreview(cp, { idempotencyKey: 'checkpoint-overflow', actor: 'synthetic', reason: 'Compacted log overflow', at }))).rejects.toMatchObject({ code: 'history_full' });
     const p = await preview(loaded, { type: 'set_context', todayId: fixture.todayId }, loaded.revision);
     await expect(apply(loaded, mutationFromPreview(p, { idempotencyKey: 'overflow', actor: 'synthetic', reason: 'Synthetic log overflow', at }))).rejects.toMatchObject({ code: 'history_full' });
   }, 45000);

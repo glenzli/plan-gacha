@@ -1,8 +1,8 @@
 # Formal history storage (core 12)
 
-Product retention now targets useful business memory and concise change reasons, with the latest20 changes for recovery. Complete format2 events are the current technical migration foundation, not a promise to keep every intermediate adjustment forever. `history-maintenance` provides an implemented read-only semantic consolidation preview; see [history-maintenance.md](history-maintenance.md). No history is deleted in this phase.
+Product retention now targets useful business memory and concise change reasons, with the latest20 changes for recovery. Codec1 retains complete technical events. `history-maintenance` provides a read-only consolidation report; explicit `prepare-maintenance` and local `commit-maintenance` now create/adopt a codec2 checkpoint. Codec2 drops older technical deltas, preserves all original event metadata/current business content, and keeps the latest20 full events. Older exact views require a readable prior version; see [history-maintenance.md](history-maintenance.md). Ordinary reads never compact.
 
-Format 1 remains readable and writable with its existing 200-event and 16 MiB limits. Reading, `capacity`, `preview`, `stage` and ordinary `apply` do not implicitly migrate it. Format 2 is a single local offline JSON document. It retains the initial content, current content, every original event ID/revision/operation/actor/reason/timestamp/request hash, reversible content patches and a content/audit hash chain. It does not rerun historical business operations or remove events. Domain schemaVersion stays 1; storageFormat=2 and codecVersion=1 identify the representation.
+Format 1 remains readable and writable with its existing 200-event and 16 MiB limits. Reading, `capacity`, `preview`, `stage` and ordinary `apply` do not implicitly migrate it. Format 2 is a single local offline JSON document. It retains the initial content, current content, every original event ID/revision/operation/actor/reason/timestamp/request hash, reversible content patches and a content/audit hash chain. It does not rerun historical business operations or remove events. Domain schemaVersion stays 1; storageFormat=2 and codecVersion=1 identify this lossless representation. Codec2 explicitly adds a checkpoint anchor at a global revision, original metadata archive, tagged historical entity versions and original dated sources. Its full history suffix starts at anchorRevision+1, while logical receipt/event counts include the entire archive.
 
 ## Guarded migration
 
@@ -67,7 +67,7 @@ After adoption, use normal `preview` → `stage` → host same-identity CAS/read
 | stateHash, format1 | canonical complete legacy logical document; scope canonical-format-1-state |
 | stateHash, format2 | domain schema, journey ID, revision, current contentHash, complete auditHeadHash; scope content-and-audit-head-v2 |
 | contentHash | canonical current domain content only |
-| auditHeadHash | anchor plus every ordered original event, reversible patches and before/after hashes |
+| auditHeadHash | codec1: anchor plus every complete ordered event; codec2: hashed checkpoint archive/identity/source contract plus complete recent suffix |
 | containerHash | canonical physical JSON representation; it differs from logical stateHash in format2 |
 | fileHash | SHA-256 of exact UTF-8 file bytes, including whitespace |
 | proof.legacyStateHash | explicit full legacy reconstruction used only for migration/downgrade equivalence |
@@ -80,18 +80,19 @@ Physical files remain <=16 MiB. Format2 independently permits <=2048 events, <=2
 
 Opening validates schema/version/order/unique IDs, previous-head chain, before/after hashes, forward output, exact inverse recovery, current/head correspondence and domain rules. Private fast paths only accept deeply immutable objects produced by verified codec and domain checks. Corrupt, truncated, reordered, unknown-version or over-budget files are refused, never normalized or repaired in place.
 
-The exact original backup is a byte-for-byte rollback source **only if no later business edits need preservation**, under a guarded host CAS or separately reviewed local recovery. After new edits, exporting the latest complete history is the only lossless old-runtime route:
+For un-compacted codec1, the exact original migration backup is a byte-for-byte rollback source **only if no later business edits need preservation**, under a guarded host CAS or separately reviewed local recovery. After new edits, exporting the latest complete history is the only lossless old-runtime route:
 
 ```sh
 node tripctl.mjs export-format1 --store latest.format2.json --input downgrade-guards.json --output latest.format1.json
 ```
 
-Input is {expectedRevision,expectedStateHash}. This creates a candidate saved:false with all current and historical content, or refuses `downgrade_unrepresentable` when the complete latest history exceeds 200 events or the old 16 MiB representation. Never roll back to the original backup over later edits. Runtime core <=11 refuses storageFormat2. Keep the previous runtime and original bytes for recovery, and use core12 for migrated authorities.
+Input is {expectedRevision,expectedStateHash}. This creates a candidate saved:false with all current and historical content, or refuses `downgrade_unrepresentable` when the complete latest history exceeds 200 events or the old 16 MiB representation. Never roll back to the original backup over later edits. A codec2 checkpoint always refuses complete format1 downgrade because older exact technical states are absent. Prior codec1-only core12 packages refuse codec2 too; discover supported storage schemas/codecs rather than assuming equal coreVersion means equal representation support. Runtime core <=11 refuses storageFormat2. Keep the previous runtime and original bytes for recovery, and use core12 for migrated authorities.
 
 ## Reproducible synthetic evidence
 
 ```sh
 node history-capacity.verify.mjs .
+node history-compaction.verify.mjs .
 node verify.mjs
 ```
 

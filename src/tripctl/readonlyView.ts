@@ -1,4 +1,4 @@
-import { historicalSources, stateHashContext } from './storage2';
+import { historicalSources, stateHashContext, receiptCount, checkpointOf, auditEvents } from './storage2';
 import { readonlyViewInputSchema } from './linkageSchema';
 import { parseState, hash } from './engine';
 import { TripError } from './schema';
@@ -14,7 +14,7 @@ export async function exportReadonlyView(input: unknown, request: unknown) {
   const state = parseState(input); const content = state.content; const context = preparePlanningContext(content.snapshot);
   const impact = await analyseEvidenceImpact(state, { asOf: q.asOf }); const reminders = reconcileReminders(state, q.asOf);
   const analysis = content.itinerary ? analyseItinerary(content.itinerary, { asOf: q.asOf }, content) : null;
-  const recent = state.history.slice(-10).map((h) => ({ id: h.id, revision: h.revision, at: h.at, reason: h.reason, operationType: h.operation.type }));
+  const recent = auditEvents(state).slice(-10).map((h) => ({ id: h.id, revision: h.revision, at: h.at, reason: h.reason, operationType: h.operation.type }));
   return { projectionSchemaVersion: 1, readOnly: true, derived: true, saved: false, audience: 'private_owner',
     source: { journeyId: content.snapshot.trip.id, revision: state.revision, stateHash: hash(state), ...stateHashContext(state), library: q.source || null, metadataIsCallerSupplied: true },
     freshness: { asOf: q.asOf, generatedAt: q.generatedAt, sourceRetrievedAt: q.source?.retrievedAt || null, automaticRefresh: false, providerSyncAt: null },
@@ -25,7 +25,8 @@ export async function exportReadonlyView(input: unknown, request: unknown) {
     alternatives: impact.options?.options || [], unassessedAlternatives: impact.options?.unassessedOptions || [], inactiveAlternatives: impact.options?.inactiveOptions || [],
     decisions: analysis?.decisions || [], pendingQuestions: impact.questions,
     evidence: impact.impacts.map(({ proposal, ...row }) => ({ ...row, proposedChange: proposal ? { operation: proposal.operation, canApply: proposal.canApply, reasonCodes: proposal.reasonCodes } : null })),
-    reminders, recentChanges: { total: state.history.length, returned: recent.length, truncated: state.history.length > recent.length, items: recent },
+    historyCheckpoint: checkpointOf(state) ? { anchorRevision: checkpointOf(state)!.revision, archivedMetadataCount: checkpointOf(state)!.archive.length, summaries: checkpointOf(state)!.summaries, olderExactRevisionsAvailable: false, recoveryExternallyVerified: false } : null,
+    reminders, recentChanges: { total: receiptCount(state), returned: recent.length, truncated: receiptCount(state) > recent.length, items: recent },
     checklist: { text: content.snapshot.trip.checklistText, state: content.snapshot.trip.checklistState },
     refreshContract: ['Materialize the one authoritative current journey and retain its native version', 'After an authorized same-identity CAS and readback, regenerate this projection from those exact bytes', 'Publishing/refreshing a private Site is a separate host action; this export performs neither', 'Display source revision/hash and generation/retrieval timestamps; a cached view may be stale'],
     limitations: impact.limitations,

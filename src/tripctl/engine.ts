@@ -5,12 +5,12 @@ export const TRIPCTL_CORE_VERSION = 12;
 import { arrangementOperationSchema } from './arrangementSchema';
 import { changeArrangements, validateArrangements, isDisplayMetadataOnly } from './arrangements';
 import { emptyLinkage, linkageOperationSchema } from './linkageSchema';
-import { appendObservation, observationDateChange, observationRestriction } from './observations';
+import { appendObservation, observationDateChange } from './observations';
 import { changeReminders, validateLinkage } from './reminders';
 import { reconcileReminders } from './reminderReconcile';
 import { importHistoricalFacts } from './historyImport';
 import { canonical, hash as digest } from './identity';
-import { isStorage2, readStorage2, appendStorage2, historicalSources, findReceipt, stateHash, storageIdentity } from './storage2';
+import { isStorage2, readStorage2, appendStorage2, historicalSources, findReceipt, stateHash, storageIdentity, auditEvents, receiptCount, originalDateRestriction } from './storage2';
 export { canonical } from './identity';
 export const hash = (value: unknown): string => isStorage2(value) && Object.hasOwn(value, 'content') && Object.hasOwn(value, 'history') ? stateHash(value) : digest(value);
 const validatedDomain = new WeakSet<object>();
@@ -32,7 +32,7 @@ function validateExperiences(state: TripState, current = state.content) {
     if (e.kind === 'firsthand' && fact.source.kind === 'provider') throw new TripError('invalid_experience_source', 'Provider guidance is not firsthand user experience');
     if (e.planId && !current.snapshot.trip.plans.some((p) => p.id === e.planId)) throw new TripError('unknown_id', 'Experience references an unknown plan');
     if (e.activityId && !activityPairs.has(JSON.stringify([e.planId, e.activityId]))) throw new TripError('unknown_id', 'Experience activity must belong to its named plan');
-    if (e.changeCommitIds.some((id) => !state.history.some((event) => event.id === id))) throw new TripError('unknown_id', 'Experience references an unknown prior change');
+    if (e.changeCommitIds.some((id) => !auditEvents(state).some((event) => event.id === id))) throw new TripError('unknown_id', 'Experience references an unknown prior change');
     if (e.supersedesFactId) {
       const old = current.memory.facts.find((f) => f.id === e.supersedesFactId);
       if (!old?.experience) throw new TripError('unknown_id', 'Superseded record must be an existing experience fact');
@@ -127,7 +127,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
     next.memory.facts = structuredClone(last.before.memory.facts);
     detail = { kind: 'historical_feedback_undo', commitId: last.id, archivedStatePreserved: true, ordinaryPlanningChangesAllowed: false };
   } else if (itineraryOperationSchema.safeParse(operation).success) {
-    if (operation.type === 'set_option_requirements') for (const event of state.history) {
+    if (operation.type === 'set_option_requirements') for (const event of auditEvents(state)) {
       const old = event.operation;
       if (old.type === 'set_option_requirements' && old.optionId === operation.optionId && Date.parse(operation.source.observedAt) <= Date.parse(old.source.observedAt)) blocks.push('stale_option_evidence');
     }
@@ -135,8 +135,8 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
       const id = operation.type === 'set_decision_status' ? operation.decisionPointId : operation.record.decisionPointId;
       const observedAt = operation.type === 'set_decision_status' ? operation.source.observedAt : operation.record.source.observedAt;
       // Undo restores content, but does not make already superseded evidence fresh again.
-      const managed = operation.type === 'set_decision_status' || state.history.some((e) => e.operation.type === 'set_decision_status' && e.operation.decisionPointId === id);
-      if (managed) for (const event of state.history) {
+      const managed = operation.type === 'set_decision_status' || auditEvents(state).some((e) => e.operation.type === 'set_decision_status' && e.operation.decisionPointId === id);
+      if (managed) for (const event of auditEvents(state)) {
         const prior = event.operation;
         if (prior.type === 'set_decision_status' && prior.decisionPointId === id && Date.parse(observedAt) <= Date.parse(prior.source.observedAt)
           || prior.type === 'choose_option' && prior.record.decisionPointId === id && Date.parse(observedAt) <= Date.parse(prior.record.source.observedAt)) blocks.push('stale_decision_evidence');
@@ -157,9 +157,9 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
     // Evidence is caller supplied. History prevents older/equal-time contradictory reports
     // from superseding accepted restrictions; it cannot authenticate provider observations.
     const touched = new Set([...(dateOperation.closeDates || []), ...(dateOperation.reopenDates || [])]);
-    for (const event of state.history) {
-      const stored = event.operation; const record = stored.type === 'apply_observation' ? event.before.linkage?.observations.find((r) => r.id === stored.observationId) : undefined;
-      const prior = record ? observationRestriction(record) : stored;
+    for (const event of auditEvents(state)) {
+      const prior = originalDateRestriction(state, event);
+      if (!prior) continue;
       if (prior.type === 'set_plan_dates' && prior.planId === dateOperation.planId
         && (dateOperation.availableDates || prior.availableDates || [...(prior.closeDates || []), ...(prior.reopenDates || [])].some((date) => touched.has(date)))
         && Date.parse(dateOperation.source.observedAt) <= Date.parse(prior.source.observedAt)) blocks.push('stale_date_evidence');
@@ -243,7 +243,7 @@ export async function apply(stateInput: unknown, mutationInput: unknown) {
     if (request.operation.type === 'apply_observation') observationDateChange(state.content, request.operation.observationId, request.at);
     else { if (Date.parse(request.at) !== Date.parse(request.operation.asOf)) throw new TripError('invalid_action_time', 'A reminder attempt must use its actual save timestamp as asOf; preview again before saving'); const id = request.operation.intentId; const action = reconcileReminders(state, request.at).items.find((i) => i.intentId === id)?.action; if (!action || action.actionKey !== request.operation.actionKey) throw new TripError('stale_reminder_action', 'Action expired or changed before this apply time'); }
   }
-  if (state.history.length >= (isStorage2(state) ? MAX_STORAGE2_EVENTS : MAX_HISTORY_EVENTS)) throw new TripError('history_full', 'Storage event limit reached; retain state and upgrade storage before another change');
+  if (receiptCount(state) >= (isStorage2(state) ? MAX_STORAGE2_EVENTS : MAX_HISTORY_EVENTS)) throw new TripError('history_full', 'Storage event limit reached; retain state and upgrade storage before another change');
   const proposal = await preview(state, request.operation, request.expectedRevision);
   if (proposal.previewToken !== request.previewToken) throw new TripError('stale_preview', 'State or operation changed; preview again');
   if (!proposal.canApply) throw new TripError('constraint_violation', proposal.reasonCodes.join(', '));

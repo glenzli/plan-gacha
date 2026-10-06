@@ -1,11 +1,11 @@
-import { historicalSources, stateHashContext } from './storage2';
+import { historicalSources, stateHashContext, auditEvents } from './storage2';
 import { parseState, hash } from './engine';
 import { TripError, type TripState } from './schema';
 import { experienceSearchSchema, guideDraftSchema } from './experienceSchema';
 const timeSensitive = new Set(['weather', 'crowds', 'booking', 'opening', 'transport', 'prices']);
 const parseQuery = (input: unknown) => { const p = experienceSearchSchema.safeParse(input); if (!p.success) throw new TripError('invalid_experience_query', 'Experience search requires explicit asOf and valid filters'); return p.data; };
 function rows(state: TripState, asOf: string) {
-  const stateHash = hash(state); const history = new Map(state.history.map((h) => [h.id, h]));
+  const stateHash = hash(state); const history = new Map(auditEvents(state).map((h) => [h.id, h]));
   const originalPlans = new Map<string, TripState['content']['snapshot']['trip']['plans'][number]>();
   for (const content of historicalSources(state, false)) for (const plan of content.snapshot.trip.plans) if (!originalPlans.has(plan.id)) originalPlans.set(plan.id, plan);
   const superseded = new Set(state.content.memory.facts.flatMap((f) => f.experience?.supersedesFactId ? [f.experience.supersedesFactId] : []));

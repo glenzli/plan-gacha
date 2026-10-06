@@ -1,7 +1,8 @@
 #!/usr/bin/env node
+import { prepareHistoryCheckpoint, commitHistoryCheckpoint } from './historyCompaction';
 import { previewHistoryMaintenance } from './historyMaintenance';
 import { prepareMigration, commitMigration, exportFormat1 } from './migration';
-import { storageIdentity, eventMetadata, isStorage2 } from './storage2';
+import { storageIdentity, eventMetadata, isStorage2, auditEvents, receiptCount, checkpointOf } from './storage2';
 import { exportTripDisplay } from './arrangements';
 import { MAX_STORE_BYTES } from './limits';
 import { exportPresentationView } from './presentation';
@@ -36,6 +37,8 @@ async function main() {
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
   if (command === 'migrate' || command === 'export-format1') { if (!values.output) throw new TripError('missing_argument', '--output is required'); return command === 'migrate' ? prepareMigration(path, values.output, await json(values.input)) : exportFormat1(path, values.output, await json(values.input)); }
   if (command === 'commit-migration') return commitMigration(path, await json(values.input));
+  if (command === 'prepare-maintenance') { if (!values.output) throw new TripError('missing_argument', '--output is required'); return prepareHistoryCheckpoint(path, values.output, await json(values.input)); }
+  if (command === 'commit-maintenance') return commitHistoryCheckpoint(path, await json(values.input));
   const loaded = await loadStore(path); const state = loaded.state;
   if (command === 'history-maintenance') return { ...previewHistoryMaintenance(state, await json(values.input)), sourceFileHash: loaded.fileHash };
   if (command === 'trip-display') return exportTripDisplay(state);
@@ -49,8 +52,8 @@ async function main() {
   if (command === 'guide-draft') return createGuideDraft(state, await json(values.input));
   if (command === 'context') return readOperatorContext(state, { asOf: values['as-of'], ...(values.date ? { dateId: values.date } : {}), ...(values.limit !== undefined ? { candidateLimit: Number(values.limit) } : {}) });
   if (command === 'read') return { ok: true, operatorPolicy: ['Read current state before each planning turn', 'Keep uncertainty and explicit sources', 'Preview before apply', 'Only acknowledge durable persistence after its receipt', 'Never treat estimates as guarantees'], revision: state.revision, ...storageIdentity(state), fileHash: loaded.fileHash, ...state.content, lastChange: state.history.at(-1) ? { id: state.history.at(-1)!.id, reason: state.history.at(-1)!.reason, at: state.history.at(-1)!.at } : null };
-  if (command === 'verify') return { ok: true, journeyId: state.content.snapshot.trip.id, fileBytes: loaded.raw.length, revision: parseState(state).revision, ...storageIdentity(state), fileHash: loaded.fileHash, historyCount: state.history.length, externalCheckpointVerified: false };
-  if (command === 'history') return { ok: true, revision: state.revision, events: state.history.map((event) => ({ ...eventMetadata(event), beforeHash: isStorage2(state) ? state.history[event.revision - 1].beforeHash : hash(event.before), afterHash: isStorage2(state) ? state.history[event.revision - 1].afterHash : hash(event.after) })) };
+  if (command === 'verify') return { ok: true, journeyId: state.content.snapshot.trip.id, fileBytes: loaded.raw.length, revision: parseState(state).revision, ...storageIdentity(state), fileHash: loaded.fileHash, historyCount: receiptCount(state), fullHistoryCount: state.history.length, checkpoint: checkpointOf(state) ? { revision: checkpointOf(state)!.revision, exactOlderRevisionsAvailable: false, recoveryExternallyVerified: false } : null, externalCheckpointVerified: false };
+  if (command === 'history') return { ok: true, revision: state.revision, checkpoint: checkpointOf(state) || null, events: auditEvents(state).map((event) => { const full = state.history.find((e) => e.id === event.id); return { ...eventMetadata(event), representation: full ? 'full_event' : 'archived_metadata', beforeHash: full ? isStorage2(state) ? (full as typeof state.history[number] & { beforeHash: string }).beforeHash : hash(full.before) : null, afterHash: full ? isStorage2(state) ? (full as typeof state.history[number] & { afterHash: string }).afterHash : hash(full.after) : null }; }) };
   if (command === 'check' || command === 'rank') return { revision: state.revision, result: await inspect(state, command === 'check' ? 'evaluate_plan' : 'rank_candidates', values.date), ...(command === 'check' && state.content.itinerary ? { optionAnalysis: assessItineraryOptions(state.content.itinerary, state.content) } : {}) };
   if (command === 'route-query') return { ok: true, revision: state.revision, saved: false, descriptor: prepareWalkingQuery(state.content.snapshot, await json(values.input)) };
   if (command === 'route-import') return { ok: true, revision: state.revision, saved: false, operation: { type: 'map_fact', fact: await importWalkingObservation(await json(values.request), await json(values.input)) } };

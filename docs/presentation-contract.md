@@ -35,7 +35,7 @@ current代表最新保存的计划，可能仍等于baseline。展示优先顺�
 
 输出分别提供 `source.authorityRevision/authorityStateHash`（实际读取的当前文件）和 `projectedRevision/projectedStateHash`（所选视图）。Library identity/version指前者，不把current文件的native version冒充历史revision的独立文件版本。hashScope 在 format1 为 canonical-format-1-state，format2 为 content-and-audit-head-v2；后者绑定当前内容及完整审计 head，不等于容器摘要。
 
-as_recorded从完整审计prefix重建：revision0取最早before，其他revision取对应after，保留全部此前history，再走正式parseState。禁止拿current内容拼rev0/history[]，不混入后来的纠正。此过程只读，不创建或保存另一个权威journey。
+未压缩的codec1或format1中，as_recorded从完整审计prefix重建：revision0取最早before，其他revision取对应after，保留全部此前history，再走正式parseState。禁止拿current内容拼rev0/history[]，不混入后来的纠正。此过程只读，不创建或保存另一个权威journey。
 
 `knownAt` 是选定prefix提交时间及typed memory/itinerary/linkage来源捕获时间的最大值；asOf早于knownAt会拒绝 `future_projection_revision`。`freshness.knowledgeBasis=selected_revision`，asOf仅在选定知识已经可用之后评估证据新鲜度，**不是按任意时刻过滤当前revision的隐式时间旅行**。需要较早知识就明确选历史revision。generatedAt不得早于asOf/来源读取时间。automaticRefresh:false、providerSyncAt:null。
 
@@ -76,3 +76,6 @@ coreVersion=11 会拒绝 v5–v10 未提交的旧 preview token，必须重新�
 
 
 core12 的 read/verify/context/capacity 和只读摘要明确标明 storageFormat/stateHashScope；trip-display 同样标明 sourceStateHash 的作用域，presentation.source.hashScope涵盖所选revision，迁移不改变领域revision。宿主应使用该作用域比对，不能以容器摘要或旧格式全状态摘要替代。旧有as-recorded接口及稳定ref保持；纯JSON/structuredClone的format2 history保存差异，历史prefix由selectRevision受管重建。
+
+
+显式 codec2 checkpoint 后，as_recorded 只支持保留窗口起点到当前 revision；更早返回 history_compacted，不能以摘要拼造完整历史。source/projected 的 revision/hash 仍分别表达实际读取文件与所选窗口状态；旧 metadata、水印、原日期证据和按 revision 截止的实体引用保持。checkpoint.createdAt 不会替代原业务已知时间。
