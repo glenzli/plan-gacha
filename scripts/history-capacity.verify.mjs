@@ -1,123 +1,51 @@
-// Synthetic design experiment only. This codec is NOT accepted by tripctl load/apply.
+// Formal production codec + CLI, synthetic data only. No alternate authority or remote I/O.
 import assert from 'node:assert/strict';
-import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawnSync } from 'node:child_process';
-const folder = resolve(process.argv[2] || 'dist/tripctl');
+const folder = resolve(process.argv[2] || 'dist/tripctl'); const oldFolder = process.argv[3];
 const core = await import(pathToFileURL(join(folder, 'tripctl-lib.mjs')).href);
-const bytes = (x) => Buffer.byteLength(JSON.stringify(x));
-const equal = (a, b) => core.canonical(a) === core.canonical(b);
-const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
-function diff(a, b, path = []) {
-  if (equal(a, b)) return [];
-  if (Array.isArray(a) && Array.isArray(b)) {
-    let start = 0; while (start < a.length && start < b.length && equal(a[start], b[start])) start++;
-    let tail = 0; while (tail < a.length - start && tail < b.length - start && equal(a[a.length - 1 - tail], b[b.length - 1 - tail])) tail++;
-    return [{ kind: 'splice', path, start, remove: a.length - start - tail, values: structuredClone(b.slice(start, b.length - tail)) }];
-  }
-  if (a && b && typeof a === 'object' && typeof b === 'object' && !Array.isArray(a) && !Array.isArray(b)) {
-    return [...Object.keys(a).filter((k) => !own(b, k)).map((k) => ({ kind: 'remove', path: [...path, k] })), ...Object.keys(b).flatMap((k) => own(a, k) ? diff(a[k], b[k], [...path, k]) : [{ kind: 'put', path: [...path, k], value: structuredClone(b[k]) }])];
-  }
-  return [{ kind: 'put', path, value: structuredClone(b) }];
-}
-function patch(content, changes) {
-  let result = structuredClone(content);
-  for (const change of changes) {
-    assert.ok(change.path.every((k) => typeof k === 'string' && !['__proto__', 'prototype', 'constructor'].includes(k)));
-    const traverse = (path) => path.reduce((node, key) => { assert.ok(node && own(node, key)); return node[key]; }, result);
-    if (change.kind === 'splice') {
-      const target = traverse(change.path); assert.ok(Array.isArray(target));
-      assert.ok(Number.isInteger(change.start) && Number.isInteger(change.remove) && change.start >= 0 && change.remove >= 0 && change.start + change.remove <= target.length);
-      target.splice(change.start, change.remove, ...structuredClone(change.values));
-    } else if (!change.path.length) { assert.equal(change.kind, 'put'); result = structuredClone(change.value); }
-    else {
-      const parent = traverse(change.path.slice(0, -1)); const key = change.path.at(-1); assert.ok(!Array.isArray(parent));
-      if (change.kind === 'remove') { assert.ok(own(parent, key)); delete parent[key]; }
-      else { assert.equal(change.kind, 'put'); parent[key] = structuredClone(change.value); }
-    }
-  }
-  return result;
-}
-function eventRecord(metadata, before, after, previousHash) {
-  const body = { metadata, previousHash, beforeHash: core.hash(before), afterHash: core.hash(after), forward: diff(before, after), reverse: diff(after, before) };
-  return { ...body, hash: core.hash(body) };
-}
-function encode(state) {
-  const anchor = structuredClone(state.history[0]?.before || state.content); let head = core.hash(anchor);
-  const events = state.history.map(({ before, after, ...metadata }) => { const event = eventRecord(metadata, before, after, head); head = event.hash; return event; });
-  return { encoding: 'experimental-lossless-patches-v0', anchor, events, head, revision: state.revision, current: structuredClone(state.content) };
-}
-function decode(blob, collectHistory = true) {
-  assert.equal(blob.encoding, 'experimental-lossless-patches-v0'); let content = structuredClone(blob.anchor); let head = core.hash(content); const history = []; const ids = new Set();
-  for (const [n, event] of blob.events.entries()) {
-    const { hash, ...body } = event; assert.equal(core.hash(body), hash); assert.equal(event.previousHash, head); assert.equal(event.beforeHash, core.hash(content));
-    assert.equal(event.metadata.revision, n + 1); assert.ok(!ids.has(event.metadata.id)); ids.add(event.metadata.id);
-    const next = patch(content, event.forward); assert.equal(event.afterHash, core.hash(next)); assert.deepEqual(patch(next, event.reverse), content);
-    if (collectHistory) history.push({ ...event.metadata, before: content, after: next }); content = next; head = hash;
-  }
-  assert.equal(blob.revision, blob.events.length); assert.equal(blob.head, head); assert.deepEqual(blob.current, content);
-  return { schemaVersion: 1, revision: blob.revision, content, history };
-}
-const checks = [];
-for (const [before, after] of [
-  [{ list: [{ id: 'a' }] }, { list: [{ id: 'a' }, { id: 'b' }] }],
-  [{ list: ['a', 'b', 'c'] }, { list: ['a', 'c'] }],
-  [{ list: ['a', 'b', 'c'] }, { list: ['c', 'a', 'b'] }],
-  [{ nested: { 'a/b~': '合成 🌲', gone: true } }, { nested: { 'a/b~': '修正', added: 0 } }],
-]) { assert.deepEqual(patch(before, diff(before, after)), after); assert.deepEqual(patch(after, diff(after, before)), before); }
-assert.throws(() => patch({}, [{ kind: 'put', path: ['__proto__'], value: {} }]));
-checks.push('array-append-remove-reorder-and-object-roundtrip', 'invalid-path-refused');
-let state = core.initialize(JSON.parse(await readFile(join(folder, 'synthetic.snapshot.json'), 'utf8')));
-const prefixSizes = []; const requests = [];
-for (let n = 1; n <= 64; n++) {
-  const operation = { type: 'fact', record: { id: 'synthetic-fact-' + n, text: 'Synthetic evidence '.repeat(14), certainty: 'reported', source: { kind: 'synthetic', reference: 'synthetic:capacity-' + n, observedAt: '2033-10-01T00:00:00Z' } } };
-  const p = await core.preview(state, operation, state.revision); const request = core.mutationFromPreview(p, { idempotencyKey: 'synthetic-event-' + n, actor: 'capacity-experiment', reason: 'Synthetic append only', at: '2033-10-01T00:00:00Z' });
-  state = (await core.apply(state, request)).state; requests.push(request);
-  if ([16, 32, 64].includes(n)) prefixSizes.push({ revision: n, v1WriterBytes: core.analyseCapacity(state).serializedStateBytes, experimentalCompactBytes: bytes(encode(state)) });
-}
-const blob = encode(state); const restored = core.parseState(decode(blob));
-assert.equal(core.hash(restored), core.hash(state)); assert.deepEqual(restored, state);
-assert.equal((await core.apply(restored, requests[0])).receipt.replayed, true);
-await assert.rejects(core.apply(restored, { ...requests[0], reason: 'Conflicting reuse' }), { code: 'idempotency_key_reused' });
-await assert.rejects(core.preview(restored, { type: 'undo', commitId: state.history.at(-1).id }, 63), { code: 'revision_conflict' });
-const undo = await core.preview(restored, { type: 'undo', commitId: state.history.at(-1).id }, 64);
-const undone = (await core.apply(restored, core.mutationFromPreview(undo, { idempotencyKey: 'undo-64', actor: 'test', reason: 'Synthetic undo', at: '2033-10-01T01:00:00Z' }))).state;
-assert.deepEqual(undone.content, state.history.at(-1).before); assert.equal(undone.revision, 65); assert.equal(undone.history.length, 65);
-checks.push('actual-engine-64-event-lossless-migration', 'all-metadata-ids-snapshots-and-canonical-hash-preserved', 'committed-receipt-replay', 'conflicting-key-and-stale-revision-refused', 'business-undo-through-existing-guards');
-for (const corrupt of [
-  (b) => { b.events[0].forward[0].values[0].text = 'Corrupt'; },
-  (b) => { b.events[0].metadata.reason = 'Corrupt audit'; },
-  (b) => { [b.events[0], b.events[1]] = [b.events[1], b.events[0]]; },
-  (b) => { b.events.splice(1, 1); },
-  (b) => { b.current.memory.facts.pop(); },
-  (b) => { b.events[0].reverse = []; },
-]) { const broken = structuredClone(blob); corrupt(broken); assert.throws(() => decode(broken)); }
-checks.push('patch-audit-order-missing-event-current-and-inverse-corruption-refused');
-const scratch = await mkdtemp(join(tmpdir(), 'tripctl-capacity-'));
+const scratch = await mkdtemp(join(tmpdir(), 'tripctl-production-storage-'));
+const cli = join(folder, 'tripctl.mjs'); const checks = []; const at = '2033-10-05T08:00:00Z';
+const run = (command, ...args) => { const result = spawnSync(process.execPath, [cli, command, ...args], { encoding: 'utf8' }); const response = JSON.parse(result.stdout); assert.equal(result.status, 0, JSON.stringify(response)); return response; };
+const rejected = (command, ...args) => { const result = spawnSync(process.execPath, [cli, command, ...args], { encoding: 'utf8' }); assert.notEqual(result.status, 0); return JSON.parse(result.stdout); };
+const save = async (name, value) => { const file = join(scratch, name); await writeFile(file, JSON.stringify(value, null, 2)); return file; };
+const metadata = (id) => ({ idempotencyKey: id, actor: 'synthetic-storage-proof', reason: 'Synthetic lossless storage acceptance', at });
+const size = (state) => Buffer.byteLength(JSON.stringify(state, null, 2) + '\n');
 try {
-  const path = join(scratch, 'synthetic.json'); const text = JSON.stringify(state, null, 2) + '\n'; await writeFile(path, text);
-  const child = spawnSync(process.execPath, [join(folder, 'tripctl.mjs'), 'capacity', '--store', path], { encoding: 'utf8', timeout: 10000 });
-  assert.equal(child.status, 0, child.stderr); const report = JSON.parse(child.stdout); assert.equal(report.serializedStateBytes, Buffer.byteLength(text)); assert.equal(report.saved, false); assert.equal(await readFile(path, 'utf8'), text);
-  // Rollback export must pass BOTH legacy limits before being offered to an old runtime.
-  assert.ok(core.analyseCapacity(restored).bytes.withinLimit); assert.ok(restored.history.length <= 200);
+  assert.equal(core.TRIPCTL_CORE_VERSION, 12);
+  const fixture = JSON.parse(await readFile(join(folder, 'synthetic.snapshot.json'), 'utf8'));
+  fixture.trip.plans[0].syntheticDenseEvidence = '合成 evidence '.repeat(3000);
+  let state = core.initialize(fixture); const requests = [];
+  const start = performance.now();
+  for (let n = 1; n <= 100; n++) {
+    const p = await core.preview(state, { type: 'fact', record: { id: 'fact-' + n, text: 'Synthetic observation '.repeat(6), certainty: 'reported', source: { kind: 'synthetic', reference: 'synthetic:event-' + n, observedAt: at } } }, state.revision);
+    const q = core.mutationFromPreview(p, metadata('event-' + n)); requests.push(q); state = (await core.apply(state, q)).state;
+  }
+  const legacyBuildMs = performance.now() - start; const legacyBytes = size(state); assert.ok(legacyBytes > 8 * 1024 * 1024); assert.ok(legacyBytes <= 16 * 1024 * 1024);
+  const source = join(scratch, 'authority.json'); const raw = ' ' + JSON.stringify(state, null, 2) + '\n'; await writeFile(source, raw);
+  const verified = run('verify', '--store', source); const request = await save('migration-request.json', { targetFormat: 2, expectedJourneyId: state.content.snapshot.trip.id, expectedRevision: 100, expectedStateHash: verified.stateHash, expectedFileHash: verified.fileHash, at, sourceLibrary: { libraryFileId: 'synthetic-only', expectedCurrentVersion: 23, retrievedAt: at } });
+  const output = join(scratch, 'authority.format2.json'); const migrateStart = performance.now(); const report = run('migrate', '--store', source, '--input', request, '--output', output); const migrationMs = performance.now() - migrateStart;
+  assert.equal(report.saved, false); assert.equal(await readFile(source, 'utf8'), raw); assert.equal(await readFile(report.paths.backup, 'utf8'), raw); assert.equal(report.proof.legacyStateHash, core.hash(state)); assert.equal(report.proof.allEventsCompared, 100);
+  const migrated = core.parseState(JSON.parse(await readFile(output, 'utf8'))); assert.equal(core.canonical(core.exportLegacyState(migrated)), core.canonical(state));
+  checks.push('100-dense-business-commits-lossless', 'all-event-identities-metadata-before-after-current-preserved', 'exact-original-bytes-backed-up', 'candidate-only-no-authority-write');
+  await writeFile(source, raw + ' '); assert.equal(rejected('commit-migration', '--store', source, '--input', report.paths.report).error.code, 'migration_conflict'); await writeFile(source, raw);
+  assert.equal(run('commit-migration', '--store', source, '--input', report.paths.report).saved, true); const current = run('verify', '--store', source); assert.equal(current.revision, 100); assert.equal(current.stateHashScope, 'content-and-audit-head-v2'); assert.equal(current.fileHash, report.candidate.fileHash);
+  for (const [n, request] of requests.entries()) assert.equal((await core.apply(migrated, request)).receipt.committedRevision, n + 1);
+  const replayRequest = await save('old-receipt.json', requests[0]); assert.equal(run('apply', '--store', source, '--input', replayRequest).replayed, true);
+  const op = await save('next-operation.json', { type: 'set_context', todayId: '2026-10-11' }); const beforeNext = performance.now(); const p = run('preview', '--store', source, '--input', op, '--revision', '100'); const previewMs = performance.now() - beforeNext;
+  const q = await save('next-request.json', core.mutationFromPreview(p, metadata('after-migration'))); const candidate = join(scratch, 'next.format2.json'); const stageStart = performance.now(); const staged = run('stage', '--store', source, '--input', q, '--output', candidate); const stageMs = performance.now() - stageStart;
+  assert.equal(staged.saved, false); assert.equal(run('verify', '--store', source).revision, 100); assert.equal(run('verify', '--store', candidate).revision, 101); assert.equal(staged.baseFileHash, current.fileHash); assert.equal(staged.candidateIdentity.storageFormat, 2);
+  checks.push('same-revision-byte-CAS-conflict-refused', 'local-adoption-readback', 'all-100-committed-receipts-replay', 'next-preview-stage-and-readback', 'distinct-logical-container-and-exact-file-hashes');
+  const downgradeQ = await save('downgrade-request.json', { expectedRevision: 101, expectedStateHash: staged.candidateStateHash }); const downgrade = run('export-format1', '--store', candidate, '--input', downgradeQ, '--output', join(scratch, 'latest.format1.json')); assert.equal(downgrade.revision, 101); assert.equal(downgrade.historyTrimmed, false);
+  if (oldFolder) { const prior = await import(pathToFileURL(join(resolve(oldFolder), 'tripctl-lib.mjs')).href); assert.equal(prior.hash(prior.parseState(JSON.parse(await readFile(downgrade.candidate, 'utf8')))), downgrade.stateHash); const format2Json = JSON.parse(await readFile(candidate, 'utf8')); assert.throws(() => prior.parseState(format2Json)); checks.push('actual-core11-latest-complete-downgrade-readable', 'actual-core11-format2-refused'); }
+  let later = migrated;
+  for (let n = 101; n <= 205; n++) { const p = await core.preview(later, { type: 'set_context', todayId: n % 2 ? '2026-10-11' : '2026-10-12' }, later.revision); later = (await core.apply(later, core.mutationFromPreview(p, metadata('event-' + n)))).state; }
+  const larger = await save('beyond200.json', later); assert.equal(run('verify', '--store', larger).historyCount, 205); const over = await save('over-request.json', { expectedRevision: 205, expectedStateHash: core.hash(later) }); assert.equal(rejected('export-format1', '--store', larger, '--input', over, '--output', join(scratch, 'impossible.json')).error.code, 'downgrade_unrepresentable');
+  const undo = await core.preview(later, { type: 'undo', commitId: 'event-205' }, 205); const undone = (await core.apply(later, core.mutationFromPreview(undo, metadata('undo-205')))).state; assert.equal(core.canonical(undone.content), core.canonical(later.history.at(-1).before)); assert.equal(undone.revision, 206);
+  for (const corrupt of [(s) => { s.history[0].reason = 'corrupted'; }, (s) => { s.history[0].forward = []; }, (s) => { [s.history[0], s.history[1]] = [s.history[1], s.history[0]]; }, (s) => { s.history.splice(2, 1); }, (s) => { s.content.memory.facts.pop(); }, (s) => { s.history[0].reverse = []; }]) { const broken = JSON.parse(JSON.stringify(migrated)); corrupt(broken); assert.throws(() => core.parseState(broken)); }
+  checks.push('actual-format2-205-business-commits', 'complete-downgrade-refused-above200-without-trimming', 'monotonic-undo-after205', 'corrupted-patch-metadata-order-gap-current-inverse-refused');
+  console.log(JSON.stringify({ ok: true, production: true, syntheticOnly: true, coreVersion: core.TRIPCTL_CORE_VERSION, checks, dense100: { legacyBytes, format2Bytes: report.candidate.fileBytes, reductionPercent: +(100 * (1 - report.candidate.fileBytes / legacyBytes)).toFixed(2), legacyBuildMs: Math.round(legacyBuildMs), migrationMs: Math.round(migrationMs), nextPreviewMs: Math.round(previewMs), nextStageMs: Math.round(stageMs), afterNextBytes: size(await core.loadState(candidate)) }, beyond200: { revision: later.revision, bytes: size(later), replayBudget: core.storage2Stats(later) }, noNetwork: true, authorityRestoredOriginalBeforeAdoption: true, physicalByteLimitUnchanged: 16777216 }));
 } finally { await rm(scratch, { recursive: true, force: true }); }
-checks.push('real-cli-capacity-no-write', 'legacy-rollback-export-equality-and-capacity');
-// Codec scale evidence, NOT a claim that production engine accepts >200 events.
-let model = { records: [], selection: 0 }; const anchor = structuredClone(model); let head = core.hash(anchor); const events = []; let expandedEventBytes = 0; const scale = [];
-for (let n = 1; n <= 2048; n++) {
-  const next = structuredClone(model);
-  // Every step appends a stable-ID record: this tests growing arrays, not just scalar edits.
-  next.records.push({ id: 'synthetic-' + n, text: 'Synthetic history record with stable provenance' }); next.selection = n % 3;
-  const metadata = { id: 'event-' + n, revision: n, operation: { type: 'synthetic_append', id: 'synthetic-' + n }, actor: 'test', reason: 'Codec experiment only', at: '2033-10-01T00:00:00Z', requestHash: core.hash({ n }) };
-  const event = eventRecord(metadata, model, next, head); events.push(event); head = event.hash;
-  expandedEventBytes += bytes({ ...metadata, before: model, after: next }); model = next;
-  if ([256, 1024, 2048].includes(n)) scale.push({ events: n, experimentalCompactBytes: bytes({ encoding: 'experimental-lossless-patches-v0', anchor, events, head, revision: n, current: model }), hypotheticalCompactV1Bytes: bytes({ schemaVersion: 1, revision: n, content: model, history: [] }) + expandedEventBytes + n - 1 });
-}
-const large = { encoding: 'experimental-lossless-patches-v0', anchor, events, head, revision: events.length, current: model };
-assert.deepEqual(decode(large, false).content, model);
-assert.ok(scale.at(-1).experimentalCompactBytes < scale.at(-1).hypotheticalCompactV1Bytes / 20);
-assert.throws(() => core.parseState(decode(large, false))); // experimental container is not production state
-checks.push('2048-appending-records-forward-and-inverse-verified', 'production-v1-not-bypassed');
-console.log(JSON.stringify({ ok: true, syntheticOnly: true, productionFormatChanged: false, productionLimitsChanged: false, codecStatus: 'experimental-not-runtime-integrated', actualEngineEvents: 64, experimentalCodecEvents: 2048, checks, prefixSizes, scale, limitations: ['Not a generic linear-growth guarantee: full imports or large reorder patches can still be large', 'No Library migration or external CAS executed', 'v1 16MiB/200 limits and in-memory history consumers remain production constraints'] }));

@@ -170,3 +170,6 @@ Optional `content.itinerary` now separates immutable baseline, current dated act
 可复现演示：`arrangement-scenario.json` → importOperation/preparationOperations → preview(operation) → validate-request → stage → verify → presentation-view(contractVersion:2)。ARRANGEMENT-DEMO.json 展示三家酒店、Oct2 原 note 餐饮、Oct3 没有 typed day 的酒店报告、Oct4 没有 typed day 的景观公路计划目标；ARRANGEMENT-HISTORY-DEMO.json 展示补录前仍未映射的原文。verify.mjs 使用真实独立 CLI 进程执行这条链路，stage 后原 store 字节不变。
 
 coreVersion=11 会拒绝 v5–v10 未提交的旧 preview token，必须重新预览；原状态/hash/history 与已提交 idempotency receipt 仍兼容。journey schemaVersion 仍为 1。四个原始 stateless MCP 工具未扩展；新增受管操作通过 CLI/library 使用。
+
+
+Core12 adds formal explicit format2 storage migration. Use `verify` to capture logical hash scope and exact fileHash, `migrate` to prepare a lossless candidate/exact original backup/report, then host same-ID native CAS/readback (or explicit local `commit-migration`). Ordinary reads never migrate. Continue using preview/stage after adoption. Old pending previews need refreshing; committed receipts replay. `export-format1` exports complete latest history only if it fits old limits. See [history-storage.md](history-storage.md) for the protocol, budgets and unknown-save recovery. Library authorities and adapter schemas are not rewritten by the CLI.

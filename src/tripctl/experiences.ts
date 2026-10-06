@@ -1,3 +1,4 @@
+import { historicalSources, stateHashContext } from './storage2';
 import { parseState, hash } from './engine';
 import { TripError, type TripState } from './schema';
 import { experienceSearchSchema, guideDraftSchema } from './experienceSchema';
@@ -6,7 +7,7 @@ const parseQuery = (input: unknown) => { const p = experienceSearchSchema.safePa
 function rows(state: TripState, asOf: string) {
   const stateHash = hash(state); const history = new Map(state.history.map((h) => [h.id, h]));
   const originalPlans = new Map<string, TripState['content']['snapshot']['trip']['plans'][number]>();
-  for (const event of state.history) for (const plan of event.before.snapshot.trip.plans) if (!originalPlans.has(plan.id)) originalPlans.set(plan.id, plan);
+  for (const content of historicalSources(state, false)) for (const plan of content.snapshot.trip.plans) if (!originalPlans.has(plan.id)) originalPlans.set(plan.id, plan);
   const superseded = new Set(state.content.memory.facts.flatMap((f) => f.experience?.supersedesFactId ? [f.experience.supersedesFactId] : []));
   return state.content.memory.facts.flatMap((fact) => {
     const e = fact.experience; if (!e) return [];
@@ -16,7 +17,7 @@ function rows(state: TripState, asOf: string) {
     const currentPlan = state.content.snapshot.trip.plans.find((p) => p.id === e.planId);
     const review = [...new Set([...e.reviewBeforeReuse, ...e.topics.filter((t) => timeSensitive.has(t))])];
     const future = Date.parse(fact.source.observedAt) > Date.parse(asOf);
-    return [{ journeyId: state.content.snapshot.trip.id, revision: state.revision, stateHash, factId: fact.id, superseded: superseded.has(fact.id), source: fact.source, certainty: fact.certainty,
+    return [{ journeyId: state.content.snapshot.trip.id, revision: state.revision, stateHash, ...stateHashContext(state), factId: fact.id, superseded: superseded.has(fact.id), source: fact.source, certainty: fact.certainty,
       ...e, reuseStatus: future ? 'future_observation' : review.length ? 'recheck_required' : 'conditions_required', reviewBeforeReuse: review, personalPreferenceEstablished: false,
       recap: { originalPlan: baseline ? { title: baseline.title, activities: baseline.activities.map((a) => ({ id: a.id, title: a.title, timing: a.timing })) } : oldPlan ? { title: oldPlan.name, activities: null } : null,
         observation: fact.text, changes: e.changeCommitIds.map((id) => { const h = history.get(id)!; return { commitId: id, at: h.at, reason: h.reason, operationType: h.operation.type }; }),
@@ -48,7 +49,7 @@ export function createGuideDraft(stateInput: unknown, input: unknown) {
   if (selected.some((r) => r.superseded)) throw new TripError('superseded_experience', 'Choose the latest experience correction for a guide');
   const drafts = q.lessonDrafts || [];
   if (new Set(drafts.map((d) => d.experienceId)).size !== drafts.length || drafts.some((d) => !q.experienceIds.includes(d.experienceId))) throw new TripError('invalid_guide_request', 'Draft lessons must uniquely reference selected experiences');
-  const lodgingLabels = [...new Set([state.content, ...state.history.flatMap((h) => [h.before, h.after])].flatMap((content) => [
+  const lodgingLabels = [...new Set([state.content, ...historicalSources(state)].flatMap((content) => [
     ...content.snapshot.trip.lodgings.flatMap((l) => [l.name, typeof l.location === 'string' ? l.location : l.location?.label || '', typeof l.location === 'object' ? l.location.address || '' : '', typeof l.location === 'object' ? l.location.query || '' : '']),
     ...[...(content.itinerary?.baseline.days || []), ...(content.itinerary?.current || [])].flatMap((d) => d.activities.filter((a) => a.kind === 'lodging').flatMap((a) => [a.title, a.location?.label || ''])),
   ]).filter((s) => s.length > 1))];

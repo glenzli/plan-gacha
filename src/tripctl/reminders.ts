@@ -1,3 +1,4 @@
+import { historicalSources } from './storage2';
 import { appendRouteActivity, validateRouteActivities } from './routeContext';
 import { canonical, hash } from './identity';
 import { appendObservation } from './observations';
@@ -25,7 +26,7 @@ export function changeReminders(state: TripState, next: TripContent, op: Linkage
       const a = e.activity; let activity;
       if (a.kind === 'planned') {
         activity = next.itinerary?.current.find((d) => d.dateId === r.dateId && d.planId === a.planId)?.activities.find((x) => x.id === a.activityId);
-        if (!activity) activity = [next, ...state.history.flatMap((h) => [h.before, h.after])].flatMap((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])]).find((d) => d.dateId === r.dateId && d.planId === a.planId && d.activities.some((x) => x.id === a.activityId))?.activities.find((x) => x.id === a.activityId);
+        if (!activity) activity = [next, ...historicalSources(state)].flatMap((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])]).find((d) => d.dateId === r.dateId && d.planId === a.planId && d.activities.some((x) => x.id === a.activityId))?.activities.find((x) => x.id === a.activityId);
       } else if (a.kind === 'reported') {
         const change = l.actualChanges?.filter((x) => x.actualId === a.actualId && x.dateId === r.dateId).at(-1);
         activity = change?.replacementActivities.find((x) => x.id === a.activityId);
@@ -60,7 +61,7 @@ export function changeReminders(state: TripState, next: TripContent, op: Linkage
     const actual = next.itinerary?.actual.find((a) => a.id === r.actualId);
     if (!actual || actual.dateId !== r.dateId || !['changed_plan', 'skipped'].includes(actual.kind)) fail('actual_change_mismatch', 'Bind an existing changed_plan or skipped report on its exact day');
     if (actual!.activityId && !r.previousActivityIds.includes(actual!.activityId) || Date.parse(r.source.observedAt) < Date.parse(actual!.source.observedAt)) fail('actual_change_mismatch', 'Binding must respect the reported activity and observation time');
-    const all = [next, ...state.history.flatMap((h) => [h.before, h.after])];
+    const all = [next, ...historicalSources(state)];
     const days = all.flatMap((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])]);
     if (r.previousActivityIds.some((id) => !days.some((d) => d.dateId === r.dateId && d.activities.some((a) => a.id === id)))) fail('unknown_id', 'Each replaced activity must belong to this day in current or historical planning');
     if (new Set(r.replacementActivities.map((a) => a.id)).size !== r.replacementActivities.length || r.replacementActivities.some((a) => next.itinerary?.registeredActivityIds.includes(a.id))) fail('duplicate_id', 'Replacement report activities need new stable IDs distinct from planned activities');
@@ -83,7 +84,7 @@ export function changeReminders(state: TripState, next: TripContent, op: Linkage
     if (r.dateIds.some((d) => !context.tripDates.some((x) => x.id === d))) fail('unknown_date', 'Binding dates must be in this journey');
     if (r.planId && !context.plans.some((p) => p.id === r.planId)) fail('unknown_id', 'Binding plan is unknown');
     if (r.reportedActualId && !l.actualChanges?.some((a) => a.actualId === r.reportedActualId && (!r.dateIds.length || r.dateIds.includes(a.dateId)) && a.replacementActivities.some((x) => x.id === r.activityId))) fail('unknown_id', 'Reported activity binding requires its exact actual report and day');
-    if (r.activityId && !r.reportedActualId && ![next, ...state.history.flatMap((h) => [h.before, h.after])].some((c) => [...(c.itinerary?.current || []), ...(c.itinerary?.baseline.days || [])].some((d) => d.planId === r.planId && d.activities.some((a) => a.id === r.activityId)) || c.snapshot.trip.plans.some((p) => p.id === r.planId && [...(p.stops || []), ...(Array.isArray(p.itinerary) ? p.itinerary : [])].some((a) => a && typeof a === 'object' && a.id === r.activityId)))) fail('unknown_id', 'Activity must belong to the bound plan');
+    if (r.activityId && !r.reportedActualId && ![next, ...historicalSources(state)].some((c) => [...(c.itinerary?.current || []), ...(c.itinerary?.baseline.days || [])].some((d) => d.planId === r.planId && d.activities.some((a) => a.id === r.activityId)) || c.snapshot.trip.plans.some((p) => p.id === r.planId && [...(p.stops || []), ...(Array.isArray(p.itinerary) ? p.itinerary : [])].some((a) => a && typeof a === 'object' && a.id === r.activityId)))) fail('unknown_id', 'Activity must belong to the bound plan');
     l.contextBindings ||= [];
     if (l.contextBindings.some((b) => b.id === r.id)) fail('duplicate_id', 'Context binding ID already exists');
     if (l.contextBindings.some((b) => b.subjectType === r.subjectType && b.subjectId === r.subjectId && Date.parse(b.source.observedAt) >= Date.parse(r.source.observedAt))) fail('stale_context_binding', 'Corrections require newer explicit binding evidence');
@@ -169,9 +170,9 @@ export function validateLinkage(state: TripState) {
       const ref = e.activity;
       const context = ref.kind === 'context' ? l.routeActivities?.find((r) => r.id === ref.contextId && r.activity.id === ref.activityId && r.dateId === route.dateId) : undefined;
       if (context && (e.status !== (context.role === 'planned_target' ? 'planned' : 'reported') || Date.parse(context.source.observedAt) > Date.parse(route.source.observedAt))) fail('invalid_day_route', 'Context role or report time does not match its route');
-      const known = ref.kind === 'context' ? context && canonical(context.activity) === canonical(e.activitySnapshot) : ref.kind === 'reported' ? l.actualChanges?.some((r) => r.actualId === ref.actualId && r.dateId === route.dateId && r.replacementActivities.some((a) => canonical(a) === canonical(e.activitySnapshot))) : [state.content, ...state.history.flatMap((h) => [h.before, h.after])].some((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])].some((d) => d.dateId === route.dateId && d.planId === ref.planId && d.activities.some((a) => canonical(a) === canonical(e.activitySnapshot))));
+      const known = ref.kind === 'context' ? context && canonical(context.activity) === canonical(e.activitySnapshot) : ref.kind === 'reported' ? l.actualChanges?.some((r) => r.actualId === ref.actualId && r.dateId === route.dateId && r.replacementActivities.some((a) => canonical(a) === canonical(e.activitySnapshot))) : [state.content, ...historicalSources(state)].some((c) => [...(c.itinerary?.baseline.days || []), ...(c.itinerary?.current || [])].some((d) => d.dateId === route.dateId && d.planId === ref.planId && d.activities.some((a) => canonical(a) === canonical(e.activitySnapshot))));
       for (const ref of e.planningEstimate?.evidenceRefs || []) { const list = ref.kind === 'map_fact' ? state.content.memory.mapFacts : ref.kind === 'itinerary_evidence' ? state.content.itinerary?.evidence || [] : l.observations; if (!list.some((x) => x.id === ref.id)) fail('invalid_day_route', 'Estimate references missing evidence'); }
-      if (e.lodgingId && (!e.lodgingSnapshot || e.lodgingSnapshot.id !== e.lodgingId || !nightMatches(e.lodgingSnapshot, route.dateId) || ![state.content, ...state.history.flatMap((h) => [h.before, h.after])].some((c) => c.snapshot.trip.lodgings.some((l) => canonical(l) === canonical(e.lodgingSnapshot)))) || !e.lodgingId && e.lodgingSnapshot) fail('invalid_day_route', 'Route lodging identity and night must match the saved source snapshot');
+      if (e.lodgingId && (!e.lodgingSnapshot || e.lodgingSnapshot.id !== e.lodgingId || !nightMatches(e.lodgingSnapshot, route.dateId) || ![state.content, ...historicalSources(state)].some((c) => c.snapshot.trip.lodgings.some((l) => canonical(l) === canonical(e.lodgingSnapshot)))) || !e.lodgingId && e.lodgingSnapshot) fail('invalid_day_route', 'Route lodging identity and night must match the saved source snapshot');
       if (!known) fail('invalid_day_route', 'Route references an unknown or altered source activity');
     }
   }

@@ -1,3 +1,4 @@
+import { stateHashContext } from './storage2';
 import { linkageQuerySchema } from './linkageSchema';
 import { assessObservations, observationDateChange } from './observations';
 import { parseState, preview, inspect, hash } from './engine';
@@ -36,7 +37,7 @@ export async function analyseEvidenceImpact(input: unknown, query: unknown) {
     const ranking = await inspect(state, 'rank_candidates', dateId);
     if (ranking.ok && ranking.data.kind === 'ranking') alternatives.push({ dateId, candidates: ranking.data.candidates.map((c) => ({ ...c, externalEvidence: assessments.filter((a) => a.observation.scope.planId === c.planId && a.observation.scope.dateId === dateId).map((a) => ({ observationIds: a.headIds, status: a.status, scope: a.observation.scope.component })), actionability: 'requires_current_preview_and_evidence_review' })) });
   }
-  return { schemaVersion: 1, saved: false, externalActionsPerformed: 0, asOf, revision: state.revision, stateHash: hash(state), impacts, questions, alternatives,
+  return { schemaVersion: 1, saved: false, externalActionsPerformed: 0, asOf, revision: state.revision, stateHash: hash(state), ...stateHashContext(state), impacts, questions, alternatives,
     options: content.itinerary ? assessItineraryOptions(content.itinerary, content) : null,
     limitations: ['Source authority and place matches are caller assertions, not independently authenticated', 'Predictions and partial closures never become whole-plan date restrictions', 'Withdrawn/expired/failed evidence never reopens a saved closure', 'Weather/traffic only produce review questions; itinerary rerouting and incomplete logistics still need an explicit agent proposal'] };
 }

@@ -222,7 +222,7 @@ try {
   const adoptOp = structuredClone(itineraryFixture.operation); adoptOp.days = beforeUndo.itinerary.current; adoptOp.adoptExistingPlanIds = ['day-a', 'day-b'];
   const adopt = run('preview', '--store', adoptStore, '--input', await save('adopt-operation', adoptOp), '--revision', '0'); assert.equal(adopt.canApply, true); assert.deepEqual(adopt.nextContent.snapshot, beforeUndo.snapshot);
   // Real packaged processes: structured discovery/stdin/context share engine and storage semantics.
-  const discovered = run('schema'); assert.equal(discovered.coreVersion, 11); assert.ok(discovered.operations.includes('set_plan_dates'));
+  const discovered = run('schema'); assert.equal(discovered.coreVersion, 12); assert.ok(discovered.operations.includes('set_plan_dates'));
   assert.equal(run('schema', '--operation', 'set_plan_dates').operation.properties.type.const, 'set_plan_dates');
   assert.equal(failure('schema', '--operation', 'cancel_order').error.code, 'unknown_operation');
   const stdinRun = (data, ...args) => JSON.parse(execFileSync(process.execPath, [cli, ...args, '--input', '-'], { input: JSON.stringify(data), encoding: 'utf8', cwd: scratch }));

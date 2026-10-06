@@ -1,3 +1,4 @@
+import { selectRevision, stateHashScope } from './storage2';
 import { hash, parseState } from './engine';
 import { TripError } from './schema';
 import { exportReadonlyView } from './readonlyView';
@@ -12,7 +13,7 @@ export async function exportPresentationView(input: unknown, request: unknown): 
   const parsed = presentationInputSchema.safeParse(request); if (!parsed.success) throw new TripError('invalid_presentation_request', 'Use explicit view basis, asOf/generatedAt and an optional complete Library source');
   const q = parsed.data; const authority = parseState(input); const revision = q.view.basis === 'as_recorded' ? q.view.revision : authority.revision;
   if (revision > authority.revision) throw new TripError('unknown_revision', 'Historical revision is outside the authoritative audit');
-  const state = revision === authority.revision ? authority : parseState({ ...authority, revision, content: revision === 0 ? authority.history[0]?.before || authority.content : authority.history[revision - 1].after, history: authority.history.slice(0, revision) });
+  const state = revision === authority.revision ? authority : parseState(selectRevision(authority, revision));
   const captureTimes: string[] = state.history.map((e) => e.at);
   const collectCaptures = (value: unknown) => {
     if (!value || typeof value !== 'object') return;
@@ -80,7 +81,7 @@ export async function exportPresentationView(input: unknown, request: unknown): 
     catalog.push({ ref: key, category: 'pending', id: null, title: message, summary: message, dateIds: [n.nightDate], status: 'unresolved', source: null, dateRestrictions: null, evidence: null });
   }
   const output: Presentation = { presentationContractVersion: 1, readOnly: true, derived: true, saved: false, audience: 'private_owner',
-    source: { journeyId: c.snapshot.trip.id, authorityRevision: authority.revision, authorityStateHash: hash(authority), projectedRevision: revision, projectedStateHash: projectedHash, hashScope: 'canonical-format-1-state', library: q.source || null, metadataIsCallerSupplied: true },
+    source: { journeyId: c.snapshot.trip.id, authorityRevision: authority.revision, authorityStateHash: hash(authority), projectedRevision: revision, projectedStateHash: projectedHash, hashScope: stateHashScope(state), library: q.source || null, metadataIsCallerSupplied: true },
     freshness: { asOf: q.asOf, generatedAt: q.generatedAt, knownAt, automaticRefresh: false, providerSyncAt: null, knowledgeBasis: 'selected_revision', asOfUsage: 'evidence_freshness_after_known_sources' }, trip: { name: view.trip.name, dateIds: view.trip.dates, timeZone: view.trip.timeZone },
     presentationCatalog: { version: 1, items: catalog, unplacedRefs: [...new Set(Object.values(organized.unplaced).flat())], inactiveAlternativeRefs: organized.inactiveAlternativeRefs },
     historicalDailyRouteProjections: organized.days.map((d) => ({ dateId: d.dateId, viewBasis: q.view.basis, sourceRevision: revision, sourceStateHash: projectedHash,

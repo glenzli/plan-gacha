@@ -1,4 +1,4 @@
-# 正式只读展示接口（presentation contract 1 / core v10）
+# 正式只读展示接口（presentation contract 1 / core v12）
 
 `presentation-view` 已实现，输入/输出由 `presentationInputSchema`、`presentationOutputSchema` 验证；`schema` 返回可发现的 JSON Schema。它只读取同一权威 journey，不保存 catalog/历史投影/住宿展示缓存，不引入第二个写入口。旧 `readonly-view` 保留完整领域详情与兼容字段。
 
@@ -33,7 +33,7 @@ current代表最新保存的计划，可能仍等于baseline。展示优先顺�
 
 ## 历史时点与来源身份
 
-输出分别提供 `source.authorityRevision/authorityStateHash`（实际读取的当前文件）和 `projectedRevision/projectedStateHash`（所选视图）。Library identity/version指前者，不把current文件的native version冒充历史revision的独立文件版本。hashScope为canonical-format-1-state。
+输出分别提供 `source.authorityRevision/authorityStateHash`（实际读取的当前文件）和 `projectedRevision/projectedStateHash`（所选视图）。Library identity/version指前者，不把current文件的native version冒充历史revision的独立文件版本。hashScope 在 format1 为 canonical-format-1-state，format2 为 content-and-audit-head-v2；后者绑定当前内容及完整审计 head，不等于容器摘要。
 
 as_recorded从完整审计prefix重建：revision0取最早before，其他revision取对应after，保留全部此前history，再走正式parseState。禁止拿current内容拼rev0/history[]，不混入后来的纠正。此过程只读，不创建或保存另一个权威journey。
 
@@ -49,7 +49,7 @@ pendingQuestions包含精确日期/地点的最终公告确认、备选集合/�
 
 已实现：record_observation → evidence-impact（预测/局部/过期不会硬关全区）→ 显式preview/apply或stage/CAS → 共享日期限制；record_actual/link_actual_change/set_day_route → 有效展示；reminder intents/readback/begin/resolve → reminder-reconcile描述与unknown禁止重试；presentation-view → 严格结构的私有展示输入。
 
-仍由宿主执行：真实地图/天气读取、明确授权的提醒派发和原生关联读回、同一Library文件CAS、私有Site渲染/刷新。此接口不操作订单、不取消预订、不自动发布、不获取浏览器内存。存储v2仍为另一个待实现增量；本接口不迁移真实历史、不改变16MiB/200边界。
+仍由宿主执行：真实地图/天气读取、明确授权的提醒派发和原生关联读回、同一Library文件CAS、私有Site渲染/刷新。此接口不操作订单、不取消预订、不自动发布、不获取浏览器内存。存储format2已由core12显式迁移接口实现；本展示接口仍不迁移真实历史。format1保持16MiB/200边界，format2物理上限仍16MiB，日志/回放另有预算，详见history-storage.md。
 
 便携 `verify.mjs` 通过真实独立CLI进程验证上述链条；PRESENTATION-DEMO.json展示current仍等于baseline但有效路线已变化，PRESENTATION-HISTORY-DEMO.json展示revision1的旧计划。PRESENTATION-SCHEMA.json供宿主验证/生成适配代码。所有演示与测试都是合成资料。
 
@@ -73,3 +73,6 @@ coreVersion=11 会拒绝 v5–v10 未提交的旧 preview token，必须重新�
 
 
 确认路线的报告处理判定：changed_plan 若有有效 link_actual_change，或同一报告的所有最新 routeActivities 节点均被同日确认路线按精确 context/activity ID 引用、且来源不晚于路线确认，则不再是 unlinked。仅有新路线时间、无关节点、未引用的 context 或只引用部分节点都不足以消除提示；后续报告/纠正仍触发复核。只读 organized.route 是 needsReview 和 pendingActualReportRefs 的唯一判定来源，presentation 原样使用；未处理报告同时产生 unlinked_actual_change 核对项。此规则解释展示路线，不修改原报告、基线、计划或订单，也不补造 link_actual_change。此项仅修复投影，coreVersion 维持 11，既有预览 token 仍有效。
+
+
+core12 的 read/verify/context/capacity 和只读摘要明确标明 storageFormat/stateHashScope；trip-display 同样标明 sourceStateHash 的作用域，presentation.source.hashScope涵盖所选revision，迁移不改变领域revision。宿主应使用该作用域比对，不能以容器摘要或旧格式全状态摘要替代。旧有as-recorded接口及稳定ref保持；纯JSON/structuredClone的format2 history保存差异，历史prefix由selectRevision受管重建。

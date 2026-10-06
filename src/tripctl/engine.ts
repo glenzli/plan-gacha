@@ -1,7 +1,7 @@
-import { MAX_HISTORY_EVENTS } from './limits';
+import { MAX_HISTORY_EVENTS, MAX_STORAGE2_EVENTS } from './limits';
 import { rememberedBlocks } from './planMemory';
 import { previewPlanDates, PlanDatesError } from '../domain/planDates';
-export const TRIPCTL_CORE_VERSION = 11;
+export const TRIPCTL_CORE_VERSION = 12;
 import { arrangementOperationSchema } from './arrangementSchema';
 import { changeArrangements, validateArrangements, isDisplayMetadataOnly } from './arrangements';
 import { emptyLinkage, linkageOperationSchema } from './linkageSchema';
@@ -9,8 +9,11 @@ import { appendObservation, observationDateChange, observationRestriction } from
 import { changeReminders, validateLinkage } from './reminders';
 import { reconcileReminders } from './reminderReconcile';
 import { importHistoricalFacts } from './historyImport';
-import { canonical, hash } from './identity';
-export { canonical, hash } from './identity';
+import { canonical, hash as digest } from './identity';
+import { isStorage2, readStorage2, appendStorage2, historicalSources, findReceipt, stateHash, storageIdentity } from './storage2';
+export { canonical } from './identity';
+export const hash = (value: unknown): string => isStorage2(value) && Object.hasOwn(value, 'content') && Object.hasOwn(value, 'history') ? stateHash(value) : digest(value);
+const validatedDomain = new WeakSet<object>();
 import { validateItinerary, previewItineraryOperation } from './itinerary';
 import { itineraryOperationSchema, ItineraryError } from './itinerarySchema';
 import { assessWalkingFact } from './routeEvidence';
@@ -18,29 +21,30 @@ import { previewActivityChange, ActivityEditError } from '../domain/activityEdit
 import { evaluateWeather } from '../domain/planWeather';
 import { callPlanningTool, getSnapshotToken, preparePlanningContext, planningSnapshotSchema, type PlanningToolResponse, type PlanningToolName } from '../domain/planningTools';
 import { contentSchema, mutationSchema, operationSchema, tripStateSchema, TripError, type TripState, type TripContent, type TripMutation } from './schema';
-function validateExperiences(state: Pick<TripState, 'content' | 'history'>) {
+function validateExperiences(state: TripState, current = state.content) {
   // Experience references describe history; they must not freeze later itinerary edits.
   const activityPairs = new Set<string>();
-  if (state.content.memory.facts.some((f) => f.experience?.activityId)) for (const content of [state.content, ...state.history.flatMap((h) => [h.before, h.after])]) {
+  if (current.memory.facts.some((f) => f.experience?.activityId)) for (const content of [current, ...historicalSources(state)]) {
     for (const day of [...(content.itinerary?.baseline.days || []), ...(content.itinerary?.current || [])]) for (const activity of day.activities) activityPairs.add(JSON.stringify([day.planId, activity.id]));
   }
-  for (const fact of state.content.memory.facts) {
+  for (const fact of current.memory.facts) {
     const e = fact.experience; if (!e) continue;
     if (e.kind === 'firsthand' && fact.source.kind === 'provider') throw new TripError('invalid_experience_source', 'Provider guidance is not firsthand user experience');
-    if (e.planId && !state.content.snapshot.trip.plans.some((p) => p.id === e.planId)) throw new TripError('unknown_id', 'Experience references an unknown plan');
+    if (e.planId && !current.snapshot.trip.plans.some((p) => p.id === e.planId)) throw new TripError('unknown_id', 'Experience references an unknown plan');
     if (e.activityId && !activityPairs.has(JSON.stringify([e.planId, e.activityId]))) throw new TripError('unknown_id', 'Experience activity must belong to its named plan');
     if (e.changeCommitIds.some((id) => !state.history.some((event) => event.id === id))) throw new TripError('unknown_id', 'Experience references an unknown prior change');
     if (e.supersedesFactId) {
-      const old = state.content.memory.facts.find((f) => f.id === e.supersedesFactId);
+      const old = current.memory.facts.find((f) => f.id === e.supersedesFactId);
       if (!old?.experience) throw new TripError('unknown_id', 'Superseded record must be an existing experience fact');
       if (old.experience.kind !== e.kind || old.experience.eventDateId !== e.eventDateId || old.experience.planId !== e.planId) throw new TripError('experience_mismatch', 'A correction must refer to the same kind, event date and plan');
       if (Date.parse(fact.source.observedAt) <= Date.parse(old.source.observedAt)) throw new TripError('stale_experience', 'Experience corrections require newer source evidence');
-      if (state.content.memory.facts.some((f) => f.id !== fact.id && f.experience?.supersedesFactId === e.supersedesFactId)) throw new TripError('experience_conflict', 'Correct the latest experience rather than branching over an existing correction');
+      if (current.memory.facts.some((f) => f.id !== fact.id && f.experience?.supersedesFactId === e.supersedesFactId)) throw new TripError('experience_conflict', 'Correct the latest experience rather than branching over an existing correction');
     }
   }
 }
 export function parseState(input: unknown): TripState {
-  const parsed = tripStateSchema.safeParse(input);
+  if (input && typeof input === 'object' && validatedDomain.has(input)) return input as TripState;
+  const parsed = isStorage2(input) ? { success: true as const, data: readStorage2(input) } : tripStateSchema.safeParse(input);
   if (!parsed.success) throw new TripError('invalid_state', 'Journey state schema is invalid');
   const state = parsed.data; const context = preparePlanningContext(state.content.snapshot);
   const plans = new Set(context.plans.map((p) => p.id)); const dates = new Set(context.tripDates.map((d) => d.id));
@@ -52,10 +56,10 @@ export function parseState(input: unknown): TripState {
     if (item.dateId && !dates.has(item.dateId)) throw new TripError('unknown_date', 'Memory references a date outside the journey');
   }
   for (const item of state.content.memory.issues) if (item.relatedPlanId && !plans.has(item.relatedPlanId)) throw new TripError('unknown_id', 'Issue references an unknown plan');
-  if (state.history.length !== state.revision || state.history.some((event, index) => event.revision !== index + 1)
+  if (!isStorage2(state) && (state.history.length !== state.revision || state.history.some((event, index) => event.revision !== index + 1)
     || new Set(state.history.map((e) => e.id)).size !== state.history.length
     || state.history.some((event, i) => i > 0 && canonical(event.before) !== canonical(state.history[i - 1].after))
-    || state.history.length > 0 && canonical(state.content) !== canonical(state.history.at(-1)!.after)) throw new TripError('invalid_history', 'History, revision and current state must agree');
+    || state.history.length > 0 && canonical(state.content) !== canonical(state.history.at(-1)!.after))) throw new TripError('invalid_history', 'History, revision and current state must agree');
   if (state.content.itinerary) validateItinerary(state.content.itinerary, state.content.snapshot);
   if (state.content.linkage) {
     for (const list of Object.values(state.content.linkage)) if (list && new Set(list.map((r) => r.id)).size !== list.length) throw new TripError('duplicate_id', 'Linkage IDs must be unique per category');
@@ -65,6 +69,7 @@ export function parseState(input: unknown): TripState {
   validateLinkage(state);
   validateExperiences(state);
   validateArrangements(state);
+  if (isStorage2(state)) validatedDomain.add(state);
   return state;
 }
 export function initialize(snapshot: unknown): TripState {
@@ -192,7 +197,7 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
         weatherOverride = evaluateWeather(context.plans.find((plan) => plan.id === operation.planId)!, operation.dateId, context.weatherData).level === 'blocked';
       }
     } catch (error) { if (error instanceof ActivityEditError) throw new TripError(error.code, error.message); throw error; }
-  } else if (operation.type === 'fact') { if (operation.record.experience?.historical) throw new TripError('history_operation_required', 'Historical source records require import_history'); insert(next.memory.facts, operation.record); validateExperiences({ content: next, history: state.history }); }
+  } else if (operation.type === 'fact') { if (operation.record.experience?.historical) throw new TripError('history_operation_required', 'Historical source records require import_history'); insert(next.memory.facts, operation.record); validateExperiences(state, next); }
   else if (operation.type === 'preference') { requireHuman(operation.record.source); insert(next.memory.preferences, operation.record); }
   else if (operation.type === 'decision') {
     requireHuman(operation.record.source); assertPlan(next, operation.record.planId, operation.record.dateId);
@@ -223,12 +228,12 @@ export async function preview(stateInput: unknown, operationInput: unknown, expe
   contentSchema.parse(next);
   const canApply = blocks.length === 0;
   return { schemaVersion: 1 as const, revision: state.revision, operation, canApply, reasonCodes: [...new Set(blocks)], weatherOverride, detail,
-    previewToken: hash({ coreVersion: TRIPCTL_CORE_VERSION, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
+    previewToken: digest(isStorage2(state) ? { coreVersion: TRIPCTL_CORE_VERSION, schemaVersion: state.schemaVersion, journeyId: state.content.snapshot.trip.id, revision: state.revision, ...storageIdentity(state), operation } : { coreVersion: TRIPCTL_CORE_VERSION, state, operation }), nextContent: canApply ? next : structuredClone(state.content) };
 }
 export async function apply(stateInput: unknown, mutationInput: unknown) {
   const state = parseState(stateInput); const parsed = mutationSchema.safeParse(mutationInput);
   if (!parsed.success) throw new TripError('invalid_mutation', 'Mutation requires revision, preview token, explicit actor, reason, timestamp and idempotency key');
-  const request = parsed.data; const requestHash = hash(request); const existing = state.history.find((e) => e.id === request.idempotencyKey);
+  const request = parsed.data; const requestHash = hash(request); const existing = findReceipt(state, request.idempotencyKey);
   if (existing) {
     if (existing.requestHash !== requestHash) throw new TripError('idempotency_key_reused', 'Idempotency key was used for a different request');
     return { state, receipt: { schemaVersion: 1, commitId: existing.id, committedRevision: existing.revision, currentRevision: state.revision, replayed: true } };
@@ -238,14 +243,14 @@ export async function apply(stateInput: unknown, mutationInput: unknown) {
     if (request.operation.type === 'apply_observation') observationDateChange(state.content, request.operation.observationId, request.at);
     else { if (Date.parse(request.at) !== Date.parse(request.operation.asOf)) throw new TripError('invalid_action_time', 'A reminder attempt must use its actual save timestamp as asOf; preview again before saving'); const id = request.operation.intentId; const action = reconcileReminders(state, request.at).items.find((i) => i.intentId === id)?.action; if (!action || action.actionKey !== request.operation.actionKey) throw new TripError('stale_reminder_action', 'Action expired or changed before this apply time'); }
   }
-  if (state.history.length >= MAX_HISTORY_EVENTS) throw new TripError('history_full', 'Prototype history limit reached; retain state and upgrade storage before another change');
+  if (state.history.length >= (isStorage2(state) ? MAX_STORAGE2_EVENTS : MAX_HISTORY_EVENTS)) throw new TripError('history_full', 'Storage event limit reached; retain state and upgrade storage before another change');
   const proposal = await preview(state, request.operation, request.expectedRevision);
   if (proposal.previewToken !== request.previewToken) throw new TripError('stale_preview', 'State or operation changed; preview again');
   if (!proposal.canApply) throw new TripError('constraint_violation', proposal.reasonCodes.join(', '));
   if (proposal.weatherOverride && !request.acceptWeatherRisk) throw new TripError('weather_acceptance_required', 'Explicit acceptance of the shown weather risk is required');
   const revision = state.revision + 1;
   const event = { id: request.idempotencyKey, revision, operation: request.operation, actor: request.actor, reason: request.reason, at: request.at, requestHash, before: structuredClone(state.content), after: proposal.nextContent };
-  const next = parseState({ ...state, revision, content: proposal.nextContent, history: [...state.history, event] });
+  const next = parseState(isStorage2(state) ? appendStorage2(state, event, proposal.nextContent) : { ...state, revision, content: proposal.nextContent, history: [...state.history, event] });
   return { state: next, receipt: { schemaVersion: 1, commitId: event.id, committedRevision: revision, currentRevision: revision, replayed: false } };
 }
 export function mutationFromPreview(proposal: Awaited<ReturnType<typeof preview>>, metadata: Omit<TripMutation, 'operation' | 'previewToken' | 'expectedRevision'>) {

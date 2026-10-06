@@ -1,3 +1,4 @@
+import { stateHash as journeyHash, stateHashContext } from './storage2';
 import { canonical, hash } from './identity';
 import { parseState } from './engine';
 import { analyseItinerary } from './itinerary';
@@ -25,7 +26,7 @@ export function latestReadback(linkage: Linkage, intentId: string) {
 export function reconcileReminders(input: unknown, asOf: string) {
   if (!linkageQuerySchema.safeParse({ asOf }).success) throw new TripError('invalid_linkage_query', 'Supply explicit asOf');
   const state = parseState(input);
-  const linkage = state.content.linkage; const stateHash = hash(state);
+  const linkage = state.content.linkage; const stateHash = journeyHash(state);
   const items = (linkage?.reminderIntents || []).map((intent) => {
     const desired = desiredReminder(state, intent, asOf); const { head, conflict } = latestReadback(linkage!, intent.id);
     const attempts = linkage!.reminderAttempts.filter((a) => a.intentId === intent.id);
@@ -51,7 +52,7 @@ export function reconcileReminders(input: unknown, asOf: string) {
     const configuration = action === 'cancel' ? null : action === 'pause' ? { ...head.configuration!, enabled: false } : desired.configuration;
     const desiredHash = hash(configuration);
     const actionKey = hash({ journeyId: state.content.snapshot.trip.id, intentId: intent.id, action, desiredHash, provider: intent.provider, accountRef: intent.accountRef, providerTaskId: head.providerTaskId, readbackId: head.id, attemptCount: attempts.length });
-    return { ...base, status: 'proposed', reasonCodes: [], action: { kind: action, actionKey, desiredHash, configuration, providerTaskId: head.providerTaskId, basedOnReadbackId: head.id, stateHash, revision: state.revision, requiresNewDurableAttempt: true, externalExecutionImplemented: false }, readbackRequired: false, uncertainAttempt: null };
+    return { ...base, status: 'proposed', reasonCodes: [], action: { kind: action, actionKey, desiredHash, configuration, providerTaskId: head.providerTaskId, basedOnReadbackId: head.id, stateHash, ...stateHashContext(state), revision: state.revision, requiresNewDurableAttempt: true, externalExecutionImplemented: false }, readbackRequired: false, uncertainAttempt: null };
   });
-  return { schemaVersion: 1, saved: false, externalActionsPerformed: 0, asOf, revision: state.revision, stateHash, items, limitations: ['Descriptors are not provider writes or delivery receipts', 'Save a new attempt with authoritative CAS and read it back before a separately authorized dispatch; replay never grants dispatch', 'Unknown outcomes require exact provider/correlation readback; no exactly-once guarantee', 'V1 supports one-shot decision_needed only; arbitrary activity reminders and new rounds are not automated'] };
+  return { schemaVersion: 1, saved: false, externalActionsPerformed: 0, asOf, revision: state.revision, stateHash, ...stateHashContext(state), items, limitations: ['Descriptors are not provider writes or delivery receipts', 'Save a new attempt with authoritative CAS and read it back before a separately authorized dispatch; replay never grants dispatch', 'Unknown outcomes require exact provider/correlation readback; no exactly-once guarantee', 'V1 supports one-shot decision_needed only; arbitrary activity reminders and new rounds are not automated'] };
 }

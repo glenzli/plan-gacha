@@ -30,3 +30,6 @@ export * from './presentation';
 
 export * from './arrangementSchema';
 export * from './arrangements';
+
+export * from './storage2';
+export * from './migration';

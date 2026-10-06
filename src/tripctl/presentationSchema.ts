@@ -32,7 +32,7 @@ const night = z.strictObject({ ref, dateId: date, nightDate: date, timeZone: z.s
 });
 const presentationBaseSchema = z.strictObject({
   presentationContractVersion: z.literal(1), readOnly: z.literal(true), derived: z.literal(true), saved: z.literal(false), audience: z.literal('private_owner'),
-  source: z.strictObject({ journeyId: z.string(), authorityRevision: z.number().int().nonnegative(), authorityStateHash: hash, projectedRevision: z.number().int().nonnegative(), projectedStateHash: hash, hashScope: z.literal('canonical-format-1-state'), library: library.nullable(), metadataIsCallerSupplied: z.literal(true) }),
+  source: z.strictObject({ journeyId: z.string(), authorityRevision: z.number().int().nonnegative(), authorityStateHash: hash, projectedRevision: z.number().int().nonnegative(), projectedStateHash: hash, hashScope: z.enum(['canonical-format-1-state', 'content-and-audit-head-v2']), library: library.nullable(), metadataIsCallerSupplied: z.literal(true) }),
   freshness: z.strictObject({ asOf: stamp, generatedAt: stamp, knownAt: stamp.nullable(), automaticRefresh: z.literal(false), providerSyncAt: z.null(), knowledgeBasis: z.literal('selected_revision'), asOfUsage: z.literal('evidence_freshness_after_known_sources') }),
   trip: z.strictObject({ name: z.string(), dateIds: z.array(date), timeZone: z.string().nullable() }),
   presentationCatalog: z.strictObject({ version: z.literal(1), items: z.array(item), unplacedRefs: refs, inactiveAlternativeRefs: refs }),

@@ -21,4 +21,4 @@ export const arrangementOperations = [
 ] as const;
 export const arrangementOperationSchema = z.discriminatedUnion('type', arrangementOperations);
 export type ArrangementOperation = z.infer<typeof arrangementOperationSchema>;
-export const tripDisplayOutputSchema = z.strictObject({ tripId: id, ...displayMetadataFieldsSchema.shape, metadataVersion: z.number().int().nonnegative(), source: source.nullable(), basis: z.enum(['explicit_metadata', 'snapshot_name_only']), sourceRevision: z.number().int().nonnegative(), sourceStateHash: digest, readOnly: z.literal(true), saved: z.literal(false) });
+export const tripDisplayOutputSchema = z.strictObject({ tripId: id, ...displayMetadataFieldsSchema.shape, metadataVersion: z.number().int().nonnegative(), source: source.nullable(), basis: z.enum(['explicit_metadata', 'snapshot_name_only']), sourceRevision: z.number().int().nonnegative(), sourceStateHash: digest, storageFormat: z.union([z.literal(1), z.literal(2)]), stateHashScope: z.enum(['canonical-format-1-state', 'content-and-audit-head-v2']), readOnly: z.literal(true), saved: z.literal(false) });

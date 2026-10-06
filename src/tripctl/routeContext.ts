@@ -1,3 +1,4 @@
+import { historicalSources } from './storage2';
 import type * as z from 'zod/v4';
 import type { routeActivitySchema } from './linkageSchema';
 import { preparePlanningContext } from '../domain/planningTools';
@@ -11,7 +12,7 @@ export function appendRouteActivity(state: TripState, next: TripContent, record:
   const report = next.itinerary?.actual.find((a) => a.id === r.actualReportId);
   if (r.actualReportId && (!report || report.dateId !== r.dateId || Date.parse(report.source.observedAt) > Date.parse(r.source.observedAt))) fail('route_report_mismatch', 'Context must bind the exact same-day report known at binding time');
   if (list.some((a) => a.id === r.id)) fail('duplicate_id', 'Context record identity already exists');
-  const all = [next, ...state.history.flatMap((h) => [h.before, h.after])];
+  const all = [next, ...historicalSources(state)];
   if (all.some((c) => c.itinerary?.registeredActivityIds.includes(r.activity.id) || c.linkage?.actualChanges?.some((a) => a.replacementActivities.some((x) => x.id === r.activity.id)) || c.snapshot.trip.plans.some((p) => p.stops?.some((a) => typeof a === 'object' && a.id === r.activity.id)))) fail('duplicate_id', 'Context activities need an identity distinct from planned and replacement activities');
   const previous = list.filter((a) => a.activity.id === r.activity.id).at(-1);
   if (previous ? r.supersedesId !== previous.id : Boolean(r.supersedesId)) fail('route_context_correction_conflict', 'Correct the latest context record for this stable activity identity');

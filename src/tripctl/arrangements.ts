@@ -1,3 +1,4 @@
+import { historicalSources, stateHash, stateHashContext } from './storage2';
 import type * as z from 'zod/v4';
 import { lodgingChangesSchema, reservationBindingSchema, tripDisplayOutputSchema, type ArrangementOperation } from './arrangementSchema';
 import { TripError, type TripState, type TripContent, type TripOperation } from './schema';
@@ -33,11 +34,11 @@ function upsertLodgings(state: TripState, next: TripContent, input: z.infer<type
       human(record.source);
       if (Date.parse(record.source.observedAt) > when) fail('future_arrangement_source', 'Mapping cannot predate reservation provenance');
       if (!dates.some((d) => d >= record.checkIn && d < record.checkOut)) fail('unknown_date', 'Reservation must cover at least one journey night');
-      const owners = new Set([next, ...state.history.flatMap((h) => [h.before, h.after])].flatMap((c) => c.snapshot.trip.lodgings.filter((l) => l.reservations?.some((r) => r.id === record.id)).map((l) => l.id)));
+      const owners = new Set([next, ...historicalSources(state)].flatMap((c) => c.snapshot.trip.lodgings.filter((l) => l.reservations?.some((r) => r.id === record.id)).map((l) => l.id)));
       if ([...owners].some((id) => id !== hotel.id)) fail('reservation_identity_conflict', 'Reservation identity belongs to another hotel; never move an order through a correction');
       const previous = hotel.reservations?.find((r) => r.id === record.id);
       if (previous && (previous.checkIn !== record.checkIn || previous.checkOut !== record.checkOut || previous.status !== record.status) && !record.correctionReason) fail('arrangement_correction_required', 'Status or date corrections require an explicit audit reason');
-      const knownReservations = [next, ...state.history.flatMap((h) => [h.before, h.after])].flatMap((c) => c.snapshot.trip.lodgings.flatMap((l) => (l.reservations || []).filter((r) => r.id === record.id)));
+      const knownReservations = [next, ...historicalSources(state)].flatMap((c) => c.snapshot.trip.lodgings.flatMap((l) => (l.reservations || []).filter((r) => r.id === record.id)));
       for (const known of knownReservations) {
         const binding = reservationBindingSchema.safeParse(known.tripctlArrangement); if (!binding.success) continue;
         const time = Date.parse(record.source.observedAt); const oldTime = Date.parse(binding.data.source.observedAt);
@@ -102,5 +103,5 @@ export function validateArrangements(state: Pick<TripState, 'content'>) {
 }
 export function exportTripDisplay(state: TripState) {
   const m = state.content.displayMetadata;
-  return tripDisplayOutputSchema.parse({ tripId: state.content.snapshot.trip.id, displayName: m?.displayName || state.content.snapshot.trip.name || state.content.snapshot.trip.id, aliases: m?.aliases || [], year: m?.year ?? null, month: m?.month ?? null, knownWindowStart: m?.knownWindowStart ?? null, knownWindowEnd: m?.knownWindowEnd ?? null, metadataVersion: m?.version || 0, source: m?.source || null, basis: m ? 'explicit_metadata' : 'snapshot_name_only', sourceRevision: state.revision, sourceStateHash: hash(state), readOnly: true, saved: false });
+  return tripDisplayOutputSchema.parse({ tripId: state.content.snapshot.trip.id, displayName: m?.displayName || state.content.snapshot.trip.name || state.content.snapshot.trip.id, aliases: m?.aliases || [], year: m?.year ?? null, month: m?.month ?? null, knownWindowStart: m?.knownWindowStart ?? null, knownWindowEnd: m?.knownWindowEnd ?? null, metadataVersion: m?.version || 0, source: m?.source || null, basis: m ? 'explicit_metadata' : 'snapshot_name_only', sourceRevision: state.revision, sourceStateHash: stateHash(state), ...stateHashContext(state), readOnly: true, saved: false });
 }

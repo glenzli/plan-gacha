@@ -1,3 +1,4 @@
+import { historicalSources, stateHashContext } from './storage2';
 import { readonlyViewInputSchema } from './linkageSchema';
 import { parseState, hash } from './engine';
 import { TripError } from './schema';
@@ -15,7 +16,7 @@ export async function exportReadonlyView(input: unknown, request: unknown) {
   const analysis = content.itinerary ? analyseItinerary(content.itinerary, { asOf: q.asOf }, content) : null;
   const recent = state.history.slice(-10).map((h) => ({ id: h.id, revision: h.revision, at: h.at, reason: h.reason, operationType: h.operation.type }));
   return { projectionSchemaVersion: 1, readOnly: true, derived: true, saved: false, audience: 'private_owner',
-    source: { journeyId: content.snapshot.trip.id, revision: state.revision, stateHash: hash(state), library: q.source || null, metadataIsCallerSupplied: true },
+    source: { journeyId: content.snapshot.trip.id, revision: state.revision, stateHash: hash(state), ...stateHashContext(state), library: q.source || null, metadataIsCallerSupplied: true },
     freshness: { asOf: q.asOf, generatedAt: q.generatedAt, sourceRetrievedAt: q.source?.retrievedAt || null, automaticRefresh: false, providerSyncAt: null },
     organized: organizeView(state, impact),
     trip: { name: content.snapshot.trip.name || '', archived: content.snapshot.trip.archived, todayId: content.snapshot.todayId, dates: context.tripDates.map((d) => d.id), timeZone: content.itinerary?.timeZone || content.snapshot.trip.timeZone || content.snapshot.trip.timezone || content.snapshot.trip.time_zone || null },
@@ -56,7 +57,7 @@ function organizeView(state: ReturnType<typeof parseState>, impact: Awaited<Retu
   });
   const issues = c.memory.issues.map((i) => ({ ref: ref('issue', i.id), ...i, association: linkage('issue', i.id, [], i.relatedPlanId) }));
   const activities = context.plans.flatMap((p) => p.stops.map((s) => ({ ref: ref('activity', p.id, s.id), planId: p.id, activityId: s.id, current: true, title: s.title, location: s.location, time: s.time, typed: c.itinerary?.current.find((d) => d.planId === p.id)?.activities.find((a) => a.id === s.id) || null })));
-  for (const old of [c, ...state.history.flatMap((h) => [h.before, h.after])]) for (const day of [...(old.itinerary?.baseline.days || []), ...(old.itinerary?.current || [])]) for (const a of day.activities) {
+  for (const old of [c, ...historicalSources(state)]) for (const day of [...(old.itinerary?.baseline.days || []), ...(old.itinerary?.current || [])]) for (const a of day.activities) {
     const key = ref('activity', day.planId, a.id);
     if (!activities.some((row) => row.ref === key)) activities.push({ ref: key, planId: day.planId, activityId: a.id, current: false, title: a.title, location: { label: '', query: '', address: '', ...a.location }, time: a.timing.start || '', typed: a });
   }

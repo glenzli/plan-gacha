@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { prepareMigration, commitMigration, exportFormat1 } from './migration';
+import { storageIdentity, eventMetadata, isStorage2 } from './storage2';
 import { exportTripDisplay } from './arrangements';
 import { MAX_STORE_BYTES } from './limits';
 import { exportPresentationView } from './presentation';
@@ -14,7 +16,7 @@ import { searchExperiences, createGuideDraft } from './experiences';
 import { readFile } from 'node:fs/promises';
 import { parseArgs } from 'node:util';
 import { apply, initialize, inspect, preview, parseState, hash } from './engine';
-import { createStore, loadState, commitStore, stageStore } from './store';
+import { createStore, loadStore, commitStore, stageStore } from './store';
 import { renderItineraryReport } from './itineraryReport';
 import { analyseItinerary, itineraryActivityToken } from './itinerary';
 import { ItineraryError } from './itinerarySchema';
@@ -31,7 +33,9 @@ async function main() {
   if (command === 'experience-search') { const parsed = experienceSearchRequestSchema.safeParse(await json(values.input)); if (!parsed.success) throw new TripError('invalid_experience_query', 'Use {journeys,query} with explicit current states and asOf'); return searchExperiences(parsed.data.journeys, parsed.data.query); }
   if (!path) throw new TripError('missing_argument', '--store is required');
   if (command === 'init') { const state = initialize(await json(values.input)); await createStore(path, state); return { ok: true, revision: 0, saved: true, durability: 'local_filesystem', externalCheckpointVerified: false, stateHash: hash(state) }; }
-  const state = await loadState(path);
+  if (command === 'migrate' || command === 'export-format1') { if (!values.output) throw new TripError('missing_argument', '--output is required'); return command === 'migrate' ? prepareMigration(path, values.output, await json(values.input)) : exportFormat1(path, values.output, await json(values.input)); }
+  if (command === 'commit-migration') return commitMigration(path, await json(values.input));
+  const loaded = await loadStore(path); const state = loaded.state;
   if (command === 'trip-display') return exportTripDisplay(state);
   if (command === 'presentation-view') return exportPresentationView(state, await json(values.input));
   if (command === 'capacity') return analyseCapacity(state);
@@ -42,9 +46,9 @@ async function main() {
   if (command === 'experiences') return searchExperiences([state], await json(values.input));
   if (command === 'guide-draft') return createGuideDraft(state, await json(values.input));
   if (command === 'context') return readOperatorContext(state, { asOf: values['as-of'], ...(values.date ? { dateId: values.date } : {}), ...(values.limit !== undefined ? { candidateLimit: Number(values.limit) } : {}) });
-  if (command === 'read') return { ok: true, operatorPolicy: ['Read current state before each planning turn', 'Keep uncertainty and explicit sources', 'Preview before apply', 'Only acknowledge durable persistence after its receipt', 'Never treat estimates as guarantees'], revision: state.revision, stateHash: hash(state), ...state.content, lastChange: state.history.at(-1) ? { id: state.history.at(-1)!.id, reason: state.history.at(-1)!.reason, at: state.history.at(-1)!.at } : null };
-  if (command === 'verify') return { ok: true, revision: parseState(state).revision, stateHash: hash(state), historyCount: state.history.length, externalCheckpointVerified: false };
-  if (command === 'history') return { ok: true, revision: state.revision, events: state.history.map(({ before: _before, after: _after, ...event }) => ({ ...event, beforeHash: hash(_before), afterHash: hash(_after) })) };
+  if (command === 'read') return { ok: true, operatorPolicy: ['Read current state before each planning turn', 'Keep uncertainty and explicit sources', 'Preview before apply', 'Only acknowledge durable persistence after its receipt', 'Never treat estimates as guarantees'], revision: state.revision, ...storageIdentity(state), fileHash: loaded.fileHash, ...state.content, lastChange: state.history.at(-1) ? { id: state.history.at(-1)!.id, reason: state.history.at(-1)!.reason, at: state.history.at(-1)!.at } : null };
+  if (command === 'verify') return { ok: true, journeyId: state.content.snapshot.trip.id, fileBytes: loaded.raw.length, revision: parseState(state).revision, ...storageIdentity(state), fileHash: loaded.fileHash, historyCount: state.history.length, externalCheckpointVerified: false };
+  if (command === 'history') return { ok: true, revision: state.revision, events: state.history.map((event) => ({ ...eventMetadata(event), beforeHash: isStorage2(state) ? state.history[event.revision - 1].beforeHash : hash(event.before), afterHash: isStorage2(state) ? state.history[event.revision - 1].afterHash : hash(event.after) })) };
   if (command === 'check' || command === 'rank') return { revision: state.revision, result: await inspect(state, command === 'check' ? 'evaluate_plan' : 'rank_candidates', values.date), ...(command === 'check' && state.content.itinerary ? { optionAnalysis: assessItineraryOptions(state.content.itinerary, state.content) } : {}) };
   if (command === 'route-query') return { ok: true, revision: state.revision, saved: false, descriptor: prepareWalkingQuery(state.content.snapshot, await json(values.input)) };
   if (command === 'route-import') return { ok: true, revision: state.revision, saved: false, operation: { type: 'map_fact', fact: await importWalkingObservation(await json(values.request), await json(values.input)) } };
