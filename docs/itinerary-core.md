@@ -43,7 +43,7 @@ Analysis returns open decision advisory events with exact deadline or unknown an
 
 ## Handoff limits
 
-The engine/CLI can be called directly from AI; its input/output schemas are exported by the same library. The browser still owns confirmation of its own snapshot/local state. A stateless MCP call does not magically access browser data, and the richer journey itinerary is not yet a browser editor or new MCP protocol surface. Snapshot handoff requires an explicit export/materialization; the current portable CLI delivers a verified save/reopen/CAS/undo operator loop. Parent Library version is outer CAS, journey revision is inner CAS, schemaVersion is format. The tool never writes the parent's Library file itself.
+The engine/CLI can be called directly from AI; its input/output schemas are exported by the same library. The standalone browser app is retired as of 2026-10-08 and archived at `legacy-web-final`, with browser source removed from `main`. Its legacy snapshot/local state remains separate for export and migration; a stateless MCP call cannot access it automatically. Rich journey operations use the CLI/library, while host pages or reports consume read-only projections. Legacy data handoff requires an explicit export/materialization and reviewed conversion; the portable CLI delivers the save/reopen/CAS/undo operator loop. Parent Library version is outer CAS, journey revision is inner CAS, schemaVersion is format. The tool never writes the parent's Library file itself.
 
 ## Decision matter lifecycle (guard revision 7)
 

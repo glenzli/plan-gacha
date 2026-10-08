@@ -1,7 +1,7 @@
 import { normalizeExternalLinkUrl, normalizeLocation, type NormalizedLocation, type NormalizedPlan } from './plan';
 import { addDays } from './date';
 import type { NormalizedSchedule } from './trip';
-import type { TranslateFn } from '../types/ui';
+type TranslateFn = (key: string, vars?: Record<string, string | number | boolean | null | undefined>) => string;
 
 export interface LodgingReservation {
   id: string;

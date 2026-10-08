@@ -2,8 +2,6 @@ import { describe, it, expect, vi } from 'vitest';
 import fixture from '../../fixtures/booked-day.snapshot.json';
 import { previewActivityChange, activityOperationSchema } from './activityEditing';
 import { planningSnapshotSchema, preparePlanningContext, callPlanningTool } from './planningTools';
-import { compactPlanForAi } from './aiPrompts';
-import { normalizePlan } from './plan';
 const source = { kind: 'synthetic' as const, reference: 'synthetic:explicit-activity-instruction', observedAt: '2026-10-02T12:00:00Z' };
 const base = { dateId: '2026-10-11', planId: 'museum', source };
 const link = { type: 'link_booking_activities' as const, ...base, bookingId: 'dinner-booking', stopIds: ['dinner-stop'] };
@@ -93,11 +91,9 @@ describe('fixed-time activity edits', () => {
     expect(result.nextSnapshot.trip.plans[0].bookings).toEqual(before.trip.plans[0].bookings);
     expect(snapshot).toEqual(before);
   });
-  it('preserves explicit booking provenance in normalized AI export, and rejects malformed persisted links', async () => {
+  it('preserves explicit booking provenance in normalized context, and rejects malformed persisted links', async () => {
     const snapshot = linked(); const context = preparePlanningContext(snapshot);
-    const exported = compactPlanForAi(context.plans[0], base.dateId);
-    const normalized = normalizePlan(exported, 0, context.tripDates);
-    expect(normalized.bookings[0]).toMatchObject({ dateId: base.dateId, stopIds: ['dinner-stop'], stopLinkSource: source });
+    expect(context.plans[0].bookings[0]).toMatchObject({ dateId: base.dateId, stopIds: ['dinner-stop'], stopLinkSource: source });
     snapshot.trip.plans[0].bookings![0].stopIds = ['missing'];
     expect(await callPlanningTool('get_context', { snapshot })).toMatchObject({ ok: false, error: { code: 'invalid_reference' } });
     snapshot.trip.plans[0].bookings![0].stopIds = ['dinner-stop', 'dinner-stop'];

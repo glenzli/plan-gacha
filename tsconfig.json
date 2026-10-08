@@ -4,15 +4,11 @@
     "useDefineForClassFields": true,
     "module": "ESNext",
     "lib": [
-      "ES2022",
-      "DOM",
-      "DOM.Iterable"
+      "ES2022"
     ],
     "skipLibCheck": true,
     "moduleResolution": "Bundler",
-    "jsx": "react-jsx",
     "types": [
-      "vite/client",
       "node"
     ],
     "allowImportingTsExtensions": true,
@@ -23,7 +19,6 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.tsx",
     "scripts/planning-tools-demo.ts"
   ]
 }

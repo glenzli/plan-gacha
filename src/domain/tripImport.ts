@@ -1,7 +1,9 @@
 import { normalizePlan, type NormalizedPlan, type TripDateLike } from './plan';
 import { normalizeSchedule, type NormalizedSchedule } from './trip';
 import { getLodgingImpacts, mergeLodgings, type NormalizedLodging } from './lodging';
-import { isCompatibleAppSchemaVersion } from './sync';
+
+// Legacy browser export versions accepted by explicit trip import.
+const COMPATIBLE_APP_SCHEMA_VERSIONS = new Set(['1.0', '13']);
 
 function validDate(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
@@ -11,7 +13,7 @@ function validDate(value: unknown): value is string {
 export function validateTripImportPayload(payload: unknown): asserts payload is Record<string, any> {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('noApplicableJson');
   const input = payload as Record<string, any>;
-  if (input.schemaVersion !== undefined && !isCompatibleAppSchemaVersion(input.schemaVersion)) throw new Error('importSchemaUnsupported');
+  if (input.schemaVersion !== undefined && !COMPATIBLE_APP_SCHEMA_VERSIONS.has(String(input.schemaVersion ?? '').trim())) throw new Error('importSchemaUnsupported');
   if (input.startDateStr !== undefined && !validDate(input.startDateStr)) throw new Error('importTripDatesInvalid');
   if (input.tripDays !== undefined && (!Number.isInteger(input.tripDays) || input.tripDays < 1 || input.tripDays > 30)) throw new Error('importTripDatesInvalid');
   if (input.plans !== undefined && !Array.isArray(input.plans)) throw new Error('noApplicableJson');

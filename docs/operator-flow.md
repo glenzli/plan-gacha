@@ -8,10 +8,10 @@ The useful entrypoint is an offline Node CLI/library with a small operator skill
 | Operator skill | Interpret intent, preserve uncertainty, select operations, assess sources, explain effects | A model guess never becomes a confirmed fact or actual visit |
 | Private data | One journey identity; separate baseline/current/actual, preferences, evidence, commitments, options and deadlines | Public source and fixtures contain synthetic data only |
 | Storage | Local locked CAS, or parent materialization → stage → same-ID Library CAS → readback | `stage.saved:false`; Library version, journey revision and schema version differ |
-| UI | Browser editing/confirmation and read-only report | Browser localStorage is separate; no automatic cross-device or Library pull |
+| Presentation | Host views and read-only reports derived from the authoritative journey | No second authority or automatic refresh; the standalone React app is retired |
 | Notifications | Parent's separately authorized reminder mechanism | Decision advisories do not create tasks, poll providers or cancel bookings |
 
-The parent already runs the portable CLI and Library persistence flow. It can remove repeated JSON handling from the **user's** chat workflow because the parent performs that handoff. The CLI/MCP itself does not discover the browser's state. Moving changes into the existing website still requires an explicit reviewed data handoff; do not claim browser/cloud synchronization. Existing browser AI-copy/paste tools, offline local data, checklist and optional Drive adapter remain available. Drive get-version/write is not atomic CAS and is not the operator's collaboration store.
+The parent already runs the portable CLI and Library persistence flow. It can remove repeated JSON handling from the **user's** chat workflow because the parent performs that handoff. The standalone React app is retired as of 2026-10-08; its source, exports and legacy storage paths are archived at `legacy-web-final` and removed from `main`. This leaves the existing deployment unchanged. The CLI/MCP does not discover browser state. Export legacy data from its original browser/origin and prepare an explicit reviewed conversion before saving it through the operator flow. Host pages and reports may consume the component's read-only projections. The archived Drive get-version/write adapter is not atomic CAS and is not the operator's collaboration store.
 
 ## Discover and call
 

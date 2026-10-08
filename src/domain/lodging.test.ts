@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { normalizePlan } from './plan';
 import { normalizeTripSnapshot, normalizeSchedule } from './trip';
 import { buildAssignmentPreview } from './planning';
-import { buildTripExportPayload } from './tripExport';
-import { getEditedPlanSchedule } from './planEditing';
-import { compactPlanForAi, compactLodgingForAi, getLodgingContextForDate } from './aiPrompts';
 import { NO_LODGING, getLodgingImpacts, getLodgingTasks, normalizeLodging, normalizeLodgingDrafts, resolveLodgingStops, resolveNightLodging } from './lodging';
 
 const date = '2026-10-02';
@@ -39,14 +36,12 @@ describe('night lodging resolution', () => {
     const preferred = makePlan('choices', ['a', 'b'], 'b');
     expect(resolveNightLodging(date, { [date]: { planId: preferred.id } }, new Map([[preferred.id, preferred]]), hotels).selected?.id).toBe('b');
   });
-  it('keeps fixed lodging when selecting or moving plans and reports the conflict', () => {
+  it('keeps fixed lodging when selecting plans and reports the conflict', () => {
     const schedule = { [date]: { planId: a.id, lodgingId: 'a', lodgingLocked: true } };
     const next = buildAssignmentPreview(schedule, date, b, plans, { todayId: '2026-10-01' }).nextSchedule;
     expect(next[date].lodgingId).toBe('a');
     expect(resolveNightLodging(date, next, plans, hotels)).toMatchObject({ selected: { id: 'a' }, conflict: true });
-    const moved = getEditedPlanSchedule(schedule, a.id, a.id, '2026-10-03');
-    expect(moved[date]).toEqual({ planId: '', lodgingId: 'a', lodgingLocked: true });
-    expect(normalizeSchedule(moved)[date]).toEqual(moved[date]);
+    expect(normalizeSchedule(next)[date]).toEqual(next[date]);
   });
   it('does not add booking tasks when no stay is required, or a booking covers the chosen hotel', () => {
     expect(getLodgingTasks(date, { [date]: { planId: a.id } }, plans, hotels)).toEqual([]);
@@ -67,7 +62,7 @@ describe('lodging route anchors and persistence', () => {
     expect(result.stops[0].location.address).toBe('B street');
     expect(result.stops[1]).toMatchObject({ lodgingRouteChanged: true, transferFromPrevious: { duration: '', departAt: '', via: [{ label: 'Scenic road' }] } });
     expect(plan.stops[1].transferFromPrevious?.duration).toBe('20 min');
-    expect(normalizePlan(compactPlanForAi(plan, null)).stops[0].lodgingAnchor).toBe('previous_night');
+    expect(normalizePlan(JSON.parse(JSON.stringify(plan))).stops[0].lodgingAnchor).toBe('previous_night');
   });
   it('recognizes exact legacy endpoint hotel locations and clears unresolved navigation points', () => {
     const plan = normalizePlan({ id: 'legacy', name: 'Legacy', stops: [{ title: 'Depart', location: hotels[0].location }, { title: 'Visit' }] });
@@ -84,15 +79,11 @@ describe('lodging route anchors and persistence', () => {
     expect(saved.reservations).toEqual(hotels[0].reservations);
     expect(normalizeLodgingDrafts([{ ...hotels[0], address: 'Other street' }])[0].location.mapPoint).toBeUndefined();
   });
-  it('round trips old/default and new/plan lodging through snapshot and export normalization', () => {
+  it('round trips old/default and new/plan lodging through snapshot normalization', () => {
     const trip = normalizeTripSnapshot({ id: 'trip', startDateStr: date, tripDays: 2, plans: [b], lodgings: hotels, schedule: { [date]: { planId: b.id, lodgingId: 'b', lodgingLocked: true } } });
-    const exported = buildTripExportPayload({ ...trip, schemaVersion: '1.0' });
-    const restored = normalizeTripSnapshot(JSON.parse(JSON.stringify(exported)));
+    const restored = normalizeTripSnapshot(JSON.parse(JSON.stringify(trip)));
     expect(restored.lodgings).toEqual(trip.lodgings);
     expect(restored.plans[0].lodging).toEqual(b.lodging);
     expect(restored.schedule).toEqual(trip.schedule);
-    expect(compactLodgingForAi(hotels[0])).toMatchObject({ location: { map_point: { coordinate_system: 'WGS84' } }, reservations: [{ status: 'booked' }] });
-    expect(getLodgingContextForDate(hotels, date, trip.schedule, new Map([[b.id, b]]))).toMatchObject({ tonight_lodging_id: 'b', fixed: true });
-    expect(JSON.stringify(getLodgingContextForDate(hotels, date))).not.toContain('A street');
   });
 });
